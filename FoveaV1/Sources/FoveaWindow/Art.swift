@@ -3,6 +3,7 @@ import AppKit
 import SwiftUI
 import FoveaCore
 import CapturesCore
+import FoveaKit
 
 /// Pictures the window draws: a region you took (cropped from its drawn screen), a file's icon,
 /// an app's icon.

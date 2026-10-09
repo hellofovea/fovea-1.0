@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import CapturesCore
+import FoveaKit
 
 /// Settings › Notch: the Island made yours, without a way to break it. The glow keeps the Notch
 /// Workbench's color board (a palette to start from, the hue turned on a spectrum, Custom's spread,
@@ -12,11 +13,9 @@ import CapturesCore
 
 /// The glow in the voice bar while Fovea listens for an agent: the Workbench's palettes to start
 /// from, and Custom, seven hues fanned round the one picked.
-enum GlowChoice: String, CaseIterable {
-    case colorful, ocean, sunset, forest, candy, ice, gold, mono, custom
-    var title: String { rawValue.capitalized }
-    static let templates: [GlowChoice] = [.colorful, .ocean, .sunset, .forest, .candy, .ice, .gold, .mono]
+typealias GlowChoice = GlowPalette
 
+extension GlowPalette {
     /// The glow as picked, for the renderer (NotchGlow.swift, the Workbench's own): a template
     /// turned `hue` degrees round the wheel (Mono stays gray), or Custom fanned across `spread`
     /// degrees round `hue`.
@@ -46,11 +45,6 @@ enum GlowChoice: String, CaseIterable {
     }
 }
 
-/// How long the pointer rests at the notch before the board opens: named, never in milliseconds.
-enum HoverWait: String, CaseIterable {
-    case quick, normal, relaxed
-    var title: String { rawValue.capitalized }
-}
 
 struct NotchPane: View {
     @Environment(CapturesModel.self) private var model
@@ -69,7 +63,7 @@ struct NotchPane: View {
         // drag shows on the notch the moment it's made.
         SettingsSection("Glow", note: "The light in the voice bar while you talk to an agent.") {
             SettingsCard {
-                NotchPreview(glow: glow.look(hue: prefs.glowHue, spread: prefs.glowSpread, drift: prefs.glowDrift))
+                NotchPreview(glow: glow.look(hue: prefs.glowHue, spread: prefs.glowSpread, drift: prefs.glowDrift > 0.001))
                     .frame(height: 132)
                     .cardPadding()
                 RowDivider()
@@ -108,8 +102,13 @@ struct NotchPane: View {
                 if glow != .mono {
                     VStack(spacing: 0) {
                         RowDivider()
-                        SettingsRow("Hue drift", detail: "The colors wander slowly round the wheel.") {
-                            InkToggle(title: "Hue drift", isOn: $model.prefs.glowDrift)
+                        SettingsRow("Drift", detail: "How much the colors wander round the wheel.") {
+                            HStack(spacing: 8) {
+                                Text("Still").font(.system(size: 11)).foregroundStyle(palette.secondary)
+                                Slider(value: $model.prefs.glowDrift, in: 0...1)
+                                    .frame(width: 160)
+                                Text("Lively").font(.system(size: 11)).foregroundStyle(palette.secondary)
+                            }
                         }
                     }
                     .transition(.opacity)

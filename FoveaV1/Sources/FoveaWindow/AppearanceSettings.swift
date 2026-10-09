@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import CapturesCore
+import FoveaKit
 
 /// Settings › Appearance, laid out as System Settings' Appearance pane is, and only what Ryan
 /// asked to keep: Light, Dark or Auto as pictures of a window, and the accent from the Mac's own

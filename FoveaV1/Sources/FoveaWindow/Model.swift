@@ -1,6 +1,8 @@
 import AppKit
 import SwiftUI
 import CapturesCore
+import FoveaStore
+import FoveaKit
 
 /// The window's pages. Captures is home; Settings replaces it in place (from the profile icon,
 /// which opens it on Account), with a back arrow at the toolbar's leading edge.
@@ -589,7 +591,14 @@ enum DictionaryTab: String, CaseIterable {
 @MainActor @Observable
 final class CapturesModel {
     var fixture: FixtureSet = .typical
-    var library: Library = Fixtures.library(.typical) { didSet { refresh() } }
+    var library: Library = Fixtures.library(.empty) { didSet { refresh(); onLibraryEdited?() } }
+    /// The captures or the dictionary changed here (a deletion, a tag, a word): the window's
+    /// controller writes them to the stores.
+    @ObservationIgnored var onLibraryEdited: (() -> Void)?
+    /// A setting changed here: the controller writes it to the prefs the island reads.
+    @ObservationIgnored var onPrefsEdited: (() -> Void)?
+    /// Where the pictures taken with captures are kept (`art = "media:…"`).
+    @ObservationIgnored var media: MediaStore?
 
     // What's on screen.
     var page: Page = .captures
@@ -618,9 +627,9 @@ final class CapturesModel {
     /// The capture open in the library's page, as a note.
     var noteID: String?
     /// The year the first page's calendar shows.
-    var calendarYear: Int = Lines.calendar.component(.year, from: Fixtures.now)
+    var calendarYear: Int = Lines.calendar.component(.year, from: Date())
     /// The month the library's calendar shows (its first day).
-    var calendarMonth: Date = Lines.calendar.date(from: Lines.calendar.dateComponents([.year, .month], from: Fixtures.now))!
+    var calendarMonth: Date = Lines.calendar.date(from: Lines.calendar.dateComponents([.year, .month], from: Date()))!
     /// The card the keyboard is on (arrows move it, Space or Return opens it), ringed as Finder
     /// and Paste ring a selected item.
     var selectedID: String?
@@ -640,7 +649,7 @@ final class CapturesModel {
     var toolbarFit: ToolbarFit = .roomy
 
     /// Settings' values (the prototype's own, in memory; nothing reaches the system).
-    var prefs = Prefs()
+    var prefs = Prefs() { didSet { onPrefsEdited?() } }
     /// Your plan, and a smaller one waiting for this month's credits to reset (a move down
     /// takes effect then; a move up, at once). Simulated.
     var plan: Plan = .pro
@@ -750,13 +759,13 @@ final class CapturesModel {
     var pageStyle: PageStyle = .inset
     var windowMaterial: WindowMaterialStyle = .vibrant
     var liquidGlass = true
-    var pageIsland: PageIslandStyle = .solid
+    var pageIsland: PageIslandStyle = .glass
     /// ⌥⌘F shows and hides the window from any app (Aside's ⌥⌘A). Off unless turned on: while
     /// it's on, other apps don't get ⌥⌘F.
     var summon = false
     var appearance: Appearance = .light
     /// The accent the person chose in Settings › Appearance (Multicolor: the theme's own).
-    var accent: AccentChoice = .multicolor
+    var accent: AccentChoice = .multicolor { didSet { if accent != oldValue { onPrefsEdited?() } } }
     var speed: Double = 1
     var reduceMotion = false
 

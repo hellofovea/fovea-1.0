@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import CapturesCore
+import FoveaKit
 
 /// Settings as System Settings shows its own (Ryan's call, October): a sidebar at the left, on
 /// the window's material, each section a tile of color with a white symbol (as System Settings'

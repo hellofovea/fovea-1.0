@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import CapturesCore
+import FoveaKit
 
 /// Fovea's controls, built the way Aside builds its own (heyaside.com's CSS, which rebuilds the
 /// app's views at its point sizes, and the app on macOS 27):

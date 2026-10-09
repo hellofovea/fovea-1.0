@@ -1,4 +1,5 @@
 import SwiftUI
+import FoveaKit
 
 // Settings › Notch draws the voice glow exactly as the Notch Workbench does, so what a person picks
 // here is what the notch shows. Copied whole, may drift (the Workbench is the source):

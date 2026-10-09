@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import CapturesCore
+import FoveaKit
 
 /// The window, in one of two layouts (the panel's Window › Layout). The library, Aside's: the
 /// captures listed in the window's own material, an opaque page inset beside them

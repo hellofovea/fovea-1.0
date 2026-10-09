@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import FoveaKit
 
 /// What the window and its controls are made of. Aside's look, and macOS's own: the window is a
 /// translucent material the desktop shows through, the content sits on an opaque page inset in

@@ -2,6 +2,7 @@
 // It may drift from the workbench file.
 
 import SwiftUI
+import FoveaKit
 
 /// The island outline: concave "ears" at the top that fuse into the menu bar, straight sides,
 /// convex bottom corners. With `topRadius == 0` the top corners are square: the physical notch.

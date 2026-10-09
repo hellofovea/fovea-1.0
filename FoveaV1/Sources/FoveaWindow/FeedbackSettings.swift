@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 import CapturesCore
+import FoveaKit
 
 // Settings from the App UI review (Oct 6), built on the panes as they were: the Language tab
 // (row 6), your photo and name (row 8), Report a Problem (row 9), the links and the privacy the
@@ -12,10 +13,7 @@ import CapturesCore
 
 // MARK: - Values
 
-enum AppLanguage: String, CaseIterable, Hashable {
-    case english, chinese
-    var title: String { self == .english ? "English" : "简体中文" }
-}
+typealias AppLanguage = FoveaLanguage
 
 enum NotchLanguage: String, CaseIterable, Hashable {
     case sameAsApp, english, chinese
@@ -253,7 +251,7 @@ struct LanguagePane: View {
         SettingsSection(nil) {
             SettingsCard {
                 SettingsRow("Fovea", detail: "Its menus, Settings and this window.") {
-                    InlinePicker(options: AppLanguage.allCases, selection: $model.prefs.appLanguage, label: \.title)
+                    InlinePicker(options: AppLanguage.allCases, selection: $model.prefs.appLanguage, label: \.nativeName)
                 }
                 RowDivider()
                 SettingsRow("The notch", detail: "What the notch says while you work: Listening, the chats, the answers.") {
@@ -410,7 +408,7 @@ struct UpdateRow: View {
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Version 0.5 beta 7").font(.system(size: 13)).foregroundStyle(palette.text)
+                Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0")").font(.system(size: 13)).foregroundStyle(palette.text)
                 switch model.update {
                 case .upToDate:
                     Text("Fovea is up to date.").font(.system(size: 11.5)).foregroundStyle(palette.secondary)

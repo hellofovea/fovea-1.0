@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import CapturesCore
+import FoveaKit
 
 /// Settings, in the window rather than in a window of its own. The profile icon at the top right
 /// opens it on Account; the captures give way to it, and the toolbar's leading edge gets a back
@@ -118,7 +119,7 @@ struct Prefs {
     var microphone = "MacBook Air Microphone"
     var speechLanguage = "Automatic"
     /// Fovea's words, and the notch's (row 6).
-    var appLanguage: AppLanguage = .english
+    var appLanguage: FoveaLanguage = .english
     var notchLanguage: NotchLanguage = .sameAsApp
     /// Memory Link (row 24, as the Mac app has it): remember what you send, not only what you ask.
     var memoryLink = true
@@ -145,7 +146,11 @@ struct Prefs {
     var glowHue: Double = 0
     /// Degrees Custom's seven colors fan across (0, one color; 360, the whole wheel).
     var glowSpread: Double = 120
-    var glowDrift = true
+    /// How much the colors wander, still (0) to lively (1): a dial, as the first run has it.
+    var glowDrift: Double = 0.5
+    /// The notch's glass, light or dark, and how what drops below meets it (Oct 9).
+    var notchAppearance: NotchAppearance = .dark
+    var panels: NativePanels = .attached
     var hoverOpens = true
     var hoverWait: HoverWait = .normal
     var showAnswers = true
@@ -153,13 +158,13 @@ struct Prefs {
 
     /// The notch's settings as they ship.
     var notchIsDefault: Bool {
-        glow == .colorful && glowHue == 0 && glowSpread == 120 && glowDrift
+        glow == .colorful && glowHue == 0 && glowSpread == 120 && glowDrift == 0.5 && panels == .attached
             && hoverOpens && hoverWait == .normal && showAnswers && reviewFirst
     }
     mutating func restoreNotch() {
         let d = Prefs()
         glow = d.glow; glowHue = d.glowHue; glowSpread = d.glowSpread
-        glowDrift = d.glowDrift; hoverOpens = d.hoverOpens
+        glowDrift = d.glowDrift; panels = d.panels; hoverOpens = d.hoverOpens
         hoverWait = d.hoverWait; showAnswers = d.showAnswers; reviewFirst = d.reviewFirst
     }
 }

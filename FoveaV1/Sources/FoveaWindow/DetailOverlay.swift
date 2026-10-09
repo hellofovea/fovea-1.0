@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import CapturesCore
+import FoveaKit
 
 /// The expanded card: your full words, the recording, what you took (large, each opening larger),
 /// its tags and, for a dispatch, the chat it went to with a way back there (the App UI review,

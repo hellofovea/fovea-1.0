@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import CapturesCore
+import FoveaKit
 
 // What the App UI review (Oct 6) added to a capture, each built on the card as it was:
 // - a recording that failed says so, keeps nothing from you, and can be transcribed again

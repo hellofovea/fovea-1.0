@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import CapturesCore
+import FoveaKit
 
 /// Where each card sits in the window, so the expanded card can grow out of it and shrink back.
 struct CardFramesKey: PreferenceKey {

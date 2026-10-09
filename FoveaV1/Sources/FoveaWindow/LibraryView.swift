@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import CapturesCore
+import FoveaKit
 
 /// Aside's layout, Fovea's way. The window is the system's own translucent material, the desktop
 /// showing through it: at the left it holds search (in the traffic lights' row, as Aside's does),

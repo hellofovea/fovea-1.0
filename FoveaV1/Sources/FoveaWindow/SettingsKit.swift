@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import CapturesCore
+import FoveaKit
 
 /// Settings' own parts, so a pane reads as Fovea and not as a stock grouped form: paper cards
 /// with a hairline instead of gray boxes; rows with a title over an optional description and the

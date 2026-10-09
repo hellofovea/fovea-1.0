@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import CapturesCore
+import FoveaKit
 
 /// The referent tab: Fovea's mark for a thing you took, set in your words right after the
 /// words that pointed at it. Its number in SF Mono on a small squared tab in the scheme's mark
