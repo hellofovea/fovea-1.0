@@ -7,7 +7,7 @@
 // variants never drift.
 //
 //   swift scripts/fovea-icon.swift            write the brand assets, AppIcon.png and the variants
-//   swift scripts/fovea-icon.swift --check    compare the as-drawn fo with the original drawing
+//   swift scripts/fovea-icon.swift --check <drawing.png>   compare the as-drawn fo with a drawing
 //
 // Design units are the original drawing's: its icon tile is 988 units square at (140, 118), y down.
 // Every mark is placed by mapping that tile onto the target (the 824-unit body of a 1024 macOS
@@ -298,6 +298,9 @@ enum Serif {
             let ctx = CGContext(data: buffer.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
                                 space: CGColorSpace(name: CGColorSpace.sRGB)!,
                                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            // On white: the artwork's transparent margin is paper, not ink.
+            ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+            ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
             ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
         }
         for i in 0..<(w * h) {
@@ -584,8 +587,10 @@ func markSVG(_ path: CGPath, _ color: NSColor, label: String) -> String {
 
 // MARK: - The layered icon (Icon Composer's .icon, for macOS 26 and later)
 
-/// One layer, the mark, on the system's light fill. macOS gives it the glass edge and shadow, and
-/// renders the dark, clear and tinted appearances: in dark the field goes dark and the mark light.
+/// One layer, the mark, on a solid white field: white as the other apps' white tiles are, not the
+/// system's light fill, which shades to grey toward the foot (#EFEFEF, Oct 9). macOS gives it the
+/// glass edge and shadow, and renders the dark, clear and tinted appearances: in dark the field
+/// goes black and the mark light.
 func writeLayeredIcon(_ outline: CGPath, to dir: URL) {
     let fm = FileManager.default
     try? fm.removeItem(at: dir)
@@ -601,7 +606,10 @@ func writeLayeredIcon(_ outline: CGPath, to dir: URL) {
     """, dir.appendingPathComponent("Assets/fovea-mark.svg"))
     let json = """
     {
-      "fill" : "system-light",
+      "fill" : { "solid" : "srgb:1.00000,1.00000,1.00000,1.00000" },
+      "fill-specializations" : [
+        { "appearance" : "dark", "value" : { "solid" : "srgb:0.00000,0.00000,0.00000,1.00000" } }
+      ],
       "groups" : [
         {
           "layers" : [
@@ -699,7 +707,12 @@ func drawTextFlipped(_ s: String, at p: CGPoint, size: CGFloat, color: NSColor, 
 // MARK: - Check against the drawing
 
 func check() {
-    let original = "/private/tmp/claude-501/-Users-yulunryanwu-Desktop-things-fovea-app-ui-v1/e2a5dc0f-ce18-4f6a-a5d1-a2a1791e9e57/images/14.webp"
+    // The drawing to compare with: the path after --check.
+    let args = CommandLine.arguments
+    guard let i = args.firstIndex(of: "--check"), i + 1 < args.count else {
+        print("usage: swift scripts/fovea-icon.swift --check <drawing.png>"); return
+    }
+    let original = args[i + 1]
     let mark = Mark.asDrawn
     let rep = bitmap(1269, 1239) { ctx in
         ctx.addPath(mark.glyph); ctx.setFillColor(NSColor.black.cgColor); ctx.fillPath()
@@ -721,7 +734,9 @@ func check() {
             NSGraphicsContext.restoreGraphicsState()
             ctx.addPath(mark.glyph); ctx.setStrokeColor(NSColor.red.cgColor); ctx.setLineWidth(2); ctx.strokePath()
         }
-        writePNG(overlay, URL(fileURLWithPath: "/private/tmp/claude-501/-Users-yulunryanwu-Desktop-things-fovea-app-ui-v1/e2a5dc0f-ce18-4f6a-a5d1-a2a1791e9e57/scratchpad/icon/overlay.png"))
+        let out = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("fovea-icon-overlay.png")
+        writePNG(overlay, out)
+        print("wrote", out.path)
     }
 }
 

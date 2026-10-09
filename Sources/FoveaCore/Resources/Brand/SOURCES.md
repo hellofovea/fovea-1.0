@@ -12,11 +12,15 @@ fovea in it (the point the eye sees sharpest). It makes the variants below, and 
 menu bar's mark.
 
 - `Source/fovea-serif-f.png`: the artwork, lossless, as handed over (1254 px; its white tile
-  measured at x 119–1133, y 131–1126, taken as a 1005 px square on its center).
+  measured at x 119–1133, y 131–1126, taken as a 1005 px square on its center). Oct 9: Ryan's
+  revision, the ring's hole smaller (about 108 px across, from 135); its transparent margin is
+  read as white.
 - `AppIcon.icon/`: the layered icon for macOS 26 and later, the format Icon Composer writes.
   `scripts/bundle-app.sh` compiles it with `actool` into `Assets.car`, which the system draws with
   its glass edge and in its dark, clear and tinted styles. macOS 26 and later put an `.icns`-only
-  icon in a grey container, so this is the one that ships.
+  icon in a grey container, so this is the one that ships. Its field is solid white (black in
+  Dark), not the system's light fill: that one shades to #EFEFEF toward the foot and read grey
+  beside other apps' white tiles in the Dock (Oct 9).
 - `AppIcon.iconset/`: every size for the `.icns`, used when `actool` isn't available. The serif f
   has one outline at every size; its hairlines (the crossbar and the foot, about 1 % of the tile)
   fade below 64 pixels and are gone at 32.
