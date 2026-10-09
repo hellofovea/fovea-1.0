@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import FoveaCore
+import FoveaKit
 
 // The smoke run's checks for the Native design (docs/island/NATIVE.md): the tab, the surface's shapes
 // with the panels attached and floating, the inks, the hover across the gap, the approval's verb,

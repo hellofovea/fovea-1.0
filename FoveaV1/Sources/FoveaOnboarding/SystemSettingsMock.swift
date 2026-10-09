@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import OnboardingCore
 import FoveaCore
+import FoveaKit
 
 /// System Settings as macOS 27 shows Privacy & Security's lists: Fovea isn't in a list until it's
 /// dragged in from the notch, and joins it switched on (REAL_MAC.md). The drop zone breathes in the
@@ -110,7 +111,7 @@ struct SystemSettingsWindow: View {
 
 /// Fovea's app icon, from FoveaCore's resources.
 enum FoveaIcon {
-    static let image: NSImage? = FoveaResources.url("AppIcon.png").flatMap { NSImage(contentsOf: $0) }
+    static let image: NSImage? = FoveaFiles.url("AppIcon.png").flatMap { NSImage(contentsOf: $0) }
 }
 
 /// Where Fovea goes: a dashed place at the foot of the list, breathing in the accent until it's

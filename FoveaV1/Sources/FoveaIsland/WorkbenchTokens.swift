@@ -1,5 +1,6 @@
 import SwiftUI
 import FoveaCore
+import FoveaKit
 
 /// Every size, color, material and face the workbench draws with, in one place (root
 /// AGENTS.md). The notch's numbers come from Core, `ScreenMetrics.notched` and
@@ -218,6 +219,8 @@ enum WorkbenchTokens {
         static let wordInterval: Duration = .milliseconds(150)
         /// A listening session shorter than this said nothing: it transcribes to "No speech detected".
         static let minimumSpeech: Duration = .milliseconds(500)
+        /// Fovea: the real words come back as soon as they can; the line runs at least this long.
+        static let minimumLiveTranscribe: Double = 0.6
         /// How long an empty transcription thinks before it says so.
         static let emptyTranscribe: Duration = .milliseconds(900)
         /// "No speech detected" (Apple's own wording for the empty recognition) stays this long,

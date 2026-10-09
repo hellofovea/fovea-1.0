@@ -1,6 +1,7 @@
 import AppKit
 import FoveaCore
 import OnboardingCore
+import FoveaKit
 
 /// The practice files (Oct 8, Oct 9): the pages open in the browser's tabs (the weekly update's
 /// three work pages, and the trail report for the trip), real local pages; your packing list and a
@@ -47,7 +48,7 @@ final class PracticeFiles {
     func create() {
         remove()
         try? FileManager.default.createDirectory(at: pages, withIntermediateDirectories: true)
-        if let source = FoveaResources.url(OT.Practice.photo) {
+        if let source = FoveaFiles.url(OT.Practice.photo) {
             try? FileManager.default.copyItem(at: source, to: pages.appendingPathComponent(Self.photo))
         }
         try? Self.css.write(to: pages.appendingPathComponent("pages.css"), atomically: true, encoding: .utf8)

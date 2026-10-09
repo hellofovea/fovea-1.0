@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import FoveaCore
+import FoveaKit
 
 // The Oct 6 feedback's Voiceflow views (Feedback.swift has the flow): the errors' notice (#2),
 // picking text and files with ⌘ (#3), the last minute's countdown (#4), Split View (#6) and the

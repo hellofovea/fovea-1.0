@@ -64,7 +64,7 @@ enum ApprovalVerb {
 
 /// One delivered request an agent is working on, in one of its sessions.
 struct AgentTaskItem: Identifiable, Equatable {
-    let id: String
+    var id: String
     let agent: String
     /// The session (the Chat) it went to: what the row is called.
     let session: String
@@ -346,5 +346,14 @@ enum AgentBoard {
                 if x.inState != y.inState { return x.inState < y.inState }
                 return a.project < b.project
             }
+    }
+}
+
+extension AgentTaskItem {
+    /// The same session under another id (Fovea's preview of the board).
+    func renamed(_ id: String) -> AgentTaskItem {
+        var copy = self
+        copy.id = id
+        return copy
     }
 }

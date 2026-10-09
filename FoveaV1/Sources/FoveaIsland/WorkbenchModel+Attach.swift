@@ -37,6 +37,10 @@ extension WorkbenchModel {
     }
 
     func takeWholeScreen() async {
+        if let live {
+            await liveWholeScreen(live)
+            return
+        }
         hidingOwnSurfaces = true
         try? await Task.sleep(for: WorkbenchTokens.Capture.clearDelay)
         let image = windowImage(displayRect: display.frame)
@@ -48,7 +52,7 @@ extension WorkbenchModel {
     /// A click while picking (⌘): on a passage of the page, its text; on a desktop file, the file.
     /// Returns whether it took something.
     func captureClick(at point: CGPoint) -> Bool {
-        guard capturing || highlighting else { return false }
+        guard capturing || highlighting, live == nil else { return false }
         for file in DesktopFile.all {
             if let rect = agentAnchors["desktop.\(file.name)"], rect.contains(point) {
                 attachFile(file, from: rect)

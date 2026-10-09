@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import OnboardingCore
 import FoveaCore
+import FoveaKit
 
 /// The Island at the notch: black, white at an opacity, the Workbench's springs. Every key in the
 /// first run is answered here, never in a picture of it. Bars have fixed sizes (VOICE_BAR.md);
@@ -288,7 +289,7 @@ struct ReferentStack: View {
 struct ReferentThumb: View {
     let referent: TakenReferent
     let model: OnboardingModel
-    private static let wallpaper: NSImage? = FoveaResources.url("Photos/coast.jpg").flatMap { NSImage(contentsOf: $0) }
+    private static let wallpaper: NSImage? = FoveaFiles.url("Photos/coast.jpg").flatMap { NSImage(contentsOf: $0) }
 
     var body: some View {
         switch referent.kind {
@@ -575,7 +576,7 @@ enum AgentIcon {
         case "Cursor": file = "Destinations/cursor.png"
         default: return FoveaIcon.image
         }
-        return FoveaResources.url(file).flatMap { NSImage(contentsOf: $0) }
+        return FoveaFiles.url(file).flatMap { NSImage(contentsOf: $0) }
     }
 }
 

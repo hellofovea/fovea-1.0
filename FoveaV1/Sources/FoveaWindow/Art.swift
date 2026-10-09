@@ -47,7 +47,7 @@ enum Art {
     /// FoveaCore's bundled files (photos, the agents' marks).
     static func resource(_ path: String) -> NSImage? {
         if let hit = cache[path] { return hit }
-        guard let url = FoveaResources.url(path), let image = NSImage(contentsOf: url) else { return nil }
+        guard let url = FoveaFiles.url(path), let image = NSImage(contentsOf: url) else { return nil }
         cache[path] = image
         return image
     }

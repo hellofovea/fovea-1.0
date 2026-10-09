@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import FoveaCore
+import FoveaKit
 
 // Dispatch Version 2 in the island (the flow is in WorkbenchModel+DispatchV2.swift): Choose chat
 // as Dispatch has it (with the suggested chats beside the pill, and every chat a ⌃ away), the
@@ -212,7 +213,7 @@ struct V2SendContent: View {
         ZStack(alignment: .topLeading) {
             Color.clear
             VStack(alignment: .leading, spacing: 0) {
-                Text(request.spoken)
+                Text(model.v2Spoken)
                     .font(.system(size: V.requestSize, weight: V.requestWeight))
                     .lineSpacing(V.requestSpacing)
                     .foregroundStyle(V.requestColor)
@@ -1067,7 +1068,7 @@ enum V2Referents {
         case .email:
             made = render(V2EmailSnippet(), size: CGSize(width: 300, height: 96)).map { ($0, "Mail — Sam Lee") }
         case .screen(let path, let source):
-            if let url = FoveaResources.url(path), let image = NSImage(contentsOf: url) { made = (image, source) }
+            if let url = FoveaFiles.url(path), let image = NSImage(contentsOf: url) { made = (image, source) }
         }
         guard let made else { return nil }
         cache[key] = made

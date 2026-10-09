@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import FoveaCore
+import FoveaKit
 
 // Choose chat in the island (the states are in WorkbenchModel+Chat.swift): the request's words
 // and referents, then one row after the PRD, the referents at the left and the chat pill and
@@ -313,7 +314,7 @@ struct ChatAgentIcon: View {
 
     @MainActor static func image(_ id: String) -> NSImage? {
         if let image = cache[id] { return image }
-        guard let url = Bundle.module.url(forResource: id, withExtension: "png", subdirectory: "Agents"),
+        guard let url = FoveaFiles.island("Agents/\(id).png"),
               let image = NSImage(contentsOf: url) else { return nil }
         cache[id] = image
         return image

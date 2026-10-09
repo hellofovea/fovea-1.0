@@ -1,4 +1,5 @@
 import SwiftUI
+import FoveaKit
 
 // Voice input for agents: libraries.dev/voice (voice-glow, © 2026 Jakub Antalik, MIT) ported to
 // the notch, driven by the site's own demo voice, on the dark theme. The host is the island: the
@@ -56,12 +57,7 @@ struct VoiceGlowGeometry {
     var brightness: Double, saturation: Double
 }
 
-/// The glow's colors: the package's eight palettes, or Custom, a fan of hues around one.
-enum GlowPalette: String, CaseIterable, Identifiable {
-    case colorful, mono, ocean, sunset, forest, candy, ice, gold, custom
-    var id: String { rawValue }
-    var title: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
-}
+// The glow's colors (`GlowPalette`) are FoveaKit's: the package's eight palettes, or Custom.
 
 /// What the panel chose: the palette's colors before the filters, the hue they are turned by,
 /// whether they drift, and mono's softening.
@@ -70,6 +66,9 @@ struct VoiceGlowLook {
     /// Degrees added to every layer's hue (the package's `--voice-hue-base`).
     var hueBase: Double
     var drift: Bool
+    /// How far the drift wanders, times the Workbench's swing: still at 0, the Workbench's own at
+    /// 1, twice that at 2 (the person's dial, 0…1, doubled).
+    var driftAmount: Double = 1
     var opacity: Double
     /// The band's fringes: the package's own red, green and blue, or, for Custom, the chosen hues
     /// (the far ends of the fan above and below, the centre between), so the whole glow follows
@@ -132,6 +131,8 @@ struct VoiceGlowFrame {
 /// The driver, one per island: the envelope and the flow are kept across frames, as the
 /// package keeps them per element.
 final class VoiceGlowEngine {
+    /// The level to follow, 0…1, when there is a real voice (Fovea).
+    var liveLevel: (() -> Double)?
     private var level = 0.0
     private var bands = [0.0, 0.0, 0.0]
     private var phase: CGFloat = 0
@@ -169,7 +170,8 @@ final class VoiceGlowEngine {
         clock += dt
         let t = clock
         // No spectrum to read: the bands are the level with slow, out-of-phase wobbles.
-        let raw = min(1, max(0, DemoVoice.level(voiceTime)))
+        // Fovea: the microphone's own level; the Workbench's demo voice otherwise.
+        let raw = min(1, max(0, liveLevel?() ?? DemoVoice.level(voiceTime)))
         let rawBands = [raw, raw * (0.72 + 0.28 * sin(t * 9.1)), raw * (0.6 + 0.4 * sin(t * 13.7 + 2))]
         level = Self.follow(level, Self.shape(raw, V.threshold), dt, V.attack, V.release)
         for b in 0..<3 {
@@ -232,7 +234,7 @@ enum VoiceGlowRenderer {
         let g = V.wide
         let cw = edge.size.width, ch = edge.size.height
         guard cw > 1, ch > 1, !look.colors.isEmpty else { return }
-        let hue = look.hueBase + (look.drift ? f.drift : 0)
+        let hue = look.hueBase + (look.drift ? f.drift * look.driftAmount : 0)
         let colors = look.colors.map { color(filtered($0, hue: hue, g)) }
         let fade = min(95, max(40, (70 * g.softness).rounded())) / 100
         let pts = bandPoints(width: cw, height: ch, frame: f, geometry: g)

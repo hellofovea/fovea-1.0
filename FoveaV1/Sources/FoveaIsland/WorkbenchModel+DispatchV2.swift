@@ -62,7 +62,8 @@ extension WorkbenchModel {
     /// The board's sessions: the person's own and a few others, only while they matter: running
     /// (or waiting on the person), or done and not yet opened.
     private var v2Visible: [AgentTaskItem] {
-        agentTasks.filter { v2Sessions.contains($0.id) || DispatchV2.sampleIds.contains($0.id) }
+        // Fovea: only the person's own sessions; the board never opens empty.
+        agentTasks.filter { v2Sessions.contains($0.id) || ((live == nil || demoSamples) && DispatchV2.sampleIds.contains($0.id)) }
     }
 
     /// Done and not yet opened: Ready for review, the latest first.
@@ -159,7 +160,7 @@ extension WorkbenchModel {
     }
 
     var v2SendLayout: V2SendLayout {
-        V2SendLayout.make(request: v2Request.spoken, attachments: liveReferents.count, browsing: v2Browsing,
+        V2SendLayout.make(request: v2Spoken, attachments: liveReferents.count, browsing: v2Browsing,
                           browseRows: v2BrowseRows.count, sheet: v2ModelSheet, metrics: metrics)
     }
     var v2BoardLayout: V2BoardLayout {
@@ -353,6 +354,10 @@ extension WorkbenchModel {
         v2TranscribeStart = Date()
         notchState = .v2Transcribing
         guard !snapshotMode else { return }
+        if let live, !demoSamples {
+            liveFinishV2(live)
+            return
+        }
         v2Transcribe?.cancel()
         v2Transcribe = Task { [weak self] in
             try? await Task.sleep(for: .seconds(WorkbenchTokens.V2.transcribeTime))
@@ -405,6 +410,9 @@ extension WorkbenchModel {
     /// It goes there with what was taken; the board shows it a moment, then the island rests.
     func send(_ pick: V2Suggestion, label: V2RoutingLabel) {
         v2Labels.append(label)
+        // Fovea: Home keeps the request, with what was taken and where it went.
+        live?.logDispatch(text: v2Spoken, referents: liveReferents, agent: ChatAgent.named(pick.agent).name, chat: pick.title)
+        live?.director?.islandDidEmit(.sent)
         let images = liveReferents.map(\.image)
         let id = makeV2Session(pick, at: 0)
         if !images.isEmpty { v2Attachments[id] = images }
@@ -488,8 +496,8 @@ extension WorkbenchModel {
         let b = script[min(beat, script.count - 1)]
         var task = AgentTaskItem(id: id, agent: pick.agent,
                                  // A quick answer is titled by its question (AGENTS.md "Quick Answer").
-                                 session: pick.quick ? r.spoken : (pick.chat ?? "New chat"),
-                                 project: pick.project ?? DispatchV2.quickProject, request: r.spoken,
+                                 session: pick.quick ? v2Spoken : (pick.chat ?? "New chat"),
+                                 project: pick.project ?? DispatchV2.quickProject, request: v2Spoken,
                                  state: b.state, activity: b.activity, work: b.work, object: b.object,
                                  preview: b.preview, ask: b.ask, age: 0, inState: 0)
         task.screen = b.screen

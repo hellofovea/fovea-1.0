@@ -2,6 +2,7 @@ import AppKit
 import FoveaKit
 import FoveaStore
 import FoveaWindow
+import FoveaIsland
 import FoveaCore
 
 /// Fovea's dev flags. The app itself needs none.
@@ -11,6 +12,7 @@ import FoveaCore
 ///   --home                 open Home at launch (it opens anyway unless Fovea started at login)
 ///   --data-dir=<path>      keep everything there instead of Application Support
 ///   --settings <pane[:id]> open Settings on a pane
+///   --demo <state>         stage a notch state (IslandController.stage), no microphone
 struct AppOptions {
     var resetOnboarding = false
     var resetAll = false
@@ -40,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var dictionary: DictionaryStore!
     private(set) var onboarding: OnboardingStateStore!
     private(set) var home: HomeWindowController!
+    private(set) var island: IslandController!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if options.resetAll { location.eraseAll() } else { location.prepare() }
@@ -58,8 +61,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // No app bundle from SwiftPM, so the Dock icon is set at runtime there; the bundle's
         // own icon (Assets.car, the layered icon) shows otherwise.
-        if !AppOptions.bundled, let url = FoveaResources.url("AppIcon.png"), let icon = NSImage(contentsOf: url) {
+        if !AppOptions.bundled, let url = FoveaFiles.url("AppIcon.png"), let icon = NSImage(contentsOf: url) {
             NSApp.applicationIconImage = icon
+        }
+
+        // The notch lives for the whole process, whatever the window does.
+        island = IslandController(prefs: prefs, captures: captures, dictionary: dictionary)
+        island.start()
+        if let i = CommandLine.arguments.firstIndex(of: "--demo"), i + 1 < CommandLine.arguments.count {
+            let state = CommandLine.arguments[i + 1]
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(0.8))
+                self.island.stage(state)
+            }
         }
 
         home = HomeWindowController(stores: WindowStores(prefs: prefs, captures: captures, dictionary: dictionary))

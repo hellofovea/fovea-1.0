@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import FoveaCore
+import FoveaKit
 
 // Dispatch's Choose chat: before a request goes, the island shows it (the words and the
 // referents) and the chat Fovea's routing picked for it, with Send. Opened (left ⌃, ↓ or the
@@ -262,7 +263,7 @@ extension WorkbenchModel {
                          ("Photos/mountain.jpg", "mountain.jpg"), ("Photos/desk.jpg", "desk.jpg"), ("Photos/coast.jpg", "coast.jpg"),
                          ("Photos/forest.jpg", "forest.jpg"), ("Photos/building.jpg", "building.jpg")]
             for (path, source) in names {
-                guard let url = FoveaResources.url(path), let image = NSImage(contentsOf: url) else { continue }
+                guard let url = FoveaFiles.url(path), let image = NSImage(contentsOf: url) else { continue }
                 referents.append(CapturedReferent(id: UUID(), image: image, aspect: image.size.width / max(1, image.size.height),
                                                   source: source))
             }
@@ -271,7 +272,7 @@ extension WorkbenchModel {
         }
         guard liveReferents.isEmpty else { return }
         for (name, source) in [("fovea-home", "Fovea — Home"), ("fovea-settings", "Fovea — Settings")] {
-            guard let url = FoveaResources.url("Screens/\(name).png"), let image = NSImage(contentsOf: url) else { continue }
+            guard let url = FoveaFiles.url("Screens/\(name).png"), let image = NSImage(contentsOf: url) else { continue }
             referents.append(CapturedReferent(id: UUID(), image: image, aspect: image.size.width / max(1, image.size.height),
                                               source: source))
         }

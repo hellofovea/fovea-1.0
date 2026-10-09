@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 import FoveaCore
+import FoveaKit
 
 /// What the mock display shows behind the menu bar and the Dock.
 enum WallpaperChoice: Hashable {
@@ -81,7 +82,7 @@ enum Wallpaper {
     }
 
     static func bundled(_ name: String) -> NSImage? {
-        FoveaResources.url("Photos/\(name).jpg").flatMap { NSImage(contentsOf: $0) }
+        FoveaFiles.url("Photos/\(name).jpg").flatMap { NSImage(contentsOf: $0) }
     }
 
     /// The user's desktop picture, when it is something `NSImage` can read: a still image

@@ -296,6 +296,10 @@ extension WorkbenchModel {
     /// Captures a region of the display as it is on screen: the selection is cleared, the
     /// window draws without it, and the region's pixels are taken from the window.
     func capture(_ rect: CGRect, animated: Bool = true) async {
+        if let live {
+            await liveCapture(live, rect, animated: animated)
+            return
+        }
         selection = nil
         try? await Task.sleep(for: WorkbenchTokens.Capture.clearDelay)
         guard let image = windowImage(displayRect: rect) else { return }
@@ -310,8 +314,8 @@ extension WorkbenchModel {
         return true
     }
 
-    func add(image: NSImage, from rect: CGRect, animated: Bool, kind: ReferentKind = .screenshot) {
-        let source = screenContent == .fullScreenApp ? tabs[selectedTab].title : "Desktop"
+    func add(image: NSImage, from rect: CGRect, animated: Bool, kind: ReferentKind = .screenshot, source given: String? = nil) {
+        let source = given ?? (screenContent == .fullScreenApp ? tabs[selectedTab].title : "Desktop")
         let referent = CapturedReferent(id: UUID(), image: image, aspect: image.size.width / max(1, image.size.height),
                                         source: source, kind: kind)
         islandAnimation = WorkbenchTokens.Referents.settle

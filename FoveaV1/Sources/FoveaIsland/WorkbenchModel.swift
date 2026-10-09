@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import FoveaCore
+import FoveaKit
 
 /// Command-line options. `--snapshot <dir>` renders the window to PNGs and exits; `--smoke`
 /// checks the live window and exits; `--play-demo` plays the screenshot walkthrough once
@@ -230,8 +231,25 @@ final class WorkbenchModel {
     /// may hand `.doubleColumn` back, and both mean "shown".
     var columnVisibility: NavigationSplitViewVisibility
 
-    /// The mock display: a MacBook's points, whatever the window does.
-    let display = WorkbenchTokens.Layout.display
+    /// The display: a MacBook's points in the Workbench; the real screen's in Fovea (IslandLive).
+    var display = WorkbenchTokens.Layout.display
+    /// The real Mac (Fovea 1.0): set by IslandController; nil in the Workbench's own runs.
+    @ObservationIgnored var live: IslandLive?
+    /// Fovea: the glass's light or dark, the person's choice.
+    var liveScheme: ColorScheme = .dark
+    /// Fovea: the board opens on the hover only when the person lets it, after their wait.
+    @ObservationIgnored var hoverOpens = true
+    @ObservationIgnored var hoverDwell: (start: Double, cap: Double) = (WorkbenchTokens.Panel.dwell, WorkbenchTokens.Panel.dwellCap)
+    /// Fovea: the words the person said for the Dispatch request now (the script plays the work).
+    var v2Words: String?
+    /// Fovea: a choice shown at the notch a moment (Settings, the first run), no microphone.
+    var previewing = false
+    /// Fovea's `--demo`: the Workbench's sample sessions on the board, and no microphone.
+    @ObservationIgnored var demoSamples = false
+    /// How much the glow's colors wander, still (0) to lively (1).
+    var glowDriftAmount: Double = 0.5
+    /// When Accessibility was last asked for the words under the highlighter.
+    @ObservationIgnored var highlightAsked: Date?
     var metrics: ScreenMetrics { display }
     /// The detail column's size, reported by the stage.
     var columnSize: CGSize = .zero
@@ -403,7 +421,9 @@ final class WorkbenchModel {
     var glowDrift: Bool { didSet { glowChanged() } }
     /// The colors as chosen, for the renderer and the panel's swatches.
     var glowLook: VoiceGlowLook {
-        VoiceGlowLook.make(palette: glowPalette, hue: glowHue, spread: glowSpread, drift: glowDrift)
+        var look = VoiceGlowLook.make(palette: glowPalette, hue: glowHue, spread: glowSpread, drift: glowDrift)
+        look.driftAmount = glowDriftAmount * 2
+        return look
     }
     /// How fast the agent's script runs: 1 in person; the checks run it faster.
     @ObservationIgnored var agentPace: Double = 1
@@ -875,7 +895,8 @@ final class WorkbenchModel {
     /// The glow's settings changed: remembered, and the glow shown if no voice bar is, so the
     /// change can be seen (Dispatch Version 2's aura, unless the notch is busy with something else).
     private func glowChanged() {
-        guard !snapshotMode else { return }
+        // Fovea: the controller shows a change at the notch, without the microphone.
+        guard !snapshotMode, live == nil else { return }
         let defaults = UserDefaults.standard
         defaults.set(glowPalette.rawValue, forKey: Self.glowPaletteKey)
         defaults.set(glowHue, forKey: Self.glowHueKey)
@@ -959,6 +980,7 @@ final class WorkbenchModel {
         }
         if !state.collects, wasCollecting { stopRecordingClock() }
         if state.listening { startMetering() } else { stopMetering() }
+        if state == .silent { live?.sessionEnded() }
         if !state.collects {
             capturingStorage = false
             highlightingStorage = false
@@ -982,6 +1004,15 @@ final class WorkbenchModel {
             audioLevel = WorkbenchTokens.Island.snapshotLevel
             return
         }
+        if let live, !previewing, !demoSamples {
+            guard metering == nil else { return }
+            metering = Task { [weak self] in
+                let failure = await live.startListening { level in self?.audioLevel = level }
+                guard let self, let failure else { return }
+                self.voiceFailed(failure)
+            }
+            return
+        }
         guard metering == nil else { return }
         metering = Task { [weak self] in
             guard let self, let levels = try? await self.meter.start() else { return }
@@ -997,6 +1028,10 @@ final class WorkbenchModel {
         metering = nil
         meter.stop()
         audioLevel = 0
+        // Fovea: into Transcribing the words are waited for (finishWords); anywhere else they go.
+        if let live, notchState != .transcribing, notchState != .v2Transcribing {
+            live.cancelListening()
+        }
     }
 
     /// What View › Hide/Show Sidebar does.

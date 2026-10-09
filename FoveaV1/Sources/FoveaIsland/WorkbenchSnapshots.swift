@@ -1,6 +1,7 @@
 import SwiftUI
 import FoveaCore
 import AppKit
+import FoveaKit
 
 /// `FoveaWorkbench --snapshot <dir>` captures the live window as composited on screen, chrome
 /// and materials included, in both appearances and with the panel collapsed, then exits.

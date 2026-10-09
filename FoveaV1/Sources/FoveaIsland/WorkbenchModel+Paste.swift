@@ -10,7 +10,8 @@ extension WorkbenchModel {
     /// The page on screen has an input box to paste into: of the mock pages, only the design
     /// notes' comment box. The desktop has none.
     var inputBoxOnScreen: Bool {
-        screenContent == .splitView || (screenContent == .fullScreenApp && tabs[selectedTab].page == .notes)
+        if let live, !demoSamples { return live.canPaste }
+        return screenContent == .splitView || (screenContent == .fullScreenApp && tabs[selectedTab].page == .notes)
     }
 
     /// Where the island's parts go for Paste not found, opened or not.
@@ -33,7 +34,9 @@ extension WorkbenchModel {
     func showPasteNotFound() {
         stopTranscribing()
         dropUndo()
-        if transcript.isEmpty { transcript = Self.sampleTranscript }
+        if transcript.isEmpty, live == nil { transcript = Self.sampleTranscript }
+        // Fovea: the words had nowhere to go; Home keeps them all the same.
+        if let live, !transcript.isEmpty { live.logDictation(text: transcript, referents: liveReferents) }
         pasteExpanded = false
         pasteCopied = false
         notchState = .pasteNotFound

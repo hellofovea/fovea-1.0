@@ -33,6 +33,10 @@ extension WorkbenchModel {
             }
             return
         }
+        if let live, !demoSamples {
+            liveTranscribe(live)
+            return
+        }
         let words = Self.sampleTranscript.split(separator: " ").map(String.init)
         // The words arrive across the transcription's length, however many there are, each on
         // the clock, so the length does not drift with the number of words.

@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import Observation
+import FoveaKit
 
 // The notch's two designs (docs/island/NATIVE.md), switched in the window's toolbar like density:
 // Original, the notch as drawn through Oct 8 (one black shape, white at opacities); Native, the same
@@ -20,14 +21,7 @@ enum NotchDesign: String, CaseIterable, Identifiable {
     var title: String { self == .original ? "Original" : "Native" }
 }
 
-/// How Native's panels meet the notch (Oct 9, Yulun: "connect with the upper part like the
-/// original version … leave a switch"): attached, one glass shape hanging from the top edge as
-/// Original's island does; or floating, a glass panel a gap below the notch, as Control Center is.
-enum NativePanels: String, CaseIterable, Identifiable {
-    case attached, floating
-    var id: String { rawValue }
-    var title: String { self == .attached ? "Attached" : "Floating" }
-}
+// How Native's panels meet the notch (`NativePanels`, attached or floating) is FoveaKit's.
 
 /// The design in force, and the accent the Native tokens draw with. Observable, so a view or a
 /// layout that reads a token that follows the design is drawn again when it changes.

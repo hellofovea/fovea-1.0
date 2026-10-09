@@ -183,6 +183,7 @@ extension WorkbenchModel {
     /// A point on the screen in the mock display's points; nil when the display isn't what is
     /// under it (another window in front of the workbench, or the bezel, or past the window).
     func displayPoint(fromScreen p: CGPoint) -> CGPoint? {
+        if let live { return live.layerPoint(fromScreen: p) }
         guard let probe = stageProbe, let window = probe.window, window.isVisible,
               NSWindow.windowNumber(at: p, belowWindowWithWindowNumber: 0) == window.windowNumber else { return nil }
         let w = window.convertPoint(fromScreen: p)

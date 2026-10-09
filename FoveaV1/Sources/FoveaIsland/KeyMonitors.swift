@@ -142,6 +142,11 @@ final class ModifierHoldMonitor {
 
     var isRunning: Bool { !monitors.isEmpty }
 
+    func stop() {
+        monitors.forEach { NSEvent.removeMonitor($0) }
+        monitors.removeAll()
+    }
+
     func start() {
         guard monitors.isEmpty else { return }
         let mask: NSEvent.EventTypeMask = [.flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown]

@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import FoveaKit
 
 /// The window: the control panel on the left as a real sidebar column, the mock desktop as
 /// the detail. The split view supplies the sidebar material, the divider drag, the collapse

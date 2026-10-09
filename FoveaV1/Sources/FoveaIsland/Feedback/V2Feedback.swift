@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import FoveaCore
+import FoveaKit
 
 // The Oct 6 feedback's Dispatch Version 2 pieces (the views are in V2FeedbackViews.swift):
 // #1 the model and thinking effort beside the chat, the referents as one stack; #9–10 progress
@@ -436,11 +437,13 @@ extension WorkbenchModel {
             return
         }
         v2Naming.insert(id)
+        // Fovea: named from the words as said.
+        let title = live != nil ? TitleNamer.title(for: v2Spoken, maxWords: 6) : request.generatedTitle
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(WorkbenchTokens.FeedbackV2.titleDelay))
             guard let self else { return }
             withAnimation(WorkbenchTokens.FeedbackV2.titleSwap) {
-                self.v2Titles[id] = request.generatedTitle
+                self.v2Titles[id] = title
                 _ = self.v2Naming.remove(id)
             }
         }

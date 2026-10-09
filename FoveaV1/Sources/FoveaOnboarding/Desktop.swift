@@ -1,13 +1,14 @@
 import SwiftUI
 import AppKit
 import FoveaCore
+import FoveaKit
 
 // The practice desktop's scenery: the wallpaper, the menu bar with the notch cut from it, the Dock,
 // and three files at the right. The menu bar and the Dock are copied from the Workbench
 // (MockDesktop/MockMenuBar.swift, MockDock.swift) on Oct 7, and may drift.
 
 struct WallpaperView: View {
-    private static let image: NSImage? = FoveaResources.url("Photos/coast.jpg").flatMap { NSImage(contentsOf: $0) }
+    private static let image: NSImage? = FoveaFiles.url("Photos/coast.jpg").flatMap { NSImage(contentsOf: $0) }
 
     var body: some View {
         Color.clear

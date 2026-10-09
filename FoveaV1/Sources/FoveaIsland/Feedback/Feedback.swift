@@ -1,6 +1,9 @@
 import SwiftUI
 import AppKit
 import FoveaCore
+import FoveaKit
+import FoveaLook
+import FoveaPlatform
 
 // The dev team's notch feedback of Oct 6 and Yulun's answers, one panel tab per item
 // (docs/island/FEEDBACK_2026-10-06.md has every decision and why). Items 5, 18, 20, 21 and 22
@@ -54,47 +57,10 @@ struct ScreenHighlight: Identifiable, Equatable {
     var referent: UUID?
 }
 
-/// Fovea's accent color, chosen in its settings: the highlighter's ink, the insertion caret.
-/// macOS's own accent colors. Multicolor follows the Mac's accent, as in the app and the
-/// onboarding; in Native the colors are the system's own (`NSColor.system*`), as theirs are.
-enum FoveaAccent: String, CaseIterable, Identifiable {
-    case multicolor, blue, purple, pink, red, orange, yellow, green, graphite
-    var id: String { rawValue }
-    var color: Color {
-        if self == .multicolor { return Color(nsColor: .controlAccentColor) }
-        return WorkbenchTokens.skin(original, system)
-    }
-
-    /// The system's own color for the accent (the app's `AccentChoice`, the onboarding's
-    /// `AccentPalette`).
-    var system: Color {
-        switch self {
-        case .multicolor: return Color(nsColor: .controlAccentColor)
-        case .blue: return Color(nsColor: .systemBlue)
-        case .purple: return Color(nsColor: .systemPurple)
-        case .pink: return Color(nsColor: .systemPink)
-        case .red: return Color(nsColor: .systemRed)
-        case .orange: return Color(nsColor: .systemOrange)
-        case .yellow: return Color(nsColor: .systemYellow)
-        case .green: return Color(nsColor: .systemGreen)
-        case .graphite: return Color(nsColor: .systemGray)
-        }
-    }
-
-    private var original: Color {
-        switch self {
-        case .multicolor: return Color(nsColor: .controlAccentColor)
-        case .blue: return Color(.sRGB, red: 0.0, green: 0.48, blue: 1.0)
-        case .purple: return Color(.sRGB, red: 0.65, green: 0.31, blue: 0.65)
-        case .pink: return Color(.sRGB, red: 0.97, green: 0.31, blue: 0.62)
-        case .red: return Color(.sRGB, red: 1.0, green: 0.32, blue: 0.34)
-        case .orange: return Color(.sRGB, red: 0.97, green: 0.51, blue: 0.11)
-        case .yellow: return Color(.sRGB, red: 1.0, green: 0.78, blue: 0.0)
-        case .green: return Color(.sRGB, red: 0.38, green: 0.73, blue: 0.27)
-        case .graphite: return Color(.sRGB, red: 0.55, green: 0.55, blue: 0.55)
-        }
-    }
-    var title: String { rawValue.capitalized }
+/// Fovea's accent (FoveaKit's `FoveaAccent`), in the system's own colors (FoveaLook): the
+/// highlighter's ink, the insertion caret, Native's primary actions.
+extension FoveaAccent {
+    var system: Color { color }
 }
 
 /// #4's stages: the last minute begins, and its last seconds run out.
@@ -199,7 +165,7 @@ enum SplitSide: Hashable {
 /// (fovea-mac's `UserFacingError` and `Loc`), shaped for the notch: a title, one line, at most one
 /// action. "No speech detected" keeps its own band (it already shipped in the design).
 enum VoiceError: String, CaseIterable, Identifiable {
-    case noSpeech, tooShort, micPermission, micUnavailable, screenRecording, imageTooLarge,
+    case noSpeech, tooShort, micPermission, micUnavailable, speechPermission, screenRecording, imageTooLarge,
          offline, timeout, serverUnavailable, sessionExpired, quotaUsed, trialEnded, proExpired,
          rateLimited, tooLarge, unexpected
 
@@ -219,7 +185,7 @@ enum VoiceError: String, CaseIterable, Identifiable {
 
     var moment: Moment {
         switch self {
-        case .micPermission, .micUnavailable: return .start
+        case .micPermission, .micUnavailable, .speechPermission: return .start
         case .screenRecording, .imageTooLarge: return .inBar
         default: return .afterStop
         }
@@ -228,7 +194,7 @@ enum VoiceError: String, CaseIterable, Identifiable {
     var tone: Tone {
         switch self {
         case .noSpeech, .tooShort, .rateLimited, .imageTooLarge: return .info
-        case .micPermission, .screenRecording, .sessionExpired, .quotaUsed, .trialEnded, .proExpired: return .yours
+        case .micPermission, .speechPermission, .screenRecording, .sessionExpired, .quotaUsed, .trialEnded, .proExpired: return .yours
         case .micUnavailable, .offline, .timeout, .serverUnavailable, .tooLarge, .unexpected: return .failure
         }
     }
@@ -240,6 +206,7 @@ enum VoiceError: String, CaseIterable, Identifiable {
         case .tooShort: return "Recording too short"
         case .micPermission: return "Microphone access off"
         case .micUnavailable: return "Microphone unavailable"
+        case .speechPermission: return "Speech Recognition off"
         case .screenRecording: return "Screen Recording off (screenshot)"
         case .imageTooLarge: return "Image over 20 MB (screenshot)"
         case .offline: return "Offline"
@@ -261,6 +228,7 @@ enum VoiceError: String, CaseIterable, Identifiable {
         case .tooShort: return "Recording too short"
         case .micPermission: return "Microphone access is off"
         case .micUnavailable: return "Microphone unavailable"
+        case .speechPermission: return "Speech Recognition is off"
         case .screenRecording: return "Screen Recording is off"
         case .imageTooLarge: return "Image over 20 MB, not added"
         case .offline: return "You're offline"
@@ -281,7 +249,7 @@ enum VoiceError: String, CaseIterable, Identifiable {
         switch self {
         case .noSpeech, .imageTooLarge, .screenRecording: return nil
         case .tooShort: return "Say a little more, then try again."
-        case .micPermission: return "Allow it in System Settings, then try again."
+        case .micPermission, .speechPermission: return "Allow it in System Settings, then try again."
         case .micUnavailable: return "Restart Fovea to use it again."
         case .offline: return "Your recording is saved. Check your connection."
         case .timeout: return "Your recording is saved. The server took too long."
@@ -298,7 +266,7 @@ enum VoiceError: String, CaseIterable, Identifiable {
 
     var action: Action? {
         switch self {
-        case .micPermission, .screenRecording: return .openSettings
+        case .micPermission, .speechPermission, .screenRecording: return .openSettings
         case .offline, .timeout, .serverUnavailable, .unexpected: return .retry
         case .sessionExpired: return .signIn
         case .quotaUsed, .trialEnded: return .upgrade
@@ -311,6 +279,7 @@ enum VoiceError: String, CaseIterable, Identifiable {
         switch self {
         case .noSpeech, .tooShort: return "waveform"
         case .micPermission, .micUnavailable: return "mic.slash.fill"
+        case .speechPermission: return "waveform.badge.exclamationmark"
         case .screenRecording: return "rectangle.dashed.badge.record"
         case .imageTooLarge: return "photo"
         case .offline: return "wifi.slash"
@@ -491,6 +460,17 @@ extension WorkbenchModel {
             dismissBarNotice()
             return
         }
+        // Fovea: where the fix is, in System Settings.
+        if live != nil, error.action == .openSettings {
+            switch error {
+            case .micPermission: Permission.microphone.openSettings()
+            case .speechPermission: Permission.speechRecognition.openSettings()
+            case .screenRecording: Permission.screenRecording.openSettings()
+            default: break
+            }
+            notchState = .silent
+            return
+        }
         switch error.action {
         case .retry:
             if transcript.isEmpty { transcript = Self.sampleTranscript }
@@ -611,6 +591,12 @@ extension WorkbenchModel {
     /// The marker's strokes from one point to another, line by line through the passages between
     /// them, as a text selection runs; and the words they cover.
     func highlightRuns(from a: CGPoint, to b: CGPoint) -> (rects: [CGRect], text: String) {
+        // Fovea: the words the app under the drag says are there (Accessibility), or, where it
+        // says nothing (a picture, a canvas), bands of the drag's lines to take as a picture.
+        if let live {
+            if let run = live.textRun(from: a, to: b) { return run }
+            return (Self.bands(from: a, to: b), "")
+        }
         let (start, end) = a.y < b.y || (abs(a.y - b.y) < 4 && a.x <= b.x) ? (a, b) : (b, a)
         let lh = articleLine
         var rects: [CGRect] = []
@@ -647,7 +633,28 @@ extension WorkbenchModel {
     /// The highlighter dragging: the marks as they will be.
     func highlightDrag(from a: CGPoint, to b: CGPoint) {
         guard highlighting, hypot(a.x - b.x, a.y - b.y) > 3 else { return }
+        // Fovea: Accessibility is asked a few times a second, not on every point of the drag.
+        if live != nil {
+            let now = Date()
+            if let last = highlightAsked, now.timeIntervalSince(last) < 0.05 { return }
+            highlightAsked = now
+        }
         highlightDraft = highlightRuns(from: a, to: b).rects
+    }
+
+    /// Where the app under the drag says nothing: the drag's lines as bands, a line's height each.
+    static func bands(from a: CGPoint, to b: CGPoint) -> [CGRect] {
+        let (start, end) = a.y < b.y ? (a, b) : (b, a)
+        let line: CGFloat = 22
+        let rows = max(1, Int(ceil((end.y - start.y + 1) / line)))
+        let left = min(a.x, b.x), right = max(a.x, b.x)
+        if rows == 1 { return [CGRect(x: left, y: start.y - line / 2, width: max(8, right - left), height: line)] }
+        return (0..<rows).map { i in
+            let y = start.y - line / 2 + CGFloat(i) * line
+            let x0 = i == 0 ? start.x : left
+            let x1 = i == rows - 1 ? end.x : right
+            return CGRect(x: min(x0, x1), y: y, width: max(8, abs(x1 - x0)), height: line)
+        }
     }
 
     /// Let go: a drag marks the words it crossed; a click marks the passage or the file under it.
@@ -655,6 +662,10 @@ extension WorkbenchModel {
     func finishHighlight(from a: CGPoint, to b: CGPoint) {
         guard highlighting else { return }
         highlightDraft = nil
+        if let live {
+            finishLiveHighlight(live, from: a, to: b)
+            return
+        }
         if hypot(a.x - b.x, a.y - b.y) <= 3 {
             for file in DesktopFile.all {
                 if screenContent == .desktop, let rect = agentAnchors["desktop.\(file.name)"], rect.contains(b) {
@@ -878,6 +889,10 @@ extension WorkbenchModel {
     /// The words go into the field under them, it lights up as they land, and a beat later the
     /// notch leaves (no "Delivered": the words in the field are the confirmation).
     func landTranscript() {
+        if let live, !demoSamples {
+            liveLand(live)
+            return
+        }
         if screenContent == .splitView {
             splitPasted[splitTarget] = transcript
         } else {
