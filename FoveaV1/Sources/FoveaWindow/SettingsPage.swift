@@ -2,6 +2,8 @@ import AppKit
 import SwiftUI
 import CapturesCore
 import FoveaKit
+import FoveaPlatform
+import Combine
 
 /// Settings, in the window rather than in a window of its own. The profile icon at the top right
 /// opens it on Account; the captures give way to it, and the toolbar's leading edge gets a back
@@ -151,6 +153,8 @@ struct Prefs {
     /// The notch's glass, light or dark, and how what drops below meets it (Oct 9).
     var notchAppearance: NotchAppearance = .dark
     var panels: NativePanels = .attached
+    /// How much room what opens below the notch takes (Oct 9).
+    var density: NotchDensity = .spacious
     var hoverOpens = true
     var hoverWait: HoverWait = .normal
     var showAnswers = true
@@ -158,13 +162,13 @@ struct Prefs {
 
     /// The notch's settings as they ship.
     var notchIsDefault: Bool {
-        glow == .colorful && glowHue == 0 && glowSpread == 120 && glowDrift == 0.5 && panels == .attached
+        glow == .colorful && glowHue == 0 && glowSpread == 120 && glowDrift == 0.5 && panels == .attached && density == .spacious
             && hoverOpens && hoverWait == .normal && showAnswers && reviewFirst
     }
     mutating func restoreNotch() {
         let d = Prefs()
         glow = d.glow; glowHue = d.glowHue; glowSpread = d.glowSpread
-        glowDrift = d.glowDrift; panels = d.panels; hoverOpens = d.hoverOpens
+        glowDrift = d.glowDrift; panels = d.panels; density = d.density; hoverOpens = d.hoverOpens
         hoverWait = d.hoverWait; showAnswers = d.showAnswers; reviewFirst = d.reviewFirst
     }
 }
@@ -555,52 +559,87 @@ private struct LevelMeter: View {
 struct ShortcutsPane: View {
     @Environment(CapturesModel.self) private var model
     @Environment(\.palette) private var palette
+    /// Read when the pane shows, and again each second it's open (a grant is seen live).
+    @State private var granted: [Permission: Bool] = [:]
+    private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
+        // Fovea's keys, from the one table every surface reads (FoveaKit's `FoveaKeys`): the
+        // round the onboarding teaches and the notch acts on.
         SettingsSection(nil, note: "Press once to start, again to stop.") {
             HStack(alignment: .top, spacing: 12) {
-                MainKey(title: "Voice Flow", detail: "Speak, and Fovea types it into the app in front of you.", keys: ["fn"])
-                MainKey(title: "Dispatch", detail: "Send what you say to Claude Code or Codex.", keys: ["fn", "⌃"])
+                ForEach(FoveaKeys.daily) { key in
+                    MainKey(title: key.title, detail: key.detail, keys: key.keys)
+                }
             }
         }
 
-        // The keys while you speak, as the notch feedback of Oct 6 decided them
-        // (docs/island/FEEDBACK_2026-10-06.md §3): Option takes pixels, ⌘ text and files.
         SettingsSection("While you speak") {
             SettingsCard {
-                SettingsRow("Take a screenshot", detail: "Press once, then drag over what to take. Press twice for the whole screen.") {
-                    ShortcutRecorder(keys: ["⌥"])
-                }
-                RowDivider()
-                SettingsRow("Pick text or a file", detail: "Tap ⌘, then click a passage or a file to take it.") {
-                    ShortcutRecorder(keys: ["⌘"])
+                ForEach(Array(FoveaKeys.whileSpeaking.enumerated()), id: \.element.id) { i, key in
+                    if i > 0 { RowDivider() }
+                    SettingsRow(key.title, detail: key.detail) { FixedCaps(keys: key.keys, presses: key.presses) }
                 }
             }
         }
 
-        SettingsSection("The notch") {
+        SettingsSection("In the notch", note: "The board opens when the pointer rests at the notch (Settings › Notch).") {
             SettingsCard {
-                SettingsRow("Open the board", detail: "Press Control by itself to open it when your agents have something to show.") {
-                    ShortcutRecorder(keys: ["⌃"])
+                ForEach(Array(FoveaKeys.inTheNotch.enumerated()), id: \.element.id) { i, key in
+                    if i > 0 { RowDivider() }
+                    SettingsRow(key.title, detail: key.detail) { FixedCaps(keys: key.keys, presses: key.presses) }
                 }
             }
-            HStack {
-                Spacer()
-                TextButton("Restore Defaults") { model.say("Shortcuts restored (simulated)") }
-            }
-            .padding(.top, 6)
         }
 
-        SettingsSection("Permissions", note: "Fovea needs these to hear fn, Control, Option and Command from any app.") {
+        SettingsSection("Permissions", note: "Fovea needs these for its keys in any app, to take what you point at, and to hear you.") {
             SettingsCard {
-                SettingsRow("Accessibility") { StatusLabel(word: "Allowed") }
-                RowDivider()
-                SettingsRow("Input Monitoring") {
-                    StatusLabel(word: "Not allowed", ok: false,
-                                fix: ("Open Privacy Settings…", { model.say("Would open Privacy & Security (simulated)") }))
+                let rows: [Permission] = [.accessibility, .screenRecording, .microphone, .speechRecognition]
+                ForEach(Array(rows.enumerated()), id: \.element) { i, permission in
+                    if i > 0 { RowDivider() }
+                    SettingsRow(permission.paneName) {
+                        if granted[permission] ?? permission.granted {
+                            StatusLabel(word: "Allowed")
+                        } else {
+                            StatusLabel(word: "Not allowed", ok: false,
+                                        fix: ("Open Privacy Settings…", { permission.openSettings() }))
+                        }
+                    }
                 }
             }
         }
+        .onAppear { refresh() }
+        .onReceive(tick) { _ in refresh() }
+    }
+
+    private func refresh() {
+        for p in Permission.allCases { granted[p] = p.granted }
+    }
+}
+
+/// A shortcut's keys, as caps (they aren't changed in 1.0), "×2" for one pressed twice.
+private struct FixedCaps: View {
+    @Environment(\.palette) private var palette
+    let keys: [String]
+    var presses = 1
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(Array(keys.enumerated()), id: \.offset) { _, key in
+                Text(key)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(palette.text)
+                    .frame(minWidth: 22, minHeight: 22)
+                    .padding(.horizontal, key.count > 1 ? 6 : 0)
+                    .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(palette.ink(0.06)))
+                    .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(palette.ink(0.12), lineWidth: 0.5))
+            }
+            if presses > 1 {
+                Text("×\(presses)").font(.system(size: 11, weight: .semibold)).foregroundStyle(palette.secondary)
+            }
+        }
+        .accessibilityElement()
+        .accessibilityLabel(keys.joined(separator: " ") + (presses > 1 ? ", twice" : ""))
     }
 }
 

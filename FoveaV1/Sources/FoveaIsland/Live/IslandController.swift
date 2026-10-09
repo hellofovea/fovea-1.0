@@ -38,7 +38,6 @@ package final class IslandController {
         // The decided design: Native, Spacious, the Badges board, the desktop as it is.
         model.screenContent = .desktop
         model.design = .native
-        model.density = .spacious
         model.boardStyle = .badges
         model.petAtRest = false
         model.display = Screens.metrics(for: screen)
@@ -200,6 +199,7 @@ package final class IslandController {
         model.liveScheme = p.notchAppearance.colorScheme
         panel?.appearance = p.notchAppearance.nsAppearance
         model.nativePanels = p.panels
+        model.density = PanelDensity(rawValue: p.density.rawValue) ?? .spacious
         model.accent = p.accent
         model.glowPalette = p.glowPalette
         model.glowHue = p.glowHue
@@ -212,7 +212,8 @@ package final class IslandController {
         guard preview, model.notchState == .silent || model.previewing else { return }
         let glowChanged = before.glowPalette != p.glowPalette || before.glowHue != p.glowHue
             || before.glowSpread != p.glowSpread || before.glowDrift != p.glowDrift
-        let lookChanged = before.notchAppearance != p.notchAppearance || before.panels != p.panels || before.accent != p.accent
+        let lookChanged = before.notchAppearance != p.notchAppearance || before.panels != p.panels
+            || before.density != p.density || before.accent != p.accent
         if glowChanged { showPreview(.aura) } else if lookChanged { showPreview(.panel) }
     }
 

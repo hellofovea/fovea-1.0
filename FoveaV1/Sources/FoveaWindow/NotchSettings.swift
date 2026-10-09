@@ -61,9 +61,45 @@ struct NotchPane: View {
         // palette to start from, the hue turned on a spectrum, Custom's spread, the drift, and the
         // seven colors it makes. The preview sits on the board and is always listening, so every
         // drag shows on the notch the moment it's made.
+        // The notch's look (Oct 9): Liquid Glass, light or dark; what opens below attached to the
+        // top edge or floating under it; Compact or Spacious. Shown on the picture as it's chosen,
+        // and on the real notch a moment.
+        SettingsSection("Look", note: "Liquid Glass at the top of your screen. Only the notch itself stays black.") {
+            SettingsCard {
+                NotchLookPreview(look: model.notchLook)
+                    .frame(height: 150)
+                    .cardPadding()
+                    .animation(motion.animation(.swap), value: model.notchLook)
+                RowDivider()
+                SettingsRow("Glass", detail: prefs.notchAppearance == .light ? "Light glass, dark words." : "Dark glass, white words.") {
+                    SettingsSegments(segments: NotchAppearance.allCases.map { ($0, $0.title) }, selection: prefs.notchAppearance) { a in
+                        model.animate(.swap) { model.prefs.notchAppearance = a }
+                    }
+                }
+                RowDivider()
+                SettingsRow("Panels", detail: prefs.panels == .attached
+                            ? "What opens below hangs from the top of the screen, one shape with the notch."
+                            : "What opens below floats just under the notch.") {
+                    SettingsSegments(segments: NativePanels.allCases.map { ($0, $0.title) }, selection: prefs.panels) { p in
+                        model.animate(.swap) { model.prefs.panels = p }
+                    }
+                }
+                RowDivider()
+                SettingsRow("Size", detail: prefs.density == .spacious
+                            ? "Roomy rows and larger words, as the Mac's own panels have."
+                            : "Tighter rows: more of the board at once.") {
+                    SettingsSegments(segments: NotchDensity.allCases.map { ($0, $0.title) }, selection: prefs.density) { d in
+                        model.animate(.swap) { model.prefs.density = d }
+                    }
+                }
+            }
+        }
+        .id("notch-look")
+
         SettingsSection("Glow", note: "The light in the voice bar while you talk to an agent.") {
             SettingsCard {
-                NotchPreview(glow: glow.look(hue: prefs.glowHue, spread: prefs.glowSpread, drift: prefs.glowDrift > 0.001))
+                NotchPreview(glow: glow.look(hue: prefs.glowHue, spread: prefs.glowSpread, drift: prefs.glowDrift > 0.001),
+                             look: model.notchLook)
                     .frame(height: 132)
                     .cardPadding()
                 RowDivider()
@@ -144,10 +180,9 @@ struct NotchPane: View {
                         RowDivider()
                         HStack(spacing: 8) {
                             Image(systemName: "info.circle").foregroundStyle(palette.secondary)
-                            Text("You can still open it: press ⌃ by itself.")
+                            Text("The board still shows each time you send.")
                                 .font(.system(size: 12)).foregroundStyle(palette.text)
                             Spacer()
-                            Button("Shortcuts…") { model.pickSettings(.shortcuts) }
                         }
                         .cardPadding()
                     }
@@ -193,13 +228,14 @@ struct NotchPane: View {
 /// notch is, so a change shows as it's made.
 struct NotchPreview: View {
     let glow: VoiceGlowLook
+    let look: NotchLook
 
     var body: some View {
         let screen = RoundedRectangle(cornerRadius: 10, style: .continuous)
         Color.clear
-            .overlay { Wallpaper() }
+            .overlay { PreviewWallpaper() }
             .overlay(alignment: .top) { PreviewMenuBar() }
-            .overlay(alignment: .top) { VoiceBarFigure(glow: glow) }
+            .overlay(alignment: .top) { VoiceBarFigure(glow: glow, look: look) }
             .clipShape(screen)
             .overlay(screen.strokeBorder(.black.opacity(0.12), lineWidth: 0.5))
             .accessibilityElement()
@@ -212,6 +248,7 @@ struct NotchPreview: View {
 private struct VoiceBarFigure: View {
     @Environment(\.motion) private var motion
     let glow: VoiceGlowLook
+    let look: NotchLook
     /// The driver keeps the voice's envelope from frame to frame, as the Workbench's does.
     @State private var engine = VoiceGlowEngine()
     /// Snapshots draw one still frame, mid-phrase, as the Workbench's do; `--only glow-live`
@@ -228,7 +265,11 @@ private struct VoiceBarFigure: View {
                 let frame = still
                     ? engine.still(at: GlowTokens.stillTime, geometry: GlowTokens.wide, reduceMotion: motion.reduce)
                     : engine.frame(at: context.date, geometry: GlowTokens.wide, reduceMotion: motion.reduce)
-                VoiceGlowRenderer.draw(in: &ctx, edge: edge, frame: frame, look: glow)
+                // On light glass the colors are laid over white, not lit on black: drawn stronger
+                // (the island's `lightGlassBoost`).
+                var shown = glow
+                if look.appearance == .light { shown.opacity *= 1.7 }
+                VoiceGlowRenderer.draw(in: &ctx, edge: edge, frame: frame, look: shown)
             }
         }
         .frame(width: G.bar.width, height: G.bar.height)
@@ -236,41 +277,15 @@ private struct VoiceBarFigure: View {
         // frames lost everything under the band line: a black stripe along the bar's foot (14 of
         // 23 frames in `--only glow-live`; flattened, none).
         .drawingGroup()
-        .background(.black)
+        .background { NotchGlass(shape: Rectangle(), look: look) }
+        .overlay(alignment: .top) {
+            // The notch itself stays black.
+            UnevenRoundedRectangle(bottomLeadingRadius: 8, bottomTrailingRadius: 8)
+                .fill(.black)
+                .frame(width: G.notch.width, height: G.notch.height)
+        }
         .clipShape(IslandShape(topRadius: G.topRadius, bottomRadius: G.bottomRadius))
         .allowsHitTesting(false)
-    }
-}
-
-/// The menu bar round the notch, as a notched MacBook draws it over the wallpaper.
-private struct PreviewMenuBar: View {
-    var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "apple.logo").font(.system(size: 13, weight: .medium))
-            Text("Finder").font(.system(size: 13, weight: .bold))
-            Text("File")
-            Text("Edit")
-            Spacer(minLength: NotchPreviewGeometry.bar.width + 16)
-            Image(systemName: "wifi")
-            Image(systemName: "battery.75percent")
-            Text("9:41")
-        }
-        .font(.system(size: 13))
-        .foregroundStyle(.white)
-        .shadow(color: .black.opacity(0.35), radius: 2, y: 0.5)
-        .padding(.horizontal, 14)
-        .frame(height: NotchPreviewGeometry.notch.height)
-        .background(LinearGradient(colors: [.black.opacity(0.28), .clear], startPoint: .top, endPoint: .bottom))
-        .accessibilityHidden(true)
-    }
-}
-
-/// The preview's wallpaper, filling whatever it's given.
-private struct Wallpaper: View {
-    var body: some View {
-        if let wallpaper = Art.resource("Photos/coast.jpg") {
-            Image(nsImage: wallpaper).resizable().aspectRatio(contentMode: .fill)
-        }
     }
 }
 

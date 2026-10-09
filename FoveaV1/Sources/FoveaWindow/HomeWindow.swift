@@ -74,8 +74,11 @@ package final class HomeWindowController: NSObject {
         observeStores()
         applyAppearance()
         observeAppearance()
-        if let target = options.settings { openSettings(target) }
+        pendingSettings = options.settings
     }
+
+    /// `--settings`: opened once the window is on screen (its toolbar follows the page then).
+    private var pendingSettings: String?
 
     /// Brings Home forward, centered the first time.
     package func show() {
@@ -83,6 +86,14 @@ package final class HomeWindowController: NSObject {
         if !placed { place(); placed = true }
         window.makeKeyAndOrderFront(nil)
         if !options.noActivate { NSApp.activate(ignoringOtherApps: true) }
+        if let target = pendingSettings {
+            pendingSettings = nil
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(150))
+                self.model.show(.settings)
+                self.openSettings(target)
+            }
+        }
     }
 
     /// Opens Settings, on a category ("notch", "shortcuts:keys").
@@ -140,6 +151,7 @@ package final class HomeWindowController: NSObject {
         set(\.glowDrift, p.glowDrift)
         set(\.notchAppearance, p.notchAppearance)
         set(\.panels, p.panels)
+        set(\.density, p.density)
         set(\.hoverOpens, p.hoverOpens)
         set(\.hoverWait, p.hoverWait)
         set(\.showAnswers, p.showAnswers)
@@ -160,6 +172,7 @@ package final class HomeWindowController: NSObject {
         p.glowDrift = m.glowDrift
         p.notchAppearance = m.notchAppearance
         p.panels = m.panels
+        p.density = m.density
         p.hoverOpens = m.hoverOpens
         p.hoverWait = m.hoverWait
         p.showAnswers = m.showAnswers
@@ -270,7 +283,10 @@ package final class HomeWindowController: NSObject {
         if model.page != .captures { model.back() }
         model.setKind(sender.tag == 0 ? nil : CaptureKind.allCases[sender.tag - 1])
     }
-    @objc func showHome(_ sender: Any?) { show() }
+    @objc func showHome(_ sender: Any?) {
+        show()
+        if model.page != .captures { model.show(.captures) }
+    }
 
     /// The main menu: Fovea, Edit, View, Go, Window, Help. `quit` is the App's (it puts back the
     /// apps a first run hid before it quits).
