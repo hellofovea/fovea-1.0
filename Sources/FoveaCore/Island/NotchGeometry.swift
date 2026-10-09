@@ -39,6 +39,25 @@ public struct ScreenMetrics: Hashable, Sendable {
         frame: CGRect(x: 0, y: 0, width: 1728, height: 1117),
         visibleFrame: CGRect(x: 0, y: 0, width: 1728, height: 1117 - 25),
         safeAreaTop: 0, auxLeftWidth: 0, auxRightWidth: 0)
+
+    /// A notched display of `size` (screen coordinates) with the notch centered: what a mock
+    /// desktop or a snapshot stage hands the geometry. The defaults are `sampleNotched`'s
+    /// notch, so `notched(size: 1470×956)` is that display.
+    public static func notched(size: CGSize, notchWidth: CGFloat = 200, menuBarHeight: CGFloat = 32) -> ScreenMetrics {
+        let aux = (size.width - notchWidth) / 2
+        return ScreenMetrics(
+            frame: CGRect(origin: .zero, size: size),
+            visibleFrame: CGRect(x: 0, y: 0, width: size.width, height: size.height - menuBarHeight),
+            safeAreaTop: menuBarHeight, auxLeftWidth: aux, auxRightWidth: aux)
+    }
+
+    /// A display of `size` without a notch and a plain menu bar.
+    public static func flat(size: CGSize, menuBarHeight: CGFloat = 25) -> ScreenMetrics {
+        ScreenMetrics(
+            frame: CGRect(origin: .zero, size: size),
+            visibleFrame: CGRect(x: 0, y: 0, width: size.width, height: size.height - menuBarHeight),
+            safeAreaTop: 0, auxLeftWidth: 0, auxRightWidth: 0)
+    }
 }
 
 /// Layout constants the geometry needs. The defaults ARE the production numbers, so

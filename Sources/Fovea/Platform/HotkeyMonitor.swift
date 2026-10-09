@@ -4,6 +4,9 @@ import Carbon.HIToolbox
 import IOKit.hid
 import FoveaCore
 
+/// 'FOVA'. File-level so the Carbon callback can check it without touching the main actor.
+private let hotkeySignature: OSType = 0x464F5641
+
 /// Global press-to-toggle hotkeys. One press starts a session, the next press of the same
 /// shortcut ends it; key repeat and releases never reach the Island.
 ///
@@ -48,7 +51,7 @@ final class HotkeyMonitor: HotkeyMonitoring {
 
     private var suspended = false
 
-    private static let signature: OSType = 0x464F5641   // 'FOVA'
+    private static let signature: OSType = hotkeySignature
     private static let escapeID: UInt32 = 900
 
     init() {
@@ -166,6 +169,8 @@ final class HotkeyMonitor: HotkeyMonitoring {
             var hotKeyID = EventHotKeyID()
             GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
                               nil, MemoryLayout<EventHotKeyID>.size, nil, &hotKeyID)
+            // Another handler's chord (the material picker): let it through.
+            guard hotKeyID.signature == hotkeySignature else { return OSStatus(eventNotHandledErr) }
             let monitor = Unmanaged<HotkeyMonitor>.fromOpaque(userData).takeUnretainedValue()
             let pressed = GetEventKind(event) == UInt32(kEventHotKeyPressed)
             let id = hotKeyID.id

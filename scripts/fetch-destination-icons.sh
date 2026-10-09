@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Fetches provider marks for destination icons and rasterizes them to PNG.
-# Sources: lobe-icons (MIT) for Claude, Claude Code, OpenAI/ChatGPT, Codex and Cursor;
+# Sources: lobe-icons (MIT) for Claude, Claude Code, OpenAI/ChatGPT, Codex, Cursor and Grok;
 # Raycast's press kit for Raycast. Marks are used nominatively to identify the
 # destination; replace with the official icon package when it arrives.
 # Re-run to refresh. Needs network; rasterizes with AppKit (no extra tools).
@@ -17,6 +17,7 @@ ICONS=(
   "chatgpt $LOBE/openai.svg white"
   "codex $LOBE/codex.svg white"
   "cursor $LOBE/cursor.svg white"
+  "grok $LOBE/grok.svg white"
   "raycast https://fz1sd71lwhbqy6sh.public.blob.vercel-storage.com/press/images/logo/raycast-logo-light.svg white"
 )
 cat > "$TMP/rasterize.swift" <<'SWIFT'

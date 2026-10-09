@@ -19,6 +19,12 @@ final class IslandModel {
     private(set) var focusRequest = FocusRequest(target: .none, token: 0)
     /// Rects the eval harness clicks and measures (debug only; cheap to keep).
     var debugRects: [String: CGRect] = [:]
+    /// What the surface is made of below the notch (the material study's A–E). The PRD's
+    /// surface is `.black`; `AppServices` remembers the pick between launches.
+    private(set) var material: IslandMaterial = .default
+    /// Set for a moment after the material changes, so a label under the island names it.
+    private(set) var materialAnnouncement: IslandMaterial?
+    private var announcementTask: Task<Void, Never>?
 
     struct FocusRequest: Equatable {
         enum Target { case none, editor, followUp, search }
@@ -104,6 +110,21 @@ final class IslandModel {
     // MARK: - Lifecycle
 
     func setMetrics(_ m: ScreenMetrics) { metrics = m }
+
+    /// Switches the surface with a short crossfade and, unless it is the launch value,
+    /// names the new material under the island for a moment.
+    func setMaterial(_ newValue: IslandMaterial, announce: Bool = true) {
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        withAnimation(Tokens.Motion.animation(.select, reduceMotion: reduceMotion, fadeOnly: true)) { material = newValue }
+        guard announce else { return }
+        materialAnnouncement = newValue
+        announcementTask?.cancel()
+        announcementTask = Task { [weak self] in
+            try? await Task.sleep(for: Tokens.Island.Material.announcement)
+            guard !Task.isCancelled else { return }
+            self?.materialAnnouncement = nil
+        }
+    }
 
     /// Starts listening to hotkeys, the task ledger and agent updates.
     func start() {

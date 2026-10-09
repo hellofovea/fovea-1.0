@@ -1,0 +1,694 @@
+import SwiftUI
+import AppKit
+import FoveaCore
+
+// The Oct 6 feedback's Dispatch Version 2 views (V2Feedback.swift has the flow).
+// docs/island/FEEDBACK_2026-10-06.md has the reasons.
+
+// MARK: - Markdown, as the agent wrote it (#11)
+
+/// The blocks an agent's Markdown is made of. Whatever it wrote is shown as it wrote it: no
+/// fixed layout is laid over it (the dev team's point on #11, accepted).
+enum MarkdownBlock: Equatable {
+    case heading(String)
+    case paragraph(String)
+    case bullets([String])
+    case numbered([String])
+    case quote(String)
+    case code(String)
+    case table([[String]])
+
+    static func parse(_ markdown: String) -> [MarkdownBlock] {
+        var blocks: [MarkdownBlock] = []
+        var paragraph: [String] = [], bullets: [String] = [], numbered: [String] = [], quote: [String] = []
+        var table: [[String]] = [], code: [String]? = nil
+        func flush() {
+            if !paragraph.isEmpty { blocks.append(.paragraph(paragraph.joined(separator: " "))); paragraph = [] }
+            if !bullets.isEmpty { blocks.append(.bullets(bullets)); bullets = [] }
+            if !numbered.isEmpty { blocks.append(.numbered(numbered)); numbered = [] }
+            if !quote.isEmpty { blocks.append(.quote(quote.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines))); quote = [] }
+            if !table.isEmpty { blocks.append(.table(table)); table = [] }
+        }
+        for raw in markdown.components(separatedBy: "\n") {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("```") {
+                if let lines = code { blocks.append(.code(lines.joined(separator: "\n"))); code = nil }
+                else { flush(); code = [] }
+                continue
+            }
+            if code != nil { code?.append(raw); continue }
+            if line.isEmpty { flush(); continue }
+            if line.hasPrefix(">") {
+                if quote.isEmpty { flush() }
+                quote.append(String(line.dropFirst()).trimmingCharacters(in: .whitespaces))
+            } else if line.hasPrefix("|") {
+                if table.isEmpty { flush() }
+                let cells = line.trimmingCharacters(in: CharacterSet(charactersIn: "|")).components(separatedBy: "|")
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                if cells.allSatisfy({ $0.allSatisfy { "-: ".contains($0) } }) { continue }
+                table.append(cells)
+            } else if line.hasPrefix("- ") || line.hasPrefix("* ") {
+                if bullets.isEmpty { flush() }
+                bullets.append(String(line.dropFirst(2)))
+            } else if let dot = line.firstIndex(of: "."), line[..<dot].allSatisfy(\.isNumber), !line[..<dot].isEmpty {
+                if numbered.isEmpty { flush() }
+                numbered.append(String(line[line.index(after: dot)...]).trimmingCharacters(in: .whitespaces))
+            } else if line.hasPrefix("#") {
+                flush()
+                blocks.append(.heading(line.drop { $0 == "#" }.trimmingCharacters(in: .whitespaces)))
+            } else {
+                paragraph.append(line)
+            }
+        }
+        if let lines = code { blocks.append(.code(lines.joined(separator: "\n"))) }
+        flush()
+        return blocks
+    }
+
+    /// The words without their marks, for measuring.
+    static func plain(_ inline: String) -> String {
+        (try? AttributedString(markdown: inline, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            .map { String($0.characters) } ?? inline
+    }
+
+    /// How tall the blocks are at a width (the island's outline is laid out before the view).
+    static func height(_ markdown: String, width: CGFloat) -> CGFloat {
+        let F = WorkbenchTokens.FeedbackV2.self
+        let blocks = parse(markdown)
+        var h: CGFloat = 0
+        for block in blocks {
+            switch block {
+            case .heading(let t): h += V2Geometry.measure(plain(t), size: F.headingSize, weight: .semibold, width: width)
+            case .paragraph(let t): h += V2Geometry.measure(plain(t), size: F.answerSize, width: width, spacing: F.answerSpacing)
+            case .bullets(let items), .numbered(let items):
+                for item in items {
+                    h += V2Geometry.measure(plain(item), size: F.answerSize, width: width - F.bulletMarker - F.bulletGap,
+                                            spacing: F.answerSpacing) + F.bulletSpacing
+                }
+            case .quote(let t):
+                h += V2Geometry.measure(plain(t), size: F.answerSize, width: width - 2 * F.quotePaddingH, spacing: F.answerSpacing)
+                    + 2 * F.quotePaddingV
+            case .code(let t): h += CGFloat(t.components(separatedBy: "\n").count) * F.codeLine + 2 * F.codePadding
+            case .table(let rows): h += CGFloat(rows.count) * F.tableRow + 4
+            }
+        }
+        return h + CGFloat(max(0, blocks.count - 1)) * F.blockGap
+    }
+}
+
+/// The agent's Markdown drawn on the island: white at its opacities, links and code a little
+/// brighter, a table as a table, a quote (a draft) on a raised card.
+struct MarkdownView: View {
+    let markdown: String
+    let width: CGFloat
+
+    var body: some View {
+        let F = WorkbenchTokens.FeedbackV2.self
+        VStack(alignment: .leading, spacing: F.blockGap) {
+            ForEach(Array(MarkdownBlock.parse(markdown).enumerated()), id: \.offset) { _, block in
+                blockView(block)
+            }
+        }
+        .frame(width: width, alignment: .topLeading)
+        .environment(\.openURL, OpenURLAction { _ in .handled })
+    }
+
+    @ViewBuilder private func blockView(_ block: MarkdownBlock) -> some View {
+        let F = WorkbenchTokens.FeedbackV2.self
+        switch block {
+        case .heading(let text):
+            Text(Self.inline(text)).font(.system(size: F.headingSize, weight: .semibold)).foregroundStyle(F.answerStrong)
+        case .paragraph(let text):
+            Text(Self.inline(text)).font(F.answerFont).foregroundStyle(F.answerColor).lineSpacing(F.answerSpacing)
+                .fixedSize(horizontal: false, vertical: true)
+        case .bullets(let items), .numbered(let items):
+            let numbered: Bool = { if case .numbered = block { return true }; return false }()
+            VStack(alignment: .leading, spacing: F.bulletSpacing) {
+                ForEach(Array(items.enumerated()), id: \.offset) { i, item in
+                    HStack(alignment: .firstTextBaseline, spacing: F.bulletGap) {
+                        Text(numbered ? "\(i + 1)." : "•").foregroundStyle(WorkbenchTokens.V2.subColor)
+                            .frame(width: F.bulletMarker, alignment: .leading)
+                        Text(Self.inline(item)).foregroundStyle(F.answerColor).lineSpacing(F.answerSpacing)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .font(F.answerFont)
+                }
+            }
+        case .quote(let text):
+            Text(Self.inline(text)).font(F.answerFont).foregroundStyle(F.answerStrong).lineSpacing(F.answerSpacing)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, F.quotePaddingH).padding(.vertical, F.quotePaddingV)
+                .frame(width: width, alignment: .topLeading)
+                .background(RoundedRectangle(cornerRadius: F.quoteRadius, style: .continuous).fill(F.quoteFill))
+        case .code(let text):
+            Text(text).font(F.codeFont).foregroundStyle(F.codeColor)
+                .padding(F.codePadding)
+                .frame(width: width, alignment: .topLeading)
+                .background(RoundedRectangle(cornerRadius: F.codeRadius, style: .continuous).fill(F.quoteFill))
+        case .table(let rows):
+            Grid(alignment: .leading, horizontalSpacing: F.tableSpacing, verticalSpacing: 0) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { r, row in
+                    GridRow {
+                        ForEach(Array(row.enumerated()), id: \.offset) { c, cell in
+                            Text(Self.inline(cell))
+                                .font(r == 0 ? F.tableHeader : (c == 0 ? .system(size: F.tableLeadSize, design: .serif).italic() : .system(size: F.tableCellSize)))
+                                .foregroundStyle(r == 0 ? WorkbenchTokens.V2.subColor : (c == 0 ? F.answerStrong : F.answerColor))
+                                .lineLimit(1)
+                                .frame(height: F.tableRow)
+                        }
+                    }
+                    if r == 0 { Rectangle().fill(F.tableRule).frame(height: 1).gridCellColumns(row.count) }
+                }
+            }
+        }
+    }
+
+    /// Inline Markdown (bold, italics, code, links), styled for the island.
+    static func inline(_ text: String) -> AttributedString {
+        var attributed = (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(text)
+        for run in attributed.runs {
+            if run.link != nil {
+                attributed[run.range].foregroundColor = WorkbenchTokens.skin(Color.white.opacity(0.98), WorkbenchTokens.Native.accent)
+                attributed[run.range].underlineStyle = Text.LineStyle(pattern: .solid, color: WorkbenchTokens.skin(Color.white.opacity(0.35), WorkbenchTokens.Native.accent.opacity(0.4)))
+            }
+            if run.inlinePresentationIntent?.contains(.code) == true {
+                attributed[run.range].font = .system(size: WorkbenchTokens.FeedbackV2.inlineCodeSize, design: .monospaced)
+                attributed[run.range].foregroundColor = WorkbenchTokens.ink(0.95)
+                attributed[run.range].backgroundColor = WorkbenchTokens.ink(0.08)
+            }
+        }
+        return attributed
+    }
+}
+
+// MARK: - The answer: what it did folded, the words, what it made (#11–13)
+
+/// A session's answer: what it did, folded to one line; the answer as written; what to open.
+struct V2Answer: View {
+    let model: WorkbenchModel
+    let task: AgentTaskItem
+    let width: CGFloat
+
+    var body: some View {
+        let F = WorkbenchTokens.FeedbackV2.self
+        VStack(alignment: .leading, spacing: F.answerGap) {
+            if !task.steps.isEmpty {
+                V2WorkFold(model: model, work: model.v2Work(task), key: task.id, width: width)
+            }
+            // The agent's own words: its Markdown answer, else the reply it finished with.
+            if let answer = task.answer ?? task.reply {
+                MarkdownView(markdown: answer, width: width)
+            } else if let result = task.result {
+                Text(result.outcome).font(F.answerFont).foregroundStyle(F.answerColor)
+            }
+            let artifacts = model.v2Artifacts(task)
+            if !artifacts.isEmpty, task.state == .complete {
+                V2ArtifactsRow(model: model, artifacts: artifacts)
+            }
+        }
+        .frame(width: width, alignment: .topLeading)
+    }
+
+    /// Its height at a width, for the island's outline.
+    static func height(model: WorkbenchModel, task: AgentTaskItem, width: CGFloat) -> CGFloat {
+        let F = WorkbenchTokens.FeedbackV2.self
+        var h: CGFloat = 0
+        var parts = 0
+        if !task.steps.isEmpty {
+            h += V2WorkFold.height(model.v2Work(task), open: model.v2StepsOpen.contains(task.id), width: width)
+            parts += 1
+        }
+        if let answer = task.answer ?? task.reply { h += MarkdownBlock.height(answer, width: width); parts += 1 }
+        else if task.result != nil { h += 20; parts += 1 }
+        if task.state == .complete, !model.v2Artifacts(task).isEmpty { h += F.artifactHeight; parts += 1 }
+        return h + CGFloat(max(0, parts - 1)) * F.answerGap
+    }
+}
+
+/// What the agent did for an exchange, folded under its answer (Oct 7, docs/island/WHOLE_SESSION.md):
+/// "Worked for 1 m 12 s · Edited 2 files ›". Opened, in order: each step, the tool, what it acted
+/// on and what came of it (an edit's lines, a command passing or failing, a search's matches); and
+/// between them what the agent said along the way. All as the agents report them (V2Steps.swift):
+/// no command output, no thinking text. Folded until the person opens it.
+struct V2WorkFold: View {
+    let model: WorkbenchModel
+    let work: V2Work
+    /// Which fold this is in `v2StepsOpen`: the session's id now, `V2Work.key` for one before.
+    let key: String
+    let width: CGFloat
+    @State private var hovering = false
+
+    var body: some View {
+        let F = WorkbenchTokens.FeedbackV2.self
+        let open = model.v2StepsOpen.contains(key)
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(WorkbenchTokens.V2.resize) {
+                    // In the expanded session, it opens downward from where the person is.
+                    model.v2HistoryHeld = true
+                    if open { model.v2StepsOpen.remove(key) } else { model.v2StepsOpen.insert(key) }
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Text(work.summary()).lineLimit(1)
+                    Image(systemName: "chevron.right")
+                        .font(F.stepsChevron)
+                        .rotationEffect(.degrees(open ? 90 : 0))
+                }
+                .font(F.stepsFont)
+                .foregroundStyle(hovering ? F.stepsHover : F.stepsColor)
+                .frame(height: F.stepsRow)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onHover { hovering = $0 }
+            .help(open ? "Fold what it did" : "What it did: the tools it used, the files it edited, what it said along the way")
+            if open {
+                VStack(alignment: .leading, spacing: F.workGap) {
+                    ForEach(Array(work.entries.enumerated()), id: \.offset) { _, entry in
+                        switch entry {
+                        case .remark(let words):
+                            Text(words)
+                                .font(F.stepsFont)
+                                .foregroundStyle(F.workRemark)
+                                .fixedSize(horizontal: false, vertical: true)
+                        case .step(let step):
+                            V2WorkStepRow(step: step)
+                        }
+                    }
+                }
+                .frame(width: width - F.stepsIndent, alignment: .leading)
+                .padding(.leading, F.stepsIndent)
+                .overlay(alignment: .leading) { Rectangle().fill(F.workRule).frame(width: 1) }
+                .padding(.top, F.workTop)
+                .padding(.bottom, F.stepsBottom)
+                .transition(.opacity)
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    /// Its height at a width, folded or open, for the island's outline.
+    static func height(_ work: V2Work, open: Bool, width: CGFloat) -> CGFloat {
+        let F = WorkbenchTokens.FeedbackV2.self
+        guard open else { return F.stepsRow }
+        var h = F.stepsRow + F.workTop + F.stepsBottom
+        for (i, entry) in work.entries.enumerated() {
+            if i > 0 { h += F.workGap }
+            switch entry {
+            case .remark(let words): h += V2Geometry.measure(words, size: F.stepsSize, width: width - F.stepsIndent, spacing: 0)
+            case .step: h += F.workRow
+            }
+        }
+        return h
+    }
+}
+
+/// One step it took, done: its glyph; the tool, as a verb, and what it acted on (a command or a
+/// pattern in code); at the right, what came of it.
+struct V2WorkStepRow: View {
+    let step: AgentLiveStep
+
+    var body: some View {
+        let F = WorkbenchTokens.FeedbackV2.self
+        let S = WorkbenchTokens.Steps.self
+        HStack(spacing: F.workGlyphGap) {
+            Image(systemName: step.kind.symbol)
+                .font(F.workGlyph)
+                .foregroundStyle(S.glyph)
+                .frame(width: F.workGlyphWidth)
+            line.lineLimit(1).truncationMode(.middle)
+            Spacer(minLength: F.workResultGap)
+            result
+        }
+        .frame(height: F.workRow)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var line: Text {
+        let F = WorkbenchTokens.FeedbackV2.self
+        let S = WorkbenchTokens.Steps.self
+        var line = Text(step.kind.pastVerb).font(F.stepsFont).foregroundColor(S.verb)
+        if let object = step.kind == .search ? step.object.map({ "\u{201C}\($0)\u{201D}" }) : step.object {
+            line = line + Text(" ") + Text(object)
+                .font(step.kind.codeObject ? F.workCode : F.workObject)
+                .foregroundColor(S.object)
+        }
+        return line
+    }
+
+    @ViewBuilder private var result: some View {
+        let F = WorkbenchTokens.FeedbackV2.self
+        let S = WorkbenchTokens.Steps.self
+        if let added = step.added, let removed = step.removed, added + removed > 0 {
+            // Only what moved: a file only added to shows +N.
+            HStack(spacing: 4) {
+                if added > 0 { Text("+\(added)").foregroundStyle(S.added) }
+                if removed > 0 { Text("\u{2212}\(removed)").foregroundStyle(S.removed) }
+            }
+            .font(F.workCount)
+        } else if let passed = step.passed {
+            Text(passed ? "passed" : "failed").font(F.stepsFont)
+                .foregroundStyle(passed ? S.verb : WorkbenchTokens.Panel.failedColor)
+        } else if let note = step.note {
+            Text(note).font(F.stepsFont).foregroundStyle(S.verb)
+        }
+    }
+}
+
+/// What the answer made or points at, each a way to check it first-hand: Open IslandShape.swift
+/// (its lines), Open the paper, Open Calendar.
+struct V2ArtifactsRow: View {
+    let model: WorkbenchModel
+    let artifacts: [V2Artifact]
+
+    var body: some View {
+        HStack(spacing: WorkbenchTokens.FeedbackV2.artifactGap) {
+            ForEach(artifacts) { artifact in
+                V2ArtifactButton(artifact: artifact) { model.openArtifact(artifact) }
+            }
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+struct V2ArtifactButton: View {
+    let artifact: V2Artifact
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        let F = WorkbenchTokens.FeedbackV2.self
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.up.forward.square").font(F.artifactGlyph)
+                Text("Open \(artifact.title)").lineLimit(1)
+            }
+            .font(F.artifactFont)
+            .foregroundStyle(WorkbenchTokens.V2.titleColor)
+            .padding(.horizontal, F.artifactPaddingH)
+            .frame(height: F.artifactHeight)
+            .background(Capsule(style: .continuous).fill(hovering ? F.artifactFillHover : F.artifactFill))
+            .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help("Open \(artifact.title) to check it yourself")
+    }
+}
+
+// MARK: - Choose chat: one stack, the model (#1)
+
+/// What was taken, as one stack (front card, two peeking behind); under the pointer it fans into a
+/// row, each card readable and a click away from a closer look.
+struct V2ReferentPile: View {
+    let model: WorkbenchModel
+    let space: Namespace.ID
+    @State private var fanned = false
+
+    var body: some View {
+        let F = WorkbenchTokens.FeedbackV2.self
+        let items = model.liveReferents
+        let w = F.pileHeight * F.pileAspect
+        ZStack(alignment: .leading) {
+            // The stack's own footprint: it never pushes the pills.
+            Color.clear.frame(width: w + 2 * F.pileOffset, height: F.pileHeight)
+            if fanned {
+                HStack(spacing: F.fanGap) {
+                    ForEach(items) { referent in
+                        V2AttachmentThumb(model: model, referent: referent, space: space)
+                    }
+                }
+                .padding(F.fanPadding)
+                .background(RoundedRectangle(cornerRadius: F.fanRadius, style: .continuous).fill(F.fanFill))
+                .overlay(RoundedRectangle(cornerRadius: F.fanRadius, style: .continuous).strokeBorder(WorkbenchTokens.ink(0.1), lineWidth: 0.75))
+                .offset(x: -F.fanPadding)
+                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .leading)))
+                .zIndex(10)
+            } else {
+                ForEach(Array(items.prefix(3).enumerated().reversed()), id: \.element.id) { i, referent in
+                    let s = 1 - CGFloat(i) * F.pileShrink
+                    Image(nsImage: referent.image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: w * s, height: F.pileHeight * s)
+                        .clipShape(RoundedRectangle(cornerRadius: WorkbenchTokens.V2.attachmentRadius, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: WorkbenchTokens.V2.attachmentRadius, style: .continuous)
+                            .strokeBorder(WorkbenchTokens.ink(0.2), lineWidth: 0.75))
+                        .rotationEffect(.degrees(F.pileRotation[i]))
+                        .opacity(i == 0 ? 1 : F.pileBackOpacity)
+                        // Each card behind peeks past the right edge of the one before it.
+                        .offset(x: w * (1 - s) + CGFloat(i) * F.pileOffset)
+                }
+            }
+        }
+        .frame(height: F.pileHeight)
+        .contentShape(Rectangle())
+        .onHover { inside in withAnimation(F.fanMotion) { fanned = inside } }
+        .help(items.map { "\($0.kind.label) · \($0.source)" }.joined(separator: "\n"))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("What was taken")
+    }
+}
+
+/// The model and thinking effort beside the chat: "Auto", or "Sonnet 5 · High"; a click opens
+/// the sheet under the row.
+struct V2ModelPill: View {
+    let model: WorkbenchModel
+    @State private var hovering = false
+
+    var body: some View {
+        let V = WorkbenchTokens.V2.self
+        let C = WorkbenchTokens.Chat.self
+        Button { model.toggleModelSheet() } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "brain").font(V.pillGlyph).foregroundStyle(V.subColor)
+                Text(model.v2ModelLabel(agent: model.v2Pick.agent))
+                    .font(V.pillFont)
+                    .foregroundStyle(V.titleColor)
+                    .lineLimit(1)
+                Image(systemName: model.v2ModelSheet ? "chevron.up" : "chevron.down")
+                    .font(V.pillChevron).foregroundStyle(V.subColor)
+            }
+            .padding(.horizontal, V.pillPaddingH)
+            .frame(height: V.pillHeight)
+            .frame(maxWidth: WorkbenchTokens.FeedbackV2.modelPillMax)
+            .fixedSize(horizontal: true, vertical: false)
+            .background(Capsule(style: .continuous).fill(hovering ? C.pillFillHover : C.pillFill))
+            .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help("The model and how hard it thinks. Auto lets Fovea pick")
+        .accessibilityLabel("Model, \(model.v2ModelLabel(agent: model.v2Pick.agent))")
+    }
+}
+
+/// The sheet: the chat's agent's models, then how hard it thinks; Auto first in each.
+struct V2ModelSheet: View {
+    let model: WorkbenchModel
+    var showsChats = false
+
+    var body: some View {
+        let F = WorkbenchTokens.FeedbackV2.self
+        VStack(alignment: .leading, spacing: F.sheetGap) {
+            if showsChats {
+                row("Chat") {
+                    ForEach(model.v2Request.suggestions) { pick in
+                        V2SheetChip(title: pick.title, icon: pick.agent, chosen: model.v2Pick == pick) { model.chooseV2(pick) }
+                    }
+                }
+            }
+            row("Model") {
+                V2SheetChip(title: "Auto", chosen: model.v2Model == nil) { model.chooseModel(nil) }
+                ForEach(model.v2ModelOptions) { option in
+                    V2SheetChip(title: option.name, chosen: model.v2Model == option.id) { model.chooseModel(option.id) }
+                }
+            }
+            row("Thinking") {
+                V2SheetChip(title: "Auto", chosen: model.v2Effort == nil) { model.chooseEffort(nil) }
+                ForEach(model.v2EffortOptions, id: \.self) { effort in
+                    V2SheetChip(title: ModelCatalog.effortName(effort), chosen: model.v2Effort == effort) { model.chooseEffort(effort) }
+                }
+            }
+        }
+    }
+
+    private func row<C: View>(_ label: String, @ViewBuilder chips: () -> C) -> some View {
+        let F = WorkbenchTokens.FeedbackV2.self
+        return HStack(spacing: F.sheetChipGap) {
+            Text(label).font(WorkbenchTokens.V2.labelFont).foregroundStyle(WorkbenchTokens.V2.labelColor)
+                .frame(width: F.sheetLabelWidth, alignment: .leading)
+            chips()
+            Spacer(minLength: 0)
+        }
+        .frame(height: F.sheetRow)
+    }
+
+    /// Its height, for the outline.
+    static func height(chats: Bool) -> CGFloat {
+        let F = WorkbenchTokens.FeedbackV2.self
+        let rows: CGFloat = chats ? 3 : 2
+        return rows * F.sheetRow + (rows - 1) * F.sheetGap
+    }
+}
+
+struct V2SheetChip: View {
+    let title: String
+    var icon: String? = nil
+    let chosen: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        let F = WorkbenchTokens.FeedbackV2.self
+        let V = WorkbenchTokens.V2.self
+        Button(action: action) {
+            HStack(spacing: 5) {
+                if let icon { ChatAgentIcon(agent: ChatAgent.named(icon), size: F.sheetChipIcon) }
+                Text(title).lineLimit(1)
+                if chosen { Image(systemName: "checkmark").font(F.sheetCheck) }
+            }
+            .font(F.sheetChipFont)
+            .foregroundStyle(chosen ? V.titleColor : WorkbenchTokens.ink(0.7))
+            .padding(.horizontal, F.sheetChipPaddingH)
+            .frame(height: F.sheetChipHeight)
+            .background(Capsule(style: .continuous).fill(chosen ? V.chipChosenFill : (hovering ? V.hoverFill : V.chipFill)))
+            .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(nil, value: chosen)
+    }
+}
+
+// MARK: - The queue (#24)
+
+/// What waits for a working session: each message (and anything taken with it), Send now to
+/// put it into this turn, ✕ to drop it; held while the session waits on the person, Resume.
+struct V2QueueSection: View {
+    let model: WorkbenchModel
+    let task: AgentTaskItem
+    let width: CGFloat
+
+    var body: some View {
+        let F = WorkbenchTokens.FeedbackV2.self
+        let V = WorkbenchTokens.V2.self
+        let items = model.v2Queue[task.id] ?? []
+        let paused = model.v2QueuePaused.contains(task.id)
+        VStack(alignment: .leading, spacing: F.queueSpacing) {
+            HStack(spacing: 6) {
+                Text(paused ? "WAITING · HELD" : "WAITING").font(V.labelFont).tracking(0.6).foregroundStyle(V.labelColor)
+                if paused {
+                    Text(task.state == .needsYou ? "until you answer above" : "after a failure")
+                        .font(F.queueNote).foregroundStyle(V.subColor)
+                    Spacer(minLength: 4)
+                    AgentPanelButton(title: "Resume", symbol: "play.fill", primary: false) { model.resumeQueue(task.id) }
+                } else {
+                    Spacer(minLength: 4)
+                }
+            }
+            .frame(height: F.queueHeader)
+            ForEach(items) { ask in
+                HStack(spacing: 8) {
+                    ForEach(Array(ask.images.prefix(2).enumerated()), id: \.offset) { _, image in
+                        Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
+                            .frame(width: F.queueThumb * 1.3, height: F.queueThumb)
+                            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+                    }
+                    Text(ask.text).font(F.queueText).foregroundStyle(V.bodyColor).lineLimit(1)
+                    Spacer(minLength: 6)
+                    AgentPanelButton(title: "Send now", symbol: "arrow.turn.down.right", primary: false) { model.sendQueuedNow(task.id, ask) }
+                        .help("Put it into this turn now, out of the line")
+                    Button { model.cancelQueued(task.id, ask) } label: {
+                        Image(systemName: "xmark").font(F.queueCloseGlyph).foregroundStyle(V.subColor)
+                            .frame(width: F.queueClose, height: F.queueClose).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).help("Don't send it")
+                }
+                .padding(.horizontal, F.queueRowPaddingH)
+                .frame(height: F.queueRow)
+                .background(RoundedRectangle(cornerRadius: F.queueRowRadius, style: .continuous).fill(F.queueFill))
+            }
+        }
+        .frame(width: width, alignment: .topLeading)
+    }
+
+    static func height(count: Int) -> CGFloat {
+        guard count > 0 else { return 0 }
+        let F = WorkbenchTokens.FeedbackV2.self
+        return F.queueHeader + F.queueSpacing + CGFloat(count) * (F.queueRow + F.queueSpacing) - F.queueSpacing
+    }
+}
+
+// MARK: - Answer again and stop (#23)
+
+/// A small gray chip with a glyph.
+struct V2IconChip: View {
+    let symbol: String
+    var title: String? = nil
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        let F = WorkbenchTokens.FeedbackV2.self
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: symbol).font(F.iconChipGlyph)
+                if let title { Text(title) }
+            }
+            .font(F.iconChipFont)
+            .foregroundStyle(WorkbenchTokens.ink(0.8))
+            .padding(.horizontal, title == nil ? 0 : F.iconChipPaddingH)
+            .frame(minWidth: WorkbenchTokens.FeedbackV2.iconButton, minHeight: WorkbenchTokens.FeedbackV2.iconButton)
+            .background(Capsule(style: .continuous).fill(WorkbenchTokens.ink(hovering ? 0.16 : 0.09)))
+            .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+    }
+}
+
+/// Answer again: with the model it used, or another (a menu of the agent's models and efforts).
+struct V2ReanswerMenu: View {
+    let model: WorkbenchModel
+    let task: AgentTaskItem
+    var compact = false
+
+    var body: some View {
+        let options = ModelCatalog.options(agent: task.agent == ChatAgent.fovea.id ? "claude-code" : task.agent)
+        Menu {
+            Button("Answer again with \(task.modelLabel ?? "Auto")") { model.reanswerV2(task.id) }
+            Divider()
+            ForEach(options) { option in
+                if option.efforts.isEmpty {
+                    Button(option.name) { model.reanswerV2(task.id, model: option.id) }
+                } else {
+                    Menu(option.name) {
+                        ForEach(option.efforts, id: \.self) { effort in
+                            Button(ModelCatalog.effortName(effort)) { model.reanswerV2(task.id, model: option.id, effort: effort) }
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.clockwise").font(WorkbenchTokens.FeedbackV2.iconChipGlyph)
+                Text(compact ? "Answer again · \(task.modelLabel ?? "Auto")" : "Answer again")
+            }
+            .font(WorkbenchTokens.FeedbackV2.iconChipFont)
+        } primaryAction: {
+            model.reanswerV2(task.id)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .foregroundStyle(WorkbenchTokens.ink(0.85))
+        .padding(.horizontal, WorkbenchTokens.FeedbackV2.iconChipPaddingH)
+        .frame(height: WorkbenchTokens.FeedbackV2.iconButton)
+        .background(Capsule(style: .continuous).fill(WorkbenchTokens.ink(0.09)))
+        .fixedSize()
+        .help("Answer again (click), or pick another model to answer with")
+    }
+}

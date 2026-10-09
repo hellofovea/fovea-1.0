@@ -218,15 +218,15 @@ struct DetachedQuickAnswerView: View {
     @State private var dragging = false
 
     var body: some View {
+        let card = RoundedRectangle(cornerRadius: Tokens.Island.Radius.detached, style: .continuous)
+        let host = IslandMaterialHost.detached(notchHeight: model.frames.notch.height, dockZone: model.state.dockZone)
         QuickAnswerView(model: model, host: .detached)
             .padding(.bottom, Tokens.Space.xs)
-            .background(Tokens.Island.Colors.surfaceElevated)
-            .clipShape(RoundedRectangle(cornerRadius: Tokens.Island.Radius.detached, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: Tokens.Island.Radius.detached, style: .continuous)
-                    .strokeBorder(Tokens.Island.Colors.hairline, lineWidth: 1)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: Tokens.Island.Radius.detached, style: .continuous))
+            .background { IslandMaterialBackground(material: model.material, host: host) }
+            .clipShape(card)
+            .overlay(card.strokeBorder(Tokens.Island.Colors.hairline, lineWidth: 1))
+            .overlay { IslandMaterialEdge(material: model.material, shape: card, host: host) }
+            .contentShape(card)
             .gesture(moveWindow)
             .onGeometryChange(for: CGSize.self) { $0.size } action: { onSize?($0) }
             .environment(\.colorScheme, .dark)

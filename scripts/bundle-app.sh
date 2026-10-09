@@ -12,16 +12,25 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN/Fovea" "$APP/Contents/MacOS/Fovea"
 cp -R "$BIN/Fovea_FoveaCore.bundle" "$APP/Contents/Resources/"
-# App icon: convert the bundled PNG into an .icns.
-ICONSET="$ROOT/build/AppIcon.iconset"
-rm -rf "$ICONSET"; mkdir -p "$ICONSET"
-SRC="$ROOT/Sources/FoveaCore/Resources/AppIcon.png"
-for size in 16 32 128 256 512; do
-  sips -z $size $size "$SRC" --out "$ICONSET/icon_${size}x${size}.png" >/dev/null
-  sips -z $((size*2)) $((size*2)) "$SRC" --out "$ICONSET/icon_${size}x${size}@2x.png" >/dev/null
-done
-iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
-rm -rf "$ICONSET"
+# App icon, from the masters `scripts/fovea-icon.swift` writes into Resources/Brand.
+# With Xcode's actool: the layered icon (AppIcon.icon) compiles to Assets.car, which macOS 26 and
+# later draw with the system's edge and in its dark, clear and tinted styles, plus an .icns for
+# earlier systems. (macOS 26 and later put an .icns-only icon in a grey container.) Without
+# actool, the full iconset (16 and 32 drawn from the small-size master) becomes the .icns.
+BRAND="$ROOT/Sources/FoveaCore/Resources/Brand"
+ICON_NAME_KEY=""
+if xcrun --find actool >/dev/null 2>&1 && [[ -d "$BRAND/AppIcon.icon" ]]; then
+  ICONS="$ROOT/build/AppIconCompiled"
+  rm -rf "$ICONS"; mkdir -p "$ICONS"
+  xcrun actool "$BRAND/AppIcon.icon" --compile "$ICONS" --platform macosx \
+    --minimum-deployment-target 14.0 --app-icon AppIcon \
+    --output-partial-info-plist "$ICONS/partial.plist" >/dev/null
+  cp "$ICONS/Assets.car" "$ICONS/AppIcon.icns" "$APP/Contents/Resources/"
+  rm -rf "$ICONS"
+  ICON_NAME_KEY="<key>CFBundleIconName</key><string>AppIcon</string>"
+else
+  iconutil -c icns "$BRAND/AppIcon.iconset" -o "$APP/Contents/Resources/AppIcon.icns"
+fi
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -35,6 +44,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleExecutable</key><string>Fovea</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
+  $ICON_NAME_KEY
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSMicrophoneUsageDescription</key><string>Fovea listens after you press the VoiceFlow shortcut so it can transcribe your intent.</string>

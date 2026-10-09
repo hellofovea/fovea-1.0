@@ -8,3 +8,13 @@ Prototypes/.build/
 # Saved pages from animations.dev — a paid third-party course, kept locally for
 # reference only. Never redistribute: this repo is public.
 docs/motion/course/
+
+# Fovea macOS (MacApp/): a second package; its builds, bundles and screenshots stay local.
+MacApp/.build/
+MacApp/build/
+MacApp/screenshots/
+
+# The product's answer renderer (fovea-mac AnswerContent: Markdown, tables, code, KaTeX).
+# Product code, not published here: drop the folder in locally and the island renders
+# the answer body with it; without it the body is plain text.
+MacApp/Sources/FoveaMacCore/Resources/AnswerContent/

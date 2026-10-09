@@ -10,13 +10,21 @@ struct IslandRootView: View {
         ZStack(alignment: .top) {
             Color.clear
             IslandSurface(model: model)
+            ZStack(alignment: .top) {
+                if let material = model.materialAnnouncement {
+                    MaterialAnnouncement(material: material)
+                        .padding(.top, model.contentBounds.maxY + Tokens.Island.Material.announcementGap)
+                        .transition(.opacity)
+                }
+            }
+            .foveaAnimation(.popover, value: model.materialAnnouncement, fadeOnly: true)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .environment(\.colorScheme, .dark)
     }
 }
 
-/// The black shape and whatever the current phase shows inside it. Geometry changes
+/// The island's shape, its material, and whatever the current phase shows inside it. Geometry changes
 /// arrive inside `IslandModel.send`'s animation transaction; the surface itself never
 /// changes identity, so every morph is one continuous shape.
 struct IslandSurface: View {
@@ -28,13 +36,15 @@ struct IslandSurface: View {
         let frames = model.frames
         let phase = model.phase
         let shape = IslandShape(topRadius: frames.topRadius, bottomRadius: frames.bottomRadius)
+        let host = IslandMaterialHost.attached(notchHeight: frames.notch.height)
 
         content(phase, frames: frames)
             .frame(width: max(0, frames.bodyWidth))
             .padding(.horizontal, frames.topRadius)
             .frame(minHeight: frames.minHeight, alignment: .top)
-            .background(Tokens.Island.Colors.surface)
+            .background { IslandMaterialBackground(material: model.material, host: host) }
             .clipShape(shape)
+            .overlay { IslandMaterialEdge(material: model.material, shape: shape, host: host) }
             .overlay(alignment: .top) {
                 // Kills the hairline between the shape and the physical notch.
                 Rectangle()

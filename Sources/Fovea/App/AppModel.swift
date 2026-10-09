@@ -25,6 +25,8 @@ struct DemoOptions {
     var islandSmoke = false
     /// Run an eval suite (`island-eval:<suite>`), then quit with a pass/fail code.
     var islandEvalSuite: String? = nil
+    /// Start with this material from the study (`island-material:graded` or `:d`) for this launch.
+    var islandMaterial: IslandMaterial? = nil
 
     static func parse(_ args: [String] = CommandLine.arguments) -> DemoOptions {
         var o = DemoOptions()
@@ -50,6 +52,9 @@ struct DemoOptions {
                         case "island-smoke": o.islandSmoke = true
                         default:
                             if flag.hasPrefix("island-eval:") { o.islandEvalSuite = String(flag.dropFirst("island-eval:".count)) }
+                            else if flag.hasPrefix("island-material:") {
+                                o.islandMaterial = IslandMaterial.parse(String(flag.dropFirst("island-material:".count)))
+                            }
                             else if let scenario = IslandScenario.parse(String(flag)) { o.islandScenario = scenario }
                         }
                     }

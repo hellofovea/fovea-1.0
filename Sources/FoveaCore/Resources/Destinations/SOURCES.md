@@ -10,4 +10,5 @@ when it is delivered; file names are the destination ids.
 - chatgpt.png: https://raw.githubusercontent.com/lobehub/lobe-icons/master/packages/static-svg/icons/openai.svg
 - codex.png: https://raw.githubusercontent.com/lobehub/lobe-icons/master/packages/static-svg/icons/codex.svg
 - cursor.png: https://raw.githubusercontent.com/lobehub/lobe-icons/master/packages/static-svg/icons/cursor.svg
+- grok.png: https://raw.githubusercontent.com/lobehub/lobe-icons/master/packages/static-svg/icons/grok.svg
 - raycast.png: https://fz1sd71lwhbqy6sh.public.blob.vercel-storage.com/press/images/logo/raycast-logo-light.svg

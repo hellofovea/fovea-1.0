@@ -35,6 +35,14 @@ struct IslandCommands: Commands {
             Divider()
             Button("Reset Island") { AppServices.shared.islandController?.model.reset() }
                 .keyboardShortcut("r", modifiers: [.command, .option])
+            Divider()
+            // The material study's options; ⌃⌥⌘1…5 also work while another app is in front.
+            Section("Material") {
+                ForEach(Array(IslandMaterial.allCases.enumerated()), id: \.element) { index, material in
+                    Button("\(material.letter) · \(material.title)") { AppServices.shared.setIslandMaterial(material) }
+                        .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: [.command, .option, .control])
+                }
+            }
         }
     }
 
@@ -77,7 +85,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let model = services.makeIslandModel(metrics: metrics)
         let controller = IslandController(model: model)
         services.islandController = controller
+        model.setMaterial(services.initialIslandMaterial, announce: false)
         controller.start()
+        services.startMaterialHotkeys()
         if let scenario = services.options.islandScenario {
             model.jump(to: scenario)
         }

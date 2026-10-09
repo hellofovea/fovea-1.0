@@ -76,7 +76,7 @@ public enum StoreKeys {
     /// v2: shortcuts became press-to-toggle on fn; v1 hold-to-talk chords are dropped.
     public static let shortcuts = "fovea.shortcuts.v2"
     public static let connectors = "fovea.connectors.v1"
-    /// Island preferences: last detached Quick Answer frame.
+    /// Island preferences: last detached Quick Answer frame, the study's material.
     public static let islandPrefs = "fovea.island.v1"
 }
 
@@ -84,5 +84,9 @@ public enum StoreKeys {
 public struct IslandPrefs: Codable, Hashable, Sendable {
     /// Screen-coordinate frame of the detached Quick Answer panel, if it was ever moved.
     public var detachedFrame: CGRect?
-    public init(detachedFrame: CGRect? = nil) { self.detachedFrame = detachedFrame }
+    /// The surface picked in the material study; nil means the default (black).
+    public var material: IslandMaterial?
+    public init(detachedFrame: CGRect? = nil, material: IslandMaterial? = nil) {
+        self.detachedFrame = detachedFrame; self.material = material
+    }
 }

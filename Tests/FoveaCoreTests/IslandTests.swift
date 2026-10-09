@@ -790,6 +790,21 @@ final class NotchGeometryTests: XCTestCase {
         XCTAssertEqual(spec.hoverExitSlack, 8)
     }
 
+    func testMockDisplayFactories() {
+        XCTAssertEqual(ScreenMetrics.notched(size: CGSize(width: 1470, height: 956)), .sampleNotched)
+        XCTAssertEqual(ScreenMetrics.flat(size: CGSize(width: 1728, height: 1117)), .sampleFlat)
+        // A workbench stage: the detail column of a window, at 1:1.
+        let stage = ScreenMetrics.notched(size: CGSize(width: 980, height: 740))
+        XCTAssertTrue(stage.hasNotch)
+        XCTAssertEqual(stage.notchWidth, 200)
+        XCTAssertEqual(stage.menuBarHeight, 32)
+        XCTAssertEqual(NotchGeometry.notchRect(metrics: stage, spec: spec), CGRect(x: 390, y: 0, width: 200, height: 32))
+        let flat = ScreenMetrics.flat(size: CGSize(width: 980, height: 740))
+        XCTAssertFalse(flat.hasNotch)
+        XCTAssertNil(flat.notchWidth)
+        XCTAssertEqual(flat.menuBarHeight, 25)
+    }
+
     func testNotchedDisplay() {
         let m = ScreenMetrics.sampleNotched
         XCTAssertTrue(m.hasNotch)

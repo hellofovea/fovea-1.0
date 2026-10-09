@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import FoveaCore
 
 // Single source of truth for color, type, spacing, shape, layout and motion.
@@ -563,6 +564,50 @@ enum Tokens {
                 ReferentStackLayout.Config(thumb: thumb, spacing: stackSpacing, layerOffset: stackLayerOffset,
                                            maxLayers: stackMaxLayers, rowSpacing: stackRowSpacing)
             }
+        }
+
+        /// The surface below the notch, for the material study's five options (A is the
+        /// PRD's black; B–E are prototypes). Black layers over a behind-window blur: a floor
+        /// over the whole panel, plus a ramp pinned to the top of the screen for D.
+        enum Material {
+            /// The blur under the black for C, D and E.
+            static let blur: NSVisualEffectView.Material = .hudWindow
+
+            /// D: black under any text; over a white page white text stays near 12.6:1.
+            static let gradedFloor: Double = 0.80
+            /// D: solid black this far below the notch band.
+            static let gradedHold: CGFloat = 24
+            /// D: black eases to the floor over this distance.
+            static let gradedFade: CGFloat = 120
+            /// D detached: how much of the ramp returns as the card nears the dock.
+            static let gradedDockNear: Double = 0.5
+
+            /// C: solid black down to this share of the panel's height, then fading to its floor.
+            static let fadeSolidFraction: Double = 0.48
+            static let fadeFloor: Double = 0.30
+            /// C: the bright lip along the bottom edge, fading up the sides from this share.
+            static let fadeRim = Color(hex: 0xCDE6FF).opacity(0.62)
+            static let rimStartFraction: Double = 0.55
+
+            /// E: glass everywhere.
+            static let glassFloor: Double = 0.30
+            static let glassRim = Color.white.opacity(0.35)
+
+            /// B, D and E: a 1 pt keyline on the sides and bottom.
+            static let keyline = Color.white.opacity(0.14)
+            static let keylineIncreasedContrast = Color.white.opacity(0.30)
+            /// The keyline fades in over this distance below the notch band, so it never
+            /// outlines the hardware.
+            static let keylineFadeIn: CGFloat = 28
+            /// Drawn at twice the width and clipped to the shape, so 1 pt lands inside.
+            static let edgeStroke: CGFloat = 2
+
+            /// The label that names the material for a moment after it changes.
+            static let announcement: Duration = .milliseconds(1800)
+            static let announcementGap: CGFloat = 10
+            static let announcementPaddingH: CGFloat = 12
+            static let announcementHeight: CGFloat = 28
+            static let announcementFill = Color.black.opacity(0.82)
         }
     }
 

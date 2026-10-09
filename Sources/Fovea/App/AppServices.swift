@@ -23,6 +23,8 @@ final class AppServices {
     var islandController: IslandController?
     /// The live hotkey monitor, so the Shortcuts recorder can hear raw fn edges.
     private(set) var hotkeys: (any HotkeyMonitoring)?
+    /// ⌃⌥⌘1…5, picking the Island's material from any app.
+    private var materialHotkeys: MaterialHotkeys?
 
     init(options: DemoOptions, defaults: UserDefaults = .standard) {
         self.options = options
@@ -64,6 +66,29 @@ final class AppServices {
                                 commands: commands, shortcuts: shortcuts, settings: settings, metrics: metrics)
         model.forceSoftwareIsland = options.islandFlat
         return model
+    }
+
+    // MARK: - Island material (the study's A–E)
+
+    /// The launch flag, else the last pick, else the PRD's black.
+    var initialIslandMaterial: IslandMaterial {
+        options.islandMaterial ?? islandPrefs.load()?.material ?? .default
+    }
+
+    /// Switches the Island's surface and remembers the pick between launches.
+    func setIslandMaterial(_ material: IslandMaterial) {
+        islandController?.model.setMaterial(material)
+        var prefs = islandPrefs.load() ?? IslandPrefs()
+        prefs.material = material
+        let store = islandPrefs
+        Task { try? await store.save(prefs, changed: "material") }
+    }
+
+    func startMaterialHotkeys() {
+        guard materialHotkeys == nil, !Snapshots.isRunning else { return }
+        let hotkeys = MaterialHotkeys { [weak self] in self?.setIslandMaterial($0) }
+        hotkeys.start()
+        materialHotkeys = hotkeys
     }
 
     // MARK: - Commands from the Island
