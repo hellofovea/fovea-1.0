@@ -45,15 +45,15 @@ extension OnboardingModel {
     /// A fresh first run: nothing allowed or signed in, nothing made yet, Home put away, the
     /// practice files and the blog new. Started at a later step, the ones before it count as done
     /// (the permissions allowed, the agents connected, sign-in done).
-    func restart(at step: Step = .signIn) {
+    func restart(at step: Step = .name) {
         runner.cancel()
         cancelWaits()
-        var fresh = Flow(start: .signIn)
+        var fresh = Flow(start: .name)
         fresh.found(flow.agents)
         fresh.language = flow.language
         fresh.email = flow.email
         fresh.name = flow.name
-        if step != .signIn { fresh.jump(to: step) }
+        if step != .name { fresh.jump(to: step) }
         flow = fresh
         inList = []
         switchedOn = []

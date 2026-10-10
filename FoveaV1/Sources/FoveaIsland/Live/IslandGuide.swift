@@ -179,36 +179,37 @@ extension IslandController {
     }
 }
 
-/// The line under the notch: glass, in the notch's look, hanging from the island's foot. Typed
-/// out as it comes. Draggable, it carries Fovea.app, as a Finder icon would.
+/// The line under the notch: a glass capsule just below it, in the notch's look, typed out as it
+/// comes. It never covers or redraws the notch itself (the hardware's is the notch). Draggable, it
+/// carries Fovea.app, as a Finder icon would.
 struct GuideCaptionView: View {
     let model: WorkbenchModel
     let caption: GuideCaption
 
     var body: some View {
-        let spec = WorkbenchTokens.Island.spec
-        let top = model.metrics.safeAreaTop
-        let notchWidth = model.metrics.notchWidth ?? spec.softwareIslandWidth
-        let label = HStack(spacing: 10) {
+        let label = HStack(spacing: 8) {
             if caption.draggable {
                 Image(nsImage: NSApp.applicationIconImage)
                     .resizable()
-                    .frame(width: 26, height: 26)
+                    .frame(width: 20, height: 20)
             }
             Text(caption.text)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(WorkbenchTokens.ink(0.92))
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(WorkbenchTokens.ink(0.9))
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 16)
-        .padding(.top, top + 10)
-        .padding(.bottom, 12)
-        .frame(minWidth: notchWidth + 24)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
         .background {
-            IslandGlassShape(model: model)
+            if #available(macOS 26.0, *) {
+                Color.clear.glassEffect(.regular, in: Capsule())
+            } else {
+                Capsule().fill(.regularMaterial)
+            }
         }
-        .contentShape(Rectangle())
+        .contentShape(Capsule())
+        .padding(.top, model.metrics.safeAreaTop + 8)
         Group {
             if caption.draggable {
                 label.onDrag {
@@ -220,25 +221,5 @@ struct GuideCaptionView: View {
             }
         }
         .transition(.opacity.combined(with: .move(edge: .top)))
-    }
-}
-
-/// Native's glass in the island's outline, the notch black on it.
-struct IslandGlassShape: View {
-    let model: WorkbenchModel
-
-    var body: some View {
-        let spec = WorkbenchTokens.Island.spec
-        let shape = IslandShape(topRadius: spec.expandedTopRadius, bottomRadius: 16)
-        ZStack(alignment: .top) {
-            if #available(macOS 26.0, *) {
-                Color.clear.glassEffect(.regular, in: shape)
-            } else {
-                shape.fill(.regularMaterial)
-            }
-            UnevenRoundedRectangle(bottomLeadingRadius: 10, bottomTrailingRadius: 10)
-                .fill(.black)
-                .frame(width: model.metrics.notchWidth ?? spec.softwareIslandWidth, height: model.metrics.safeAreaTop)
-        }
     }
 }

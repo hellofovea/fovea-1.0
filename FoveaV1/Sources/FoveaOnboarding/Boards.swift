@@ -27,10 +27,11 @@ struct StageBoard: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             if model.step.isReading {
-                // Frosted and dark, as VoiceOS does it: the desktop goes soft behind the words. It
-                // comes in at a calm pace and lifts slowly (Oct 9).
+                // Frosted, as VoiceOS does it: the desktop goes soft behind the words, dark or light
+                // as the Mac is (then as the person picks). It comes in at a calm pace and lifts
+                // slowly (Oct 9).
                 Rectangle().fill(.ultraThinMaterial)
-                    .overlay(OT.Colors.stageScrim)
+                    .overlay(model.boardDark ? OT.Colors.stageScrim : OT.Colors.stageScrimLight)
                     .frame(width: OT.Display.size.width, height: OT.Display.size.height)
                     .transition(still ? .identity : .asymmetric(insertion: .opacity.animation(OT.Motion.slow),
                                                                 removal: .opacity.animation(OT.Motion.stageLift)))
@@ -46,8 +47,9 @@ struct StageBoard: View {
                                                                 removal: .opacity.animation(OT.Motion.content)))
             }
         }
-        .environment(\.boardInk, BoardInk(dark: true))
-        .environment(\.colorScheme, .dark)
+        .environment(\.boardInk, BoardInk(dark: model.boardDark))
+        .environment(\.colorScheme, model.boardDark ? .dark : .light)
+        .animation(OT.Motion.calm, value: model.boardDark)
         .animation(still ? nil : OT.Motion.pageOut, value: model.step)
     }
 }
@@ -58,13 +60,14 @@ struct StageBoard: View {
 /// wants a transition, not a cut), while the page before rises away.
 struct ReadingPage: View {
     let model: OnboardingModel
+    @Environment(\.boardInk) private var ink
 
     var body: some View {
         VStack(spacing: 0) {
             Rises(order: 0, model: model) {
                 Text(model.copy.title)
                     .font(OT.Board.stageTitle)
-                    .foregroundStyle(OT.Colors.white(0.96))
+                    .foregroundStyle(ink.primary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -72,7 +75,7 @@ struct ReadingPage: View {
                 Rises(order: 1, model: model) {
                     Text(model.copy.body)
                         .font(OT.Board.stageBody)
-                        .foregroundStyle(OT.Colors.white(0.62))
+                        .foregroundStyle(ink.secondary)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -132,13 +135,14 @@ struct Rises<Content: View>: View {
 /// the keys for now lit in turn.
 struct GlassBar: View {
     let model: OnboardingModel
+    @Environment(\.boardInk) private var ink
 
     var body: some View {
         HStack(alignment: .top, spacing: OT.Board.barGap) {
             VStack(alignment: .leading, spacing: 12) {
                 Text(model.copy.title)
                     .font(OT.Board.caption)
-                    .foregroundStyle(OT.Colors.white(0.95))
+                    .foregroundStyle(ink.primary)
                     .fixedSize(horizontal: false, vertical: true)
                     .id(model.step)
                     .transition(.opacity)
@@ -146,7 +150,7 @@ struct GlassBar: View {
                 if let instruction = model.instruction {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Circle().fill(model.accentColor).frame(width: 7, height: 7).alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
-                        TypedText(text: instruction, font: OT.Board.instruction, color: OT.Colors.white(0.94), typing: model.typesLines)
+                        TypedText(text: instruction, font: OT.Board.instruction, color: ink.primary, typing: model.typesLines)
                             .id(instruction)
                     }
                 }
@@ -155,18 +159,19 @@ struct GlassBar: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if model.keyboardWanted {
-                KeyboardView(pressed: model.keysDown, targets: model.keyboardTargets, accent: model.accentColor, dark: true,
+                KeyboardView(pressed: model.keysDown, targets: model.keyboardTargets, accent: model.accentColor, dark: model.boardDark,
                              unit: OT.Board.barKeyUnit, badges: model.keyboardBadges)
                     .allowsHitTesting(false)
                     .transition(.opacity)
             }
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 18)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
         .frame(width: model.keyboardWanted ? OT.Board.barWideWidth : OT.Board.stageBarWidth)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: OT.Board.stageBarRadius, style: .continuous))
-        .background(RoundedRectangle(cornerRadius: OT.Board.stageBarRadius, style: .continuous).fill(OT.Colors.stageGlass))
-        .overlay(RoundedRectangle(cornerRadius: OT.Board.stageBarRadius, style: .continuous).strokeBorder(OT.Colors.white(0.1)))
+        .background(RoundedRectangle(cornerRadius: OT.Board.stageBarRadius, style: .continuous)
+            .fill(model.boardDark ? OT.Colors.stageGlass : OT.Colors.stageGlassLight))
+        .overlay(RoundedRectangle(cornerRadius: OT.Board.stageBarRadius, style: .continuous).strokeBorder(ink.hairline))
         .playTarget(.board, model)
         .animation(OT.Motion.board, value: model.keyboardWanted)
     }

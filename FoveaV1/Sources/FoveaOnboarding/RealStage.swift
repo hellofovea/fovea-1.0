@@ -31,9 +31,6 @@ struct RealStage: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .trailing)))
             }
             BoardView(model: model)
-            if model.step == .permissions {
-                DragHint(model: model)
-            }
             OT.Colors.flash
                 .frame(width: size.width, height: size.height)
                 .opacity(model.flash ? OT.Marks.captureFlash : 0)
@@ -45,6 +42,8 @@ struct RealStage: View {
             if case .active(let point) = phase { model.pointerMoved(point) }
         }
         .environment(\.colorScheme, .light)
+        // A click works the first time, even with System Settings in front.
+        .clicksWhenInactive()
     }
 
     /// The windows the step uses: none at first, then the browser and the team chat, or
@@ -149,7 +148,9 @@ final class StageWindow: NSWindow {
         backgroundColor = .clear
         hasShadow = false
         isReleasedWhenClosed = false
-        level = .normal
+        // Over the other windows while the tour runs, so its bar stays in sight with System
+        // Settings open; clicks go through it everywhere it doesn't draw.
+        level = .floating
         collectionBehavior = [.fullScreenNone, .moveToActiveSpace]
         acceptsMouseMovedEvents = true
         animationBehavior = .none
@@ -160,4 +161,13 @@ final class StageWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
+}
+
+extension View {
+    /// A click on the stage works the first time, even with another app in front (macOS 15 and
+    /// later): it stands for a whole screen, where nothing asks for a click to bring it forward.
+    @ViewBuilder
+    func clicksWhenInactive() -> some View {
+        if #available(macOS 15.0, *) { allowsWindowActivationEvents(true) } else { self }
+    }
 }

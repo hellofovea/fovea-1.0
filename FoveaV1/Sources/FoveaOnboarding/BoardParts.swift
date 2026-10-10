@@ -88,7 +88,7 @@ struct BoardExtras: View {
         case .dictationIntro:
             HStack(spacing: 6) {
                 ForEach(model.keys.caps(.dictation), id: \.self) {
-                    KeyCap(label: $0, lit: model.keysDown.contains($0), accent: model.accentColor, dark: true, large: true)
+                    KeyCap(label: $0, lit: model.keysDown.contains($0), accent: model.accentColor, dark: model.boardDark, large: true)
                 }
             }
         case .dictionary:
@@ -157,10 +157,10 @@ struct LanguagePicker: View {
 
     private func segment(_ title: String, on: Bool) -> some View {
         Text(title)
-            .font(.system(size: 12.5, weight: on ? .semibold : .medium))
+            .font(.system(size: 11.5, weight: on ? .semibold : .medium))
             .foregroundStyle(on ? ink.buttonText : ink.secondary)
-            .padding(.horizontal, 12)
-            .frame(height: 26)
+            .padding(.horizontal, 10)
+            .frame(height: 22)
             .background(Capsule().fill(on ? ink.button : .clear))
             .contentShape(Capsule())
     }
@@ -254,16 +254,16 @@ struct NotchChoiceRow<Value: Hashable>: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(title).font(OT.Type_.guideBody).foregroundStyle(ink.secondary).frame(width: 52, alignment: .leading)
+            Text(title).font(OT.Type_.guideBody).foregroundStyle(ink.secondary).frame(width: 44, alignment: .leading)
             HStack(spacing: 2) {
                 ForEach(options, id: \.self) { option in
                     let on = option == chosen
                     Button(action: { choose(option) }) {
                         Text(option[keyPath: name])
-                            .font(.system(size: 12.5, weight: on ? .semibold : .medium))
+                            .font(.system(size: 11.5, weight: on ? .semibold : .medium))
                             .foregroundStyle(on ? ink.buttonText : ink.secondary)
-                            .padding(.horizontal, 12)
-                            .frame(height: 26)
+                            .padding(.horizontal, 10)
+                            .frame(height: 22)
                             .background(Capsule().fill(on ? ink.button : .clear))
                             .contentShape(Capsule())
                     }
@@ -290,7 +290,7 @@ struct Swatch: View {
             }
             if chosen { Circle().fill(OT.Colors.swatchDot).frame(width: 7, height: 7) }
         }
-        .frame(width: 20, height: 20)
+        .frame(width: 16, height: 16)
         .overlay(Circle().strokeBorder(ink.hairline))
         .padding(2)
         .overlay(Circle().strokeBorder(chosen ? ink.secondary : .clear, lineWidth: 1.5))
@@ -397,8 +397,9 @@ struct DriftSlider: View {
     }
 }
 
-/// The two lists (Oct 9: granted together, named and nothing more), each ticked once allowed; the
-/// one to drag into now is marked.
+/// The two lists (Oct 9: granted together, named and nothing more), each with its own button:
+/// Fovea asks macOS (which adds it to the list), and System Settings opens at that list, where
+/// the person turns Fovea's switch on. Ticked the moment it's allowed.
 struct PermissionRows: View {
     let model: OnboardingModel
     @Environment(\.boardInk) private var ink
@@ -407,31 +408,48 @@ struct PermissionRows: View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach([Permission.accessibility, .screenRecording], id: \.self) { permission in
                 let allowed = model.flow.allowed.contains(permission)
-                let now = model.settingsPane == permission && !allowed
+                let asked = model.asked.contains(permission)
                 HStack(spacing: 10) {
-                    Image(systemName: allowed ? "checkmark.circle.fill" : (now ? "arrow.right.circle" : "circle"))
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(allowed || now ? model.accentColor : ink.tertiary)
-                        .frame(width: 18)
-                    Text(permission.paneName).font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(now || allowed ? ink.primary : ink.secondary)
+                    Image(systemName: allowed ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(allowed ? model.accentColor : ink.tertiary)
+                        .frame(width: 16)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(permission.paneName).font(.system(size: 12.5, weight: .semibold))
+                            .foregroundStyle(ink.primary)
+                        Text(allowed ? "Allowed" : (asked ? "Turn Fovea on in the list" : permission.purpose))
+                            .font(.system(size: 11)).foregroundStyle(ink.tertiary)
+                    }
+                    Spacer(minLength: 12)
+                    if !allowed {
+                        Button(action: { model.askFor(permission) }) {
+                            Text(asked ? "Open Settings" : "Allow")
+                                .font(.system(size: 11.5, weight: .semibold))
+                                .foregroundStyle(ink.buttonText)
+                                .padding(.horizontal, 12).frame(height: 24)
+                                .background(Capsule().fill(ink.button))
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
+                .frame(maxWidth: 420)
                 .animation(OT.Motion.content, value: allowed)
             }
             // Screen Recording counts only once Fovea has reopened (macOS's rule); its own
             // Quit & Reopen does it, or this.
-            if model.settingsPane == .screenRecording, !model.flow.allowed.contains(.screenRecording) {
+            if model.asked.contains(.screenRecording), !model.flow.allowed.contains(.screenRecording) {
                 Button(action: { model.host?.reopen() }) {
                     Text("Quit & Reopen")
-                        .font(.system(size: 12.5, weight: .semibold))
+                        .font(.system(size: 11.5, weight: .semibold))
                         .foregroundStyle(ink.primary)
-                        .padding(.horizontal, 14).frame(height: 28)
+                        .padding(.horizontal, 12).frame(height: 24)
                         .background(Capsule().strokeBorder(ink.hairline))
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .padding(.top, 4)
-                .help("Once Fovea is in the list and switched on")
+                .padding(.leading, 26)
+                .help("Once Fovea is switched on in Screen & System Audio Recording")
             }
         }
     }
@@ -779,14 +797,14 @@ struct AccountField: View {
         VStack(spacing: 8) {
             TextField(kind == .email ? "you@example.com" : "Your name", text: binding)
                 .textFieldStyle(.plain)
-                .font(.system(size: 16))
+                .font(.system(size: 13))
                 .foregroundStyle(ink.primary)
                 .multilineTextAlignment(.center)
                 .textContentType(kind == .email ? .emailAddress : .name)
                 .focused($focused)
                 .onSubmit { model.continueTapped() }
-                .padding(.horizontal, 18)
-                .frame(width: 340, height: 42)
+                .padding(.horizontal, 14)
+                .frame(width: 260, height: 30)
                 .background(Capsule().fill(ink.fill))
                 .overlay(Capsule().strokeBorder(model.accentColor.opacity(focused ? 0.8 : 0.3)))
             Text(kind == .email ? "Kept on this Mac for now." : "Fovea greets you with it.")
@@ -813,16 +831,20 @@ struct ClearScreen: View {
                         .font(.system(size: 11, weight: .bold))
                     Text(model.screenCleared ? "Screen cleared" : "Clear my screen")
                 }
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(ink.primary)
-                .padding(.horizontal, 16).frame(height: 32)
+                .padding(.horizontal, 14).frame(height: 26)
                 .background(Capsule().strokeBorder(ink.hairline))
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)
             .disabled(model.screenCleared)
-            Text(model.screenCleared ? "Your apps come back when the tour ends." : "Your other apps hide for the tour and come back at the end.")
-                .font(.system(size: 12)).foregroundStyle(ink.tertiary)
+            Text(model.screenCleared ? "Your apps will come back when the tour ends."
+                 : "For the tour, Fovea shows you around on a clear screen, so your other apps hide for now. They'll come back when the tour ends.")
+                .font(.system(size: 11.5)).foregroundStyle(ink.tertiary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 360)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -843,9 +865,9 @@ struct Closing: View {
                         if model.eyeTrackingAsked { Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)) }
                         Text(model.eyeTrackingAsked ? Copy.eyeTrackingAsked : Copy.eyeTrackingAsk)
                     }
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(ink.primary)
-                    .padding(.horizontal, 16).frame(height: 32)
+                    .padding(.horizontal, 14).frame(height: 26)
                     .background(Capsule().strokeBorder(ink.hairline))
                     .contentShape(Capsule())
                 }
@@ -855,7 +877,7 @@ struct Closing: View {
             }
             // Open at login: on unless turned off here (or in Settings › Account).
             Toggle(isOn: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) })) {
-                Text("Open Fovea at login").font(.system(size: 13, weight: .medium)).foregroundStyle(ink.primary)
+                Text("Open Fovea at login").font(.system(size: 12, weight: .medium)).foregroundStyle(ink.primary)
             }
             .toggleStyle(.switch)
             .tint(model.accentColor)
@@ -865,8 +887,8 @@ struct Closing: View {
 
     private func part(symbol: String, text: String) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: symbol).font(.system(size: 15)).foregroundStyle(model.accentColor)
-            Text(text).font(.system(size: 17, weight: .medium)).foregroundStyle(ink.primary)
+            Image(systemName: symbol).font(.system(size: 13)).foregroundStyle(model.accentColor)
+            Text(text).font(.system(size: 14, weight: .medium)).foregroundStyle(ink.primary)
         }
     }
 }
@@ -955,10 +977,10 @@ struct BoardActions: View {
             if model.guideButtonShown {
                 Button(action: { model.continueTapped() }) {
                     Text(title)
-                        .font(large ? .system(size: 15, weight: .semibold) : OT.Type_.guideButton)
+                        .font(large ? .system(size: 13, weight: .semibold) : OT.Type_.guideButton)
                         .foregroundStyle(ink.buttonText)
-                        .padding(.horizontal, large ? 26 : 18)
-                        .frame(height: large ? 42 : 34)
+                        .padding(.horizontal, large ? 20 : 14)
+                        .frame(height: large ? 32 : 28)
                         .background(Capsule().fill(enabled ? ink.button : ink.button.opacity(0.25)))
                 }
                 .buttonStyle(.plain)

@@ -61,7 +61,8 @@ public final class PassthroughHostingView<Content: View>: NSHostingView<Content>
     public override func hitTest(_ point: NSPoint) -> NSView? {
         // `point` is in the superview's coordinates; the hosting view fills the window.
         let local = convert(point, from: superview)
-        let top = CGPoint(x: local.x, y: bounds.height - local.y)
+        // SwiftUI's hosting view is flipped: its own points already run top-down.
+        let top = isFlipped ? local : CGPoint(x: local.x, y: bounds.height - local.y)
         guard takesAll() || interactive().contains(where: { $0.contains(top) }) else { return nil }
         return super.hitTest(point)
     }

@@ -28,9 +28,9 @@ public enum Stage: Int, CaseIterable, Sendable {
 /// from three tabs and a chat, and your packing list. No sign-in after the agents, and no demo
 /// before the tasks: you learn by doing (Oct 9, round two).
 public enum Step: String, CaseIterable, Sendable, Codable {
-    /// Oct 9 (Fovea 1.0): the run starts by signing in with an email, then the name to be called
-    /// by; hello greets you with it.
-    case signIn, name
+    /// Oct 9 (Fovea 1.0): the run starts with the name to be called by, then the email to sign up
+    /// with; hello greets you by the name.
+    case name, signIn
     case hello, makeItYours
     case permissions, microphone
     case agents
@@ -40,7 +40,7 @@ public enum Step: String, CaseIterable, Sendable, Codable {
 
     public var stage: Stage {
         switch self {
-        case .signIn, .name, .hello, .makeItYours: .arrive
+        case .name, .signIn, .hello, .makeItYours: .arrive
         case .permissions, .microphone: .turnOn
         case .agents: .agents
         case .weeklyUpdate, .hover, .packList, .followUp: .pointAndSay

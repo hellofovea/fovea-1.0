@@ -68,7 +68,11 @@ public enum Permission: String, CaseIterable, Sendable {
 /// Opens Fovea again: a fresh copy, then this one quits (Screen Recording only counts after a
 /// relaunch; macOS's own Quit & Reopen does the same).
 public enum Relauncher {
+    /// Set while Fovea quits to reopen (the first run's hidden apps stay hidden through it).
+    @MainActor public private(set) static var relaunching = false
+
     @MainActor public static func relaunch() {
+        relaunching = true
         let url = Bundle.main.bundleURL
         let config = NSWorkspace.OpenConfiguration()
         config.createsNewApplicationInstance = true

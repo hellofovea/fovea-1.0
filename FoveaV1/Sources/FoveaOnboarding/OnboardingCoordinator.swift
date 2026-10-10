@@ -134,26 +134,8 @@ package final class OnboardingCoordinator: OnboardingHost {
         if !model.flow.allowed.contains(.screenRecording), model.flow.allowed.contains(.accessibility), ScreenCapturer.allowed {
             model.grant(.screenRecording)
         }
-        // The second list, once the first is done: opened by its link, beside the notch.
-        if let pane = model.settingsPane, pane != lastPane {
-            lastPane = pane
-            if pane == .screenRecording {
-                keepResumePoint()
-                openPermission(pane)
-                Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(1))
-                    SettingsWindow.moveBesideNotch()
-                }
-            }
-        }
-        // Where System Settings' list is, for the arc from the notch.
-        if let frame = SettingsWindow.frame(), let screen = window?.screen {
-            let local = Screens.local(frame, on: screen)
-            model.settingsListFrame = CGRect(x: local.minX + local.width * 0.32, y: local.minY + 90,
-                                             width: local.width * 0.64, height: max(120, local.height - 150))
-        } else {
-            model.settingsListFrame = .zero
-        }
+        // Allowed: Fovea comes back to the front.
+        if let pane = model.settingsPane, pane != lastPane { lastPane = pane }
     }
 
     // MARK: OnboardingHost
@@ -164,7 +146,14 @@ package final class OnboardingCoordinator: OnboardingHost {
         if on { island.showPreview(.aura, seconds: 3600) } else { island.endPreview() }
     }
 
-    func previewPanel() { island.showPreview(.panel, seconds: 3) }
+    /// The board a moment at the notch, then the glow again (Make it yours).
+    func previewPanel() {
+        island.showPreview(.panel, seconds: 3)
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3.2))
+            if self.model.step == .makeItYours { self.island.showPreview(.aura, seconds: 3600) }
+        }
+    }
     func listening(_ on: Bool) { island.showListening(on) }
     func listeningLevel(_ level: Double) { island.setListeningLevel(level) }
     func islandRest() { island.rest() }
@@ -185,6 +174,28 @@ package final class OnboardingCoordinator: OnboardingHost {
         case .screenRecording: FoveaPlatform.Permission.screenRecording.openSettings()
         case .microphone: FoveaPlatform.Permission.microphone.openSettings()
         case .automation: break
+        }
+    }
+
+    func requestPermission(_ permission: OnboardingCore.Permission) {
+        switch permission {
+        case .accessibility:
+            // macOS adds Fovea to the list (switched off) and offers to open it.
+            let prompt = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+            _ = AXIsProcessTrustedWithOptions([prompt: true] as CFDictionary)
+        case .screenRecording:
+            _ = ScreenCapturer.request()
+        default:
+            break
+        }
+        // The list itself, so Fovea's switch is one click away.
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.8))
+            self.openPermission(permission)
+            if AXIsProcessTrusted() {
+                try? await Task.sleep(for: .seconds(1))
+                SettingsWindow.moveAboveBar()
+            }
         }
     }
 
@@ -273,8 +284,8 @@ enum SettingsWindow {
         return WindowList.onScreen().first { $0.pid == app.processIdentifier && $0.layer == 0 && $0.bounds.width > 300 }?.bounds
     }
 
-    /// Under the notch, a little to the right, so the drag from the notch is short.
-    @MainActor static func moveBesideNotch() {
+    /// Up toward the menu bar, so the tour's bar at the foot of the screen stays clear of it.
+    @MainActor static func moveAboveBar() {
         guard AXIsProcessTrusted(),
               let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first,
               let screen = Screens.island else { return }
@@ -282,7 +293,14 @@ enum SettingsWindow {
         var windows: CFTypeRef?
         guard AXUIElementCopyAttributeValue(ax, kAXWindowsAttribute as CFString, &windows) == .success,
               let first = (windows as? [AXUIElement])?.first else { return }
-        var point = Screens.global(CGPoint(x: screen.frame.width / 2 - 60, y: 70), on: screen)
+        var size: CFTypeRef?
+        var width: CGFloat = 780
+        if AXUIElementCopyAttributeValue(first, kAXSizeAttribute as CFString, &size) == .success, let size {
+            var s = CGSize.zero
+            AXValueGetValue(size as! AXValue, .cgSize, &s)
+            width = s.width
+        }
+        var point = Screens.global(CGPoint(x: (screen.frame.width - width) / 2, y: 40), on: screen)
         if let value = AXValueCreate(.cgPoint, &point) {
             AXUIElementSetAttributeValue(first, kAXPositionAttribute as CFString, value)
         }

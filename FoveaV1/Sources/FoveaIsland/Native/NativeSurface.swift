@@ -228,6 +228,19 @@ struct NativeClip: Shape {
     }
 }
 
+extension IslandSurface {
+    /// On a real Mac the notch is the hardware's: the black drawn on the glass sits just inside it
+    /// (no ears, a rounder foot), so none of it shows past the real notch, and nothing is drawn at
+    /// all on a display without one. (The Workbench's mock drew the notch itself, ears and all:
+    /// 6 pt wider each side than the hardware, Oct 9.)
+    static func hardwareNotch(_ model: WorkbenchModel) -> StackLayout.Outline {
+        guard model.metrics.notchWidth != nil else { return StackLayout.Outline(size: .zero, topRadius: 0, bottomRadius: 0) }
+        let notch = NotchGeometry.notchRect(metrics: model.metrics, spec: WorkbenchTokens.Island.spec)
+        return StackLayout.Outline(size: CGSize(width: max(0, notch.width - 2), height: max(0, notch.height - 1)),
+                                   topRadius: 0, bottomRadius: 11)
+    }
+}
+
 /// The island's surface in the design in force: Original's one black outline, or Native's glass
 /// (one shape hanging from the top edge, or the island and a panel floating under it), the notch
 /// black on it. In Native everything on the glass takes the display's scheme (`.panelScheme()`).
@@ -242,8 +255,9 @@ struct IslandSurface: ViewModifier {
             let rest = NotchGeometry.frames(density: .resting, metrics: model.metrics, spec: WorkbenchTokens.Island.spec)
             content
                 .modifier(NativeSurface(shapes: model.nativeShapes, earY: earY, gap: WorkbenchTokens.Native.panelGap,
-                                        notch: StackLayout.Outline(size: CGSize(width: rest.width, height: rest.minHeight),
-                                                                   topRadius: rest.topRadius, bottomRadius: rest.bottomRadius)) { edge in
+                                        notch: model.live != nil ? Self.hardwareNotch(model)
+                                            : StackLayout.Outline(size: CGSize(width: rest.width, height: rest.minHeight),
+                                                                  topRadius: rest.topRadius, bottomRadius: rest.bottomRadius)) { edge in
                     AgentEdgeLayer(model: model, edge: edge)
                 })
                 .animation(model.islandAnimation, value: model.nativeShapes)

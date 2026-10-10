@@ -245,6 +245,9 @@ enum OT {
         // The board (Oct 9: Stage only): the scrim and the glass
         static let stageScrim = Color.black.opacity(0.58)
         static let stageGlass = Color(white: 0.08).opacity(0.86)
+        /// The same, on a light Mac (Oct 9: the pages follow the system, then the person's pick).
+        static let stageScrimLight = Color.white.opacity(0.62)
+        static let stageGlassLight = Color(white: 0.98).opacity(0.86)
         static let previewPaper = Color.white
         static let chatInitial = Color.white
     }
@@ -265,13 +268,13 @@ enum OT {
         static let islandBody = Font.system(size: 12.5)
         static let islandMeta = Font.system(size: 11.5)
         static let islandSection = Font.system(size: 11, weight: .semibold)
-        static let guideEyebrow = Font.system(size: 11, weight: .semibold)
-        static let guideTitle = Font.system(size: 22, weight: .semibold)
-        static let guideBody = Font.system(size: 13.5)
+        static let guideEyebrow = Font.system(size: 10.5, weight: .semibold)
+        static let guideTitle = Font.system(size: 18, weight: .semibold)
+        static let guideBody = Font.system(size: 12)
         static let guideScript = Font.system(size: 16, weight: .regular)
-        static let guideButton = Font.system(size: 13.5, weight: .semibold)
+        static let guideButton = Font.system(size: 12, weight: .semibold)
         static let keyCap = Font.system(size: 13, weight: .medium)
-        static let largeKeyCap = Font.system(size: 20, weight: .medium)
+        static let largeKeyCap = Font.system(size: 16, weight: .medium)
         static let pageTitle = Font.system(size: 30, weight: .bold)
         static let pageBodySize: CGFloat = 15
         static let pageBody = Font.system(size: pageBodySize)
@@ -445,31 +448,31 @@ enum OT {
     // MARK: The board (Oct 9: Stage only)
 
     enum Board {
-        static let stageTitle = Font.system(size: 40, weight: .semibold, design: .serif)
-        static let stageBody = Font.system(size: 16)
-        static let stageWidth: CGFloat = 660
+        static let stageTitle = Font.system(size: 30, weight: .semibold, design: .serif)
+        static let stageBody = Font.system(size: 13.5)
+        static let stageWidth: CGFloat = 540
         /// The space between a reading page's parts.
-        static let readingGap: CGFloat = 22
+        static let readingGap: CGFloat = 16
         /// Make it yours: the gap and hairline between the accent and the light (Oct 9).
-        static let sectionGap: CGFloat = 56
-        static let personalizeWidth: CGFloat = 540
-        static let importWidth: CGFloat = 600
-        static let extrasWidth: CGFloat = 580
-        static let languageField: CGFloat = 260
+        static let sectionGap: CGFloat = 26
+        static let personalizeWidth: CGFloat = 440
+        static let importWidth: CGFloat = 520
+        static let extrasWidth: CGFloat = 480
+        static let languageField: CGFloat = 220
         /// The words shown to tick before the rest are counted.
         static let importShown = 12
         /// The glass bar, and its width with the keyboard at its right.
-        static let stageBarWidth: CGFloat = 760
-        static let barWideWidth: CGFloat = 1000
-        static let stageBarRadius: CGFloat = 22
-        static let barGap: CGFloat = 24
-        static let barKeyUnit: CGFloat = 22
-        static let instruction = Font.system(size: 15, weight: .medium)
+        static let stageBarWidth: CGFloat = 640
+        static let barWideWidth: CGFloat = 860
+        static let stageBarRadius: CGFloat = 18
+        static let barGap: CGFloat = 18
+        static let barKeyUnit: CGFloat = 18
+        static let instruction = Font.system(size: 13, weight: .medium)
         /// A doing step's one caption, and the line to say, set apart (Oct 9, round two).
-        static let caption = Font.system(size: 16, weight: .semibold)
-        static let script = Font.system(size: 18, weight: .medium, design: .serif)
+        static let caption = Font.system(size: 13.5, weight: .semibold)
+        static let script = Font.system(size: 15, weight: .medium, design: .serif)
         /// The end's two parts, spread out.
-        static let closingGap: CGFloat = 34
+        static let closingGap: CGFloat = 22
     }
 
     // MARK: Marks and the pointer (round three of Oct 6 #3, #8; WorkbenchTokens.Feedback)

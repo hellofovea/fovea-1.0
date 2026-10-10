@@ -188,6 +188,8 @@ extension WorkbenchModel {
     /// with a sample session (so Attached and Floating can be seen).
     func showPreview(_ kind: PreviewKind) {
         previewing = true
+        // A voice that never falls quiet, so the glow shows the whole time it's being chosen.
+        voiceGlow.liveLevel = { 0.62 + 0.22 * sin(Date().timeIntervalSinceReferenceDate * 2.3) }
         switch kind {
         case .aura:
             restingFlow = .dispatchV2
@@ -201,6 +203,7 @@ extension WorkbenchModel {
     func endPreview() {
         guard previewing else { return }
         previewing = false
+        voiceGlow.liveLevel = { [weak live] in live?.level ?? 0 }
         if notchState == .v2Voice || notchState == .v2Board { notchState = .silent }
         removePreviewBoard()
     }

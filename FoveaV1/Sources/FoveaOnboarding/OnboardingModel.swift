@@ -183,6 +183,8 @@ final class OnboardingModel {
     var notchDensity: NotchDensity = .spacious
     /// "Clear my screen" was pressed: the other apps are hidden until the end.
     var screenCleared = false
+    /// The permissions Fovea has asked macOS for (its button pressed once).
+    var asked: Set<Permission> = []
     /// Open Fovea at login, as "You're set" offers it.
     var openAtLogin = true
     /// A word on the board mid-task ("That missed the pull requests."), in place of the instruction
@@ -352,7 +354,7 @@ final class OnboardingModel {
         self.options = options
         pace = options.smoke ? 0.02 : (options.pace ?? 1)
         typing = !options.noTyping
-        var flow = Flow(start: options.step ?? .signIn)
+        var flow = Flow(start: options.step ?? .name)
         if let step = options.step { flow.jump(to: step) }
         flow.language = Language.preferred(Locale.preferredLanguages)
         self.flow = flow
@@ -543,6 +545,8 @@ final class OnboardingModel {
     /// Sets the stage for a step: the Island, the windows, what the practice screen holds.
     func enter(_ step: Step) {
         cancelWaits()
+        // The notch pulled down for Make it yours goes back up when it's done.
+        if step != .makeItYours { host?.previewAura(false) }
         stopMicTest()
         stepStarted = Date()
         skipShown = step.skip == .now
@@ -572,14 +576,9 @@ final class OnboardingModel {
         case .makeItYours:
             showIsland(.auraPreview, OT.Motion.barOpen)
         case .permissions:
-            dragTried = false
-            captionText = Copy.permissionCaptions[flow.allowed.contains(.accessibility) ? 1 : 0]
-            showIsland(.dragCaption, OT.Motion.open)
+            // A button for each list (Oct 9: no drag): Fovea asks, then opens the list.
             let pane: Permission = flow.allowed.contains(.accessibility) ? .screenRecording : .accessibility
             animate(OT.Motion.calm) { settingsPane = pane }
-            // The real System Settings, at the list (it opens where it was last left).
-            if pane == .screenRecording { host?.keepResumePoint() }
-            host?.openPermission(pane)
         case .microphone:
             micPhase = .waiting
             say(copy.caption, hold: false)
@@ -748,6 +747,14 @@ final class OnboardingModel {
     func showIsland(_ phase: IslandPhase, _ animation: Animation) {
         animate(animation) { island = phase }
         guard let host else { return }
+        // Nothing at the notch before the teaching starts (Oct 9), but Make it yours, where the
+        // notch pulls down to show the light and the look as they're chosen.
+        guard notchTaught || (step == .makeItYours && phase == .auraPreview) else {
+            captionShown = false
+            host.caption(nil, draggable: false)
+            host.previewAura(false)
+            return
+        }
         switch phase {
         case .rest:
             captionShown = false
@@ -777,9 +784,17 @@ final class OnboardingModel {
         }
     }
 
+    /// The notch has a part in the run from Point and send on; before it, it stays as it is.
+    var notchTaught: Bool { step.stage.rawValue >= Stage.pointAndSay.rawValue }
+
+    /// The pages' glass and words: light or dark as the Mac is at the start, then as the person
+    /// picks the notch's glass in Make it yours (Oct 9).
+    var boardDark: Bool { notchAppearance == .dark }
+
     /// One line under the notch, typed out. Held lines go back to what the step showed once read.
     func say(_ text: String, hold: Bool) {
         animate(OT.Motion.content) { captionText = text }
+        guard notchTaught else { return }
         if step == .permissions {
             showIsland(.dragCaption, OT.Motion.open)
         } else if island == .rest || island == .caption || island == .dragCaption || !captionShown {
@@ -798,7 +813,7 @@ final class OnboardingModel {
     /// A held line goes back to the step's own after a moment.
     private func scheduleCaptionReturn(for text: String) {
         after(holdTime(for: text), "caption") { [weak self] in
-            guard let self, self.captionShown else { return }
+            guard let self, self.captionShown, self.notchTaught else { return }
             self.animate(OT.Motion.content) { self.captionText = self.copy.caption }
             self.host?.caption(self.captionText, draggable: self.step == .permissions)
         }
@@ -873,6 +888,18 @@ final class OnboardingModel {
         }
         host?.prefs.language = language
         sound.cue(.tick)
+    }
+
+    /// A permission's button: macOS is asked (it adds Fovea to the list, and may show its own
+    /// prompt), then System Settings opens at that list.
+    func askFor(_ permission: Permission) {
+        sound.cue(.tick)
+        if permission == .screenRecording { host?.keepResumePoint() }
+        animate(OT.Motion.content) {
+            _ = asked.insert(permission)
+            settingsPane = permission
+        }
+        host?.requestPermission(permission)
     }
 
     func setOpenAtLogin(_ on: Bool) {

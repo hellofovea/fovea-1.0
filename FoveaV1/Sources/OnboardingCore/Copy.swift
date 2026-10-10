@@ -32,16 +32,16 @@ public enum Copy {
         let dictation = keys.spoken(.dictation)
         let keysHelp = "Keys not lighting up? Allow Device Control and Data Access, and set Keyboard › Press 🌐 key to Do Nothing."
         switch step {
-        case .signIn:
-            return StepCopy(
-                caption: "Hi. I live up here.",
-                title: "Sign in to Fovea",
-                body: "With your email, so your settings and history are yours.",
-                button: "Continue")
         case .name:
             return StepCopy(
-                caption: "Hi. I live up here.",
+                caption: "",
                 title: "What should we call you?",
+                button: "Continue")
+        case .signIn:
+            return StepCopy(
+                caption: "",
+                title: "Sign up with your email",
+                body: "So your settings and history stay yours.",
                 button: "Continue")
         case .hello:
             // Greeted by name (Oct 9), then the one line (Oct 8).
@@ -49,7 +49,7 @@ public enum Copy {
             return StepCopy(
                 caption: who.map { "Hi, \($0). I live up here." } ?? "Hi. I live up here.",
                 title: who.map { "Hello, \($0)." } ?? "Hello.",
-                body: "Point at anything, say what you want.",
+                body: "Talk to any agent from your window.",
                 button: "Begin")
         case .makeItYours:
             return StepCopy(
@@ -62,7 +62,7 @@ public enum Copy {
             return StepCopy(
                 caption: permissionCaptions[0],
                 title: "Grant Fovea Access",
-                help: "Already in a list? Turn its switch on. Not there? Drag the line from the notch onto the list.",
+                help: "Click Allow, then turn Fovea's switch on in the list System Settings opens. Not in the list? Click + under it and choose Fovea from Applications.",
                 skipLabel: "Skip for now",
                 skipNote: "Fovea's keys and pictures won't work until you allow both.")
         case .microphone:

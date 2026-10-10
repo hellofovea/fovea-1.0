@@ -34,6 +34,8 @@ protocol OnboardingHost: AnyObject {
     /// The person's choices, as the island and the window read them.
     var prefs: FoveaPrefs { get set }
     func openPermission(_ permission: OnboardingCore.Permission)
+    /// Asks macOS for a permission (its own prompt, and Fovea added to the list), then opens it.
+    func requestPermission(_ permission: OnboardingCore.Permission)
     func keepResumePoint()
     func reopen()
     func clearScreen()
@@ -90,7 +92,7 @@ extension OnboardingModel: IslandDirector {
             if case .voice = island, step == .dictation { dictationTarget = nil }
             island = .rest
             // A held line goes back to the step's own once the island rests.
-            if !captionText.isEmpty, captionShown { host?.caption(captionText, draggable: step == .permissions) }
+            if !captionText.isEmpty, captionShown, notchTaught { host?.caption(captionText, draggable: false) }
         }
     }
 

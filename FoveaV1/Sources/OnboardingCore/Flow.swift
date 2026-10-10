@@ -61,7 +61,7 @@ public struct Flow: Equatable, Sendable {
     public private(set) var records: [PracticeRecord] = []
     public private(set) var finished = false
 
-    public init(start: Step = .signIn) {
+    public init(start: Step = .name) {
         step = start
     }
 
