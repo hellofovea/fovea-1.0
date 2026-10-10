@@ -866,14 +866,9 @@ struct ClearScreen: View {
         // Set apart in a card of its own, the accent on its button (Oct 9, late: it went unseen).
         let accent = model.accentColor
         VStack(spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: model.screenCleared ? "checkmark.circle.fill" : "sparkles")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(accent)
-                Text(model.screenCleared ? "Your screen is clear" : "Start on a clear screen")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(ink.primary)
-            }
+            Text(model.screenCleared ? "Your screen is clear" : "Start on a clear screen")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(ink.primary)
             Text(model.screenCleared ? "Your apps and the desktop's icons come back when the tour ends."
                  : "For the tour, Fovea shows you around on a clear screen, so your other apps and the desktop's icons hide for now. They'll come back when the tour ends.")
                 .font(.system(size: 12)).foregroundStyle(ink.secondary)

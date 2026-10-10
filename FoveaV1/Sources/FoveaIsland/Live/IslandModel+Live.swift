@@ -242,22 +242,27 @@ extension WorkbenchModel {
         removePreviewBoard()
     }
 
-    /// One sample session on the board, for a look at it.
+    /// Three sample sessions on the board (one waiting on you, one done, one at work), for a look
+    /// at it: one row didn't show a change of size (Oct 10).
     private func stagePreviewBoard() {
         if v2Sessions.isEmpty {
-            v2Sessions.insert(Self.previewSessionID)
-            if !agentTasks.contains(where: { $0.id == Self.previewSessionID }),
-               let sample = agentTasks.first(where: { DispatchV2.sampleIds.contains($0.id) && $0.state == .working }) {
-                agentTasks.append(sample.renamed(Self.previewSessionID))
+            let wanted: [AgentTaskState] = [.needsYou, .complete, .working]
+            for (i, state) in wanted.enumerated() {
+                let id = Self.previewSessionID + "-\(i)"
+                guard !agentTasks.contains(where: { $0.id == id }),
+                      let sample = agentTasks.first(where: { DispatchV2.sampleIds.contains($0.id) && $0.state == state }) else { continue }
+                agentTasks.append(sample.renamed(id))
+                v2Sessions.insert(id)
             }
         }
         showAgentPanel(pinned: true)
     }
 
     private func removePreviewBoard() {
-        guard v2Sessions.contains(Self.previewSessionID) else { return }
-        v2Sessions.remove(Self.previewSessionID)
-        agentTasks.removeAll { $0.id == Self.previewSessionID }
+        let ids = (0..<3).map { Self.previewSessionID + "-\($0)" }
+        guard ids.contains(where: v2Sessions.contains) else { return }
+        for id in ids { v2Sessions.remove(id) }
+        agentTasks.removeAll { ids.contains($0.id) }
     }
 
     static let previewSessionID = "t-preview"

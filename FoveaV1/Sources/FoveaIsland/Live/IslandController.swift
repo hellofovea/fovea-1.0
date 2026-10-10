@@ -24,6 +24,7 @@ package final class IslandController {
     private let watcher = PermissionWatcher()
     private var screenObserver: Any?
     private var previewTask: Task<Void, Never>?
+    private var hideTask: Task<Void, Never>?
     private var lastPrefs: FoveaPrefs
     /// A choice made in Settings shows at the notch a moment. The first run turns this off: it
     /// shows its choices itself, for as long as they're being made.
@@ -107,6 +108,8 @@ package final class IslandController {
         self.panel = panel
         self.hosting = hosting
         live.panel = panel
+        // Off screen until the island has something to show.
+        updatePresence()
     }
 
     private func rebuild() {
@@ -158,6 +161,35 @@ package final class IslandController {
             inside = false
         }
         if panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
+    }
+
+    /// The island's window is the size of the screen and on every Space; up while it has nothing to
+    /// show, it covered the full-screen apps' Spaces in Mission Control (Oct 10: they showed black).
+    /// So it's on screen only while the island is: open, previewing, capturing, a chat pulled out, a
+    /// mark fading. At rest it shows nothing the hardware's notch doesn't (a moment after the
+    /// island closes, so its spring finishes).
+    private func updatePresence() {
+        guard let panel, live.smoke == nil else { return }
+        let needed = model.notchState != .silent || model.previewing || model.capturing || model.highlighting
+            || model.v2DragOut != nil || !model.v2Detached.isEmpty || !model.highlights.isEmpty || !model.flights.isEmpty
+        if needed {
+            hideTask?.cancel()
+            hideTask = nil
+            if !panel.isVisible {
+                panel.reassert()
+                panel.orderFrontRegardless()
+            }
+            return
+        }
+        guard panel.isVisible, hideTask == nil else { return }
+        hideTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(700))
+            guard let self, !Task.isCancelled else { return }
+            self.hideTask = nil
+            let still = self.model.notchState == .silent && !self.model.previewing && !self.model.capturing
+                && !self.model.highlighting && self.model.v2DragOut == nil && self.model.v2Detached.isEmpty
+            if still { self.panel?.orderOut(nil) }
+        }
     }
 
     /// ⌘'s crosshair and ⌥'s accent arrow, over any app; the app's own pointer otherwise.
@@ -216,10 +248,12 @@ package final class IslandController {
     private func observeModel() {
         withObservationTracking {
             _ = model.notchState; _ = model.capturing; _ = model.highlighting; _ = model.v2DragOut; _ = model.v2Detached
+            _ = model.previewing; _ = model.highlights; _ = model.flights
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.updateClickThrough()
                 self?.updatePointer()
+                self?.updatePresence()
                 self?.observeModel()
             }
         }
@@ -263,7 +297,7 @@ package final class IslandController {
 
     /// The notch shows the choice a moment: the Dispatch bar with its glow, or a sample of the
     /// board (so Attached and Floating can be seen), then rests. No microphone.
-    package func showPreview(_ kind: Preview, seconds: Double = 2.6) {
+    package func showPreview(_ kind: Preview, seconds: Double = 4) {
         previewTask?.cancel()
         model.showPreview(kind == .aura ? .aura : .panel)
         previewTask = Task { [weak self] in

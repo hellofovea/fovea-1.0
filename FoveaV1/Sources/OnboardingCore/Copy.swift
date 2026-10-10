@@ -192,7 +192,7 @@ public enum Copy {
         case (_, .feedbackKey):
             return "Point at the feedback window and press \(dictation)."
         case (_, .feedbackLanded):
-            return "Tell us what you thought. Press \(dictation) when you're done."
+            return "Tell us what you think. Press \(dictation) when you're done."
         case (_, .replyKey):
             return "Now point at Messages and press \(dictation)."
         case (_, .replyLanded):

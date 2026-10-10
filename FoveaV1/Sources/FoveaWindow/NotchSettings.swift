@@ -62,15 +62,10 @@ struct NotchPane: View {
         // seven colors it makes. The preview sits on the board and is always listening, so every
         // drag shows on the notch the moment it's made.
         // The notch's look (Oct 9): Liquid Glass, light or dark; what opens below attached to the
-        // top edge or floating under it; Compact or Spacious. Shown on the picture as it's chosen,
-        // and on the real notch a moment.
-        SettingsSection("Look", note: "Liquid Glass at the top of your screen. Only the notch itself stays black.") {
+        // top edge or floating under it; Compact or Spacious. No picture of it here (Oct 10): the
+        // real notch shows each choice as it's made.
+        SettingsSection("Look", note: "The notch at the top of your screen shows each change as you make it.") {
             SettingsCard {
-                NotchLookPreview(look: model.notchLook)
-                    .frame(height: 150)
-                    .cardPadding()
-                    .animation(motion.animation(.swap), value: model.notchLook)
-                RowDivider()
                 SettingsRow("Glass", detail: prefs.notchAppearance == .light ? "Light glass, dark words." : "Dark glass, white words.") {
                     SettingsSegments(segments: NotchAppearance.allCases.map { ($0, $0.title) }, selection: prefs.notchAppearance) { a in
                         model.animate(.swap) { model.prefs.notchAppearance = a }
@@ -96,13 +91,8 @@ struct NotchPane: View {
         }
         .id("notch-look")
 
-        SettingsSection("Glow", note: "The light in the voice bar while you talk to an agent.") {
+        SettingsSection("Glow", note: "The light in the voice bar while you talk to an agent. The notch glows with it as you choose.") {
             SettingsCard {
-                NotchPreview(glow: glow.look(hue: prefs.glowHue, spread: prefs.glowSpread, drift: prefs.glowDrift > 0.001),
-                             look: model.notchLook)
-                    .frame(height: 132)
-                    .cardPadding()
-                RowDivider()
                 SettingsRow("Palette", detail: glow == .mono ? "Mono is gray: there's no hue to turn." : nil) {
                     Picker(selection: $model.prefs.glow.animation(motion.animation(.swap))) {
                         ForEach(GlowChoice.templates, id: \.self) { Text($0.title).tag($0) }
@@ -160,7 +150,7 @@ struct NotchPane: View {
         SettingsSection("Opening the board") {
             SettingsCard {
                 SettingsRow("Open when the pointer reaches the notch",
-                            detail: "The board shows what your agents are doing. It never opens empty.") {
+                            detail: "The board shows what your agents are doing; with nothing running, it says hello.") {
                     InkToggle(title: "Open when the pointer reaches the notch", isOn: $model.prefs.hoverOpens.animation(motion.animation(.swap)))
                 }
                 if prefs.hoverOpens {
@@ -221,72 +211,6 @@ struct NotchPane: View {
         }
     }
 
-}
-
-/// The top of a MacBook's screen at its own size, and Fovea's voice bar listening in it, the glow
-/// drawn by the Notch Workbench's renderer from its demo voice. Always live, as the Workbench's
-/// notch is, so a change shows as it's made.
-struct NotchPreview: View {
-    let glow: VoiceGlowLook
-    let look: NotchLook
-
-    var body: some View {
-        let screen = RoundedRectangle(cornerRadius: 10, style: .continuous)
-        Color.clear
-            .overlay { PreviewWallpaper() }
-            .overlay(alignment: .top) { PreviewMenuBar() }
-            .overlay(alignment: .top) { VoiceBarFigure(glow: glow, look: look) }
-            .clipShape(screen)
-            .overlay(screen.strokeBorder(.black.opacity(0.12), lineWidth: 0.5))
-            .accessibilityElement()
-            .accessibilityLabel("Your notch while Fovea listens for an agent")
-    }
-}
-
-/// The voice bar, black as the shipping Island draws it, listening: the glow rises from its
-/// bottom edge, clipped to its outline.
-private struct VoiceBarFigure: View {
-    @Environment(\.motion) private var motion
-    let glow: VoiceGlowLook
-    let look: NotchLook
-    /// The driver keeps the voice's envelope from frame to frame, as the Workbench's does.
-    @State private var engine = VoiceGlowEngine()
-    /// Snapshots draw one still frame, mid-phrase, as the Workbench's do; `--only glow-live`
-    /// keeps it moving.
-    private static let snapshot = CommandLine.arguments.contains("--snapshot")
-        && !CommandLine.arguments.contains("glow-live")
-
-    var body: some View {
-        let G = NotchPreviewGeometry.self
-        let edge = IslandEdge(size: G.bar, topRadius: G.topRadius, bottomRadius: G.bottomRadius, earY: 0)
-        let still = Self.snapshot || motion.reduce
-        TimelineView(.animation(minimumInterval: 1 / GlowTokens.frameRate, paused: still)) { context in
-            Canvas { ctx, _ in
-                let frame = still
-                    ? engine.still(at: GlowTokens.stillTime, geometry: GlowTokens.wide, reduceMotion: motion.reduce)
-                    : engine.frame(at: context.date, geometry: GlowTokens.wide, reduceMotion: motion.reduce)
-                // On light glass the colors are laid over white, not lit on black: drawn stronger
-                // (the island's `lightGlassBoost`).
-                var shown = glow
-                if look.appearance == .light { shown.opacity *= 1.7 }
-                VoiceGlowRenderer.draw(in: &ctx, edge: edge, frame: frame, look: shown)
-            }
-        }
-        .frame(width: G.bar.width, height: G.bar.height)
-        // Flattened into one image before it reaches the screen. Drawn straight to it, most moving
-        // frames lost everything under the band line: a black stripe along the bar's foot (14 of
-        // 23 frames in `--only glow-live`; flattened, none).
-        .drawingGroup()
-        .background { NotchGlass(shape: Rectangle(), look: look) }
-        .overlay(alignment: .top) {
-            // The notch itself stays black.
-            UnevenRoundedRectangle(bottomLeadingRadius: 8, bottomTrailingRadius: 8)
-                .fill(.black)
-                .frame(width: G.notch.width, height: G.notch.height)
-        }
-        .clipShape(IslandShape(topRadius: G.topRadius, bottomRadius: G.bottomRadius))
-        .allowsHitTesting(false)
-    }
 }
 
 /// The hue, picked on the color wheel laid flat: a spectrum track, its thumb filled with the hue

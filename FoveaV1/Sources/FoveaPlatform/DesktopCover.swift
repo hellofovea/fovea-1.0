@@ -20,7 +20,8 @@ public enum DesktopCover {
         let iconLevel = Int(CGWindowLevelForKey(.desktopIconWindow))
         let cover = NSWindow(contentRect: screen.frame, styleMask: [.borderless], backing: .buffered, defer: false)
         cover.level = NSWindow.Level(rawValue: iconLevel + 1)
-        cover.collectionBehavior = [.stationary, .ignoresCycle, .canJoinAllSpaces]
+        // Its own Space only: a window on every Space showed in Mission Control over the others.
+        cover.collectionBehavior = [.stationary, .ignoresCycle]
         cover.ignoresMouseEvents = true
         cover.isReleasedWhenClosed = false
         cover.hasShadow = false
