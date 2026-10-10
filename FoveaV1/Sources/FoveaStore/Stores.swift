@@ -274,8 +274,21 @@ public struct OnboardingState: Codable, Equatable, Sendable {
     /// The onboarding's own resume point, as it encodes it (FoveaOnboarding).
     public var resume: Data?
     public var hiddenApps: [HiddenApp] = []
+    /// Left part way with "Exit tour" (Oct 10): Fovea opens to Home, and the tour picks up from
+    /// there when asked (Home's link, or Fovea › Resume the Tour), at `resume`.
+    public var paused = false
 
     public init() {}
+
+    // Decoding tolerates a file written before a field existed.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        complete = (try? c.decode(Bool.self, forKey: .complete)) ?? false
+        completedAt = try? c.decode(Date.self, forKey: .completedAt)
+        resume = try? c.decode(Data.self, forKey: .resume)
+        hiddenApps = (try? c.decode([HiddenApp].self, forKey: .hiddenApps)) ?? []
+        paused = (try? c.decode(Bool.self, forKey: .paused)) ?? false
+    }
 }
 
 @MainActor

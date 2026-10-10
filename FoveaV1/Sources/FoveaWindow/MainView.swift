@@ -678,8 +678,11 @@ struct CapturesPage: View {
                             // The top is above the inset, so scrolling to it shows the inset too.
                             Color.clear.frame(height: model.cardSpacing.metrics.contentInset).id("top")
                             // Home greets you by name (Oct 9), on the first page only.
-                            if !day, model.query.tokens.isEmpty, model.query.kind == nil, !model.greetingName.isEmpty {
-                                HomeGreeting(name: model.greetingName)
+                            if !day, model.query.tokens.isEmpty, model.query.kind == nil,
+                               !model.greetingName.isEmpty || model.tourUnfinished {
+                                HomeGreeting(name: model.greetingName, tourUnfinished: model.tourUnfinished) {
+                                    model.onResumeTour?()
+                                }
                             }
                             content(layout)
                         }
@@ -983,12 +986,30 @@ struct ToastRise: ViewModifier, Animatable {
 struct HomeGreeting: View {
     @Environment(\.palette) private var palette
     let name: String
+    /// The tour was put away part way: a way back to it, under the greeting (Oct 10).
+    var tourUnfinished = false
+    var resume: () -> Void = {}
 
     var body: some View {
-        Text("Hello, \(name)")
-            .font(.system(size: 26, weight: .semibold))
-            .foregroundStyle(palette.text)
-            .padding(.bottom, 18)
-            .accessibilityAddTraits(.isHeader)
+        VStack(alignment: .leading, spacing: 8) {
+            Text(name.isEmpty ? "Hello" : "Hello, \(name)")
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundStyle(palette.text)
+                .accessibilityAddTraits(.isHeader)
+            if tourUnfinished {
+                Button(action: resume) {
+                    HStack(spacing: 4) {
+                        Text("Finish the tour")
+                        Image(systemName: "arrow.right").font(.system(size: 10, weight: .semibold))
+                    }
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(palette.accent)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Pick the tour up where you left it")
+            }
+        }
+        .padding(.bottom, 18)
     }
 }

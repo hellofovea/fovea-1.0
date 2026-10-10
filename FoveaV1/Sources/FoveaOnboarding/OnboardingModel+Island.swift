@@ -39,6 +39,8 @@ protocol OnboardingHost: AnyObject {
     func clearScreen()
     var screenCleared: Bool { get }
     func finished()
+    /// "Exit tour": the place kept, everything put back, Home.
+    func exitTour()
 }
 
 extension OnboardingModel: IslandDirector {

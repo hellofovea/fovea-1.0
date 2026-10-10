@@ -30,6 +30,7 @@ bundle is signed with your Apple Development identity, so the grants survive a r
   8. Bring your words.
   9. You're all set, with "Open Fovea at login".
   10. Home.
+- **Any time in the first run,** "Exit tour" (bottom left) puts it away, keeping the place: Home's "Finish the tour", or Fovea › Resume the Tour, picks it up.
 - **After that,** Home ("Hello, Sam") and Settings. Closing the window doesn't quit; the Dock icon
   brings it back.
 - **Always,** the notch:

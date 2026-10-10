@@ -44,7 +44,7 @@ struct AppOptions {
 }
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     let options = AppOptions.parse()
     let location = DataLocation.resolve()
     private(set) var prefs: PrefsStore!
@@ -122,23 +122,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         home = HomeWindowController(stores: WindowStores(prefs: prefs, captures: captures, dictionary: dictionary))
         NSApp.mainMenu = home.mainMenu(quit: #selector(quit(_:)), quitTarget: self)
+        addResumeTourItem()
+        home.onResumeTour = { [weak self] in self?.resumeTour(nil) }
 
         // The first run, until it's done (and resumed where it was after Screen Recording's Quit &
-        // Reopen); then Home, unless Fovea opened at login.
-        if !onboarding.state.complete && !options.openHome {
-            let run = OnboardingCoordinator(prefs: prefs, island: island, dictionary: dictionary, state: onboarding) { [weak self] in
-                guard let self else { return }
-                self.firstRun = nil
-                self.home.show()
-                self.observeLoginItem()
-            }
-            firstRun = run
-            run.start()
+        // Reopen); then Home, unless Fovea opened at login. Put away with Exit tour, it waits for
+        // the person: Home, with a way back to it (Oct 10).
+        if !onboarding.state.complete && !onboarding.state.paused && !options.openHome {
+            startTour()
         } else {
+            home.tourUnfinished = !onboarding.state.complete
             if !options.noActivate { NSApp.activate(ignoringOtherApps: true) }
             if !LoginItem.launchedAtLogin || options.openHome { home.show() }
             observeLoginItem()
         }
+    }
+
+    /// The first run, from the start or from where it was left.
+    private func startTour() {
+        let run = OnboardingCoordinator(prefs: prefs, island: island, dictionary: dictionary, state: onboarding) { [weak self] in
+            guard let self else { return }
+            self.firstRun = nil
+            self.home.tourUnfinished = false
+            self.home.show()
+            self.observeLoginItem()
+        }
+        run.onExit = { [weak self] in
+            guard let self else { return }
+            self.firstRun = nil
+            self.home.tourUnfinished = true
+            self.home.show()
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        firstRun = run
+        run.start()
+    }
+
+    /// Home's "Finish the tour", and Fovea › Resume the Tour: the first run picks up where it was.
+    @objc func resumeTour(_ sender: Any?) {
+        guard firstRun == nil, !onboarding.state.complete else { return }
+        onboarding.update { $0.paused = false }
+        home.tourUnfinished = false
+        home.window.orderOut(nil)
+        startTour()
+    }
+
+    /// Fovea › Resume the Tour, under About, while the tour is put away.
+    private func addResumeTourItem() {
+        guard let menu = NSApp.mainMenu?.items.first?.submenu else { return }
+        let item = NSMenuItem(title: "Resume the Tour", action: #selector(resumeTour(_:)), keyEquivalent: "")
+        item.target = self
+        menu.insertItem(item, at: 1)
+    }
+
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(resumeTour(_:)) {
+            item.isHidden = onboarding.state.complete
+            return firstRun == nil && !onboarding.state.complete
+        }
+        return true
     }
 
     /// "Open at login" in Settings › Account: registered with macOS as it changes.

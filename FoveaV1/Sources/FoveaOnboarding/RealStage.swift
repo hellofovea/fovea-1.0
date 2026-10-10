@@ -83,6 +83,7 @@ struct RealStage: View {
         if model.step.isReading { return nil }
         var rects: [CGRect] = []
         if let bar = model.targets[.board] { rects.append(bar) }
+        if let corner = model.targets[.corner] { rects.append(corner.insetBy(dx: -4, dy: -4)) }
         switch model.practiceScreen {
         case .empty: break
         case .page:

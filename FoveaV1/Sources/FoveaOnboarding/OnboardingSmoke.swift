@@ -100,6 +100,17 @@ package enum OnboardingSmoke {
         model.jump(to: .home); await settle(0.6)
         check("You're all set: nothing at the notch", island.probeState == "silent", island.probeState)
 
+        // Exit tour, at any step: the place kept, the stage away, the notch at rest.
+        model.jump(to: .followUp); await settle(0.6)
+        var left = false
+        run.onExit = { left = true }
+        model.exitTour(); await settle(0.4)
+        let kept = run.savedResumeStep
+        check("Exit tour puts the run away and opens Home", left)
+        check("…keeping its place (asking more goes back to the task that makes the session)", kept == .packList, "\(String(describing: kept))")
+        check("…and marks the tour as put away, not done", run.tourPaused && !run.tourComplete)
+        check("…the notch at rest", island.probeState == "silent", island.probeState)
+
         print(failures.isEmpty ? "SMOKE PASS" : "SMOKE FAIL: \(failures.count) check(s)")
         for name in failures { print("  failed: \(name)") }
         return failures.isEmpty

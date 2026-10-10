@@ -806,6 +806,23 @@ final class OnboardingModel {
         showIsland(.rest, OT.Motion.close)
     }
 
+    /// "Exit tour" (Oct 10): at any step, the place kept; Home opens, and the tour picks up from
+    /// there whenever the person wants.
+    func exitTour() {
+        sound.cue(.tick)
+        cancelWaits()
+        host?.exitTour()
+    }
+
+    /// How far the run is, 0 to 1, for the progress line: the steps done, and the part of this one.
+    var progress: Double {
+        let all = Step.allCases
+        guard let i = all.firstIndex(of: step), all.count > 1 else { return 0 }
+        let beats = step.beats.count
+        let within = beats == 0 ? 0 : Double(flow.done.count) / Double(beats)
+        return min(1, (Double(i) + min(within, 0.99)) / Double(all.count - 1))
+    }
+
     // MARK: Make it yours
 
     // Each choice goes to the prefs the island and the window read, so the real notch shows it as
@@ -813,8 +830,7 @@ final class OnboardingModel {
     func setAccent(_ accent: AccentName) {
         animate(OT.Motion.calm) { flow.personal.accent = accent }
         host?.prefs.accent = accent
-        // The accent shows on the notch's board a moment (Send, the chosen chip).
-        host?.previewPanel()
+        // The accent shows on the progress line at the foot of the page (Oct 10), not the notch.
         sound.cue(.tick)
     }
     func setAura(_ aura: AuraPalette) {

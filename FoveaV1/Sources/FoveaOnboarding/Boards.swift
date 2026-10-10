@@ -47,6 +47,15 @@ struct StageBoard: View {
                                                                 removal: .opacity.animation(OT.Motion.content)))
             }
         }
+        // On every page: how far the run is, in the accent (Oct 10), and the way out.
+        .overlay(alignment: .bottom) {
+            TourProgress(model: model)
+                .padding(.bottom, OT.Board.progressBottom)
+        }
+        .overlay(alignment: .bottomLeading) {
+            TourCorner(model: model, onPage: model.step.isReading)
+                .padding(.leading, 20).padding(.bottom, 20)
+        }
         .environment(\.boardInk, BoardInk(dark: model.boardDark))
         .environment(\.colorScheme, model.boardDark ? .dark : .light)
         .animation(OT.Motion.calm, value: model.boardDark)
@@ -93,9 +102,6 @@ struct ReadingPage: View {
         }
         .frame(width: OT.Board.stageWidth)
         .frame(width: OT.Display.size.width, height: OT.Display.size.height)
-        .overlay(alignment: .bottomLeading) {
-            MuteButton(model: model).padding(24)
-        }
     }
 
     private var extrasWidth: CGFloat {
@@ -174,5 +180,61 @@ struct GlassBar: View {
         .overlay(RoundedRectangle(cornerRadius: OT.Board.stageBarRadius, style: .continuous).strokeBorder(ink.hairline))
         .playTarget(.board, model)
         .animation(OT.Motion.board, value: model.keyboardWanted)
+    }
+}
+
+// MARK: Every page: how far, and the way out (Oct 10)
+
+/// How far the run is: a short thin line at the foot of the screen, filled in the accent (so the
+/// accent shows here as it's picked, the notch staying up), with no numbers.
+struct TourProgress: View {
+    let model: OnboardingModel
+    @Environment(\.boardInk) private var ink
+
+    var body: some View {
+        let B = OT.Board.self
+        Capsule()
+            .fill(ink.hairline)
+            .frame(width: B.progressWidth, height: B.progressHeight)
+            .overlay(alignment: .leading) {
+                Capsule()
+                    .fill(model.accentColor)
+                    .frame(width: max(B.progressHeight, B.progressWidth * model.progress), height: B.progressHeight)
+            }
+            .animation(OT.Motion.calm, value: model.progress)
+            .animation(OT.Motion.calm, value: model.flow.personal.accent)
+            .allowsHitTesting(false)
+            .accessibilityElement()
+            .accessibilityLabel("Tour progress")
+            .accessibilityValue(Text("\(Int(model.progress * 100)) percent"))
+    }
+}
+
+/// The sound and Exit tour, in the bottom left of every page. Exit puts the tour away at once,
+/// keeping the place: Home opens, and the tour picks up from there. Off a page to read, the two
+/// sit on glass of their own, over whatever the desktop shows.
+struct TourCorner: View {
+    let model: OnboardingModel
+    let onPage: Bool
+    @Environment(\.boardInk) private var ink
+
+    var body: some View {
+        HStack(spacing: 6) {
+            MuteButton(model: model)
+            Button(action: { model.exitTour() }) {
+                Text("Exit tour")
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(ink.secondary)
+                    .padding(.horizontal, 8).frame(height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Put the tour away. Pick it up from Home whenever you like.")
+        }
+        .padding(.horizontal, 4)
+        .background {
+            if !onPage { Capsule().fill(.ultraThinMaterial) }
+        }
+        .playTarget(.corner, model)
     }
 }

@@ -43,6 +43,8 @@ package final class OnboardingCoordinator: OnboardingHost {
     private var lastPane: OnboardingCore.Permission?
     /// The run is over: Home opens.
     private let onDone: () -> Void
+    /// "Exit tour" (Oct 10): the run put away part way; Home opens, with a way back.
+    package var onExit: () -> Void = {}
 
     package init(prefs: PrefsStore, island: IslandController, dictionary: DictionaryStore, state: OnboardingStateStore,
                  onDone: @escaping () -> Void) {
@@ -285,8 +287,38 @@ package final class OnboardingCoordinator: OnboardingHost {
         state.update { $0.hiddenApps = [] }
     }
 
-    /// "You're all set" → Done: the apps back, the practice gone, the first run done, and Home.
-    func finished() {
+    /// What the smoke reads back after Exit tour.
+    var savedResumeStep: Step? {
+        state.state.resume.flatMap { try? JSONDecoder().decode(ResumePoint.self, from: $0) }.flatMap { Step(rawValue: $0.step) }
+    }
+    var tourPaused: Bool { state.state.paused }
+    var tourComplete: Bool { state.state.complete }
+
+    /// "Exit tour" (Oct 10), at any step: the place kept (a step that waits on an earlier one's
+    /// session goes back to the step that makes it), the apps and the desktop back, the stage away,
+    /// the island as on any day; Home opens, and the tour picks up from there when asked.
+    func exitTour() {
+        let step: Step
+        switch model.step {
+        case .hover: step = .weeklyUpdate
+        case .followUp: step = .packList
+        default: step = model.step
+        }
+        let point = ResumePoint(step: step.rawValue, allowed: model.flow.allowed.map(\.rawValue),
+                                personal: model.flow.personal, language: model.flow.language,
+                                agentsOn: model.agentsOn.map(\.rawValue), email: model.flow.email, name: model.flow.name)
+        let data = try? JSONEncoder().encode(point)
+        state.update {
+            $0.resume = data
+            $0.paused = true
+        }
+        putAway()
+        prefsStore.flush()
+        onExit()
+    }
+
+    /// The stage and everything the run changed, put away (the end, or Exit tour).
+    private func putAway() {
         watch?.invalidate()
         watch = nil
         if let pointer { NSEvent.removeMonitor(pointer) }
@@ -299,12 +331,20 @@ package final class OnboardingCoordinator: OnboardingHost {
         island.setChats(nil)
         island.endPreview()
         island.clearSessions()
+        island.rest()
         restoreApps()
-        model.practice.remove()
         for site in model.sites.values { site.close() }
         model.sites = [:]
         model.runner.cancel()
         model.sound.stopAmbient()
+        window?.orderOut(nil)
+        window = nil
+    }
+
+    /// "You're all set" → Done: the apps back, the practice gone, the first run done, and Home.
+    func finished() {
+        putAway()
+        model.practice.remove()
         // The words brought in, into the dictionary.
         if !model.importedWords.isEmpty {
             dictionary.add(model.importedWords.map { (word: $0.word, heardAs: $0.heardAs) })
@@ -314,9 +354,8 @@ package final class OnboardingCoordinator: OnboardingHost {
             $0.complete = true
             $0.completedAt = Date()
             $0.resume = nil
+            $0.paused = false
         }
-        window?.orderOut(nil)
-        window = nil
         onDone()
     }
 }

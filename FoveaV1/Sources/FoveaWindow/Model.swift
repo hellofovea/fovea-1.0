@@ -710,6 +710,9 @@ final class CapturesModel {
     var profileEmail = ""
     /// The name Home greets you by.
     var greetingName: String { profileName.trimmingCharacters(in: .whitespaces) }
+    /// The first run was put away part way (Exit tour, Oct 10): Home offers to finish it.
+    var tourUnfinished = false
+    @ObservationIgnored var onResumeTour: (() -> Void)?
     var profilePhoto: NSImage?
     /// A photo over 2 MB was chosen: said under it for a moment.
     var photoTooLarge = false

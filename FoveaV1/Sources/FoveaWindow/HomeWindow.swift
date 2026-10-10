@@ -81,6 +81,16 @@ package final class HomeWindowController: NSObject {
     private var pendingSettings: String?
 
     /// Brings Home forward, centered the first time.
+    /// The first run put away part way: Home's link back to it, and what it does.
+    package var tourUnfinished: Bool {
+        get { model.tourUnfinished }
+        set { model.tourUnfinished = newValue }
+    }
+    package var onResumeTour: (() -> Void)? {
+        get { model.onResumeTour }
+        set { model.onResumeTour = newValue }
+    }
+
     package func show() {
         refreshNow()
         if !placed { place(); placed = true }

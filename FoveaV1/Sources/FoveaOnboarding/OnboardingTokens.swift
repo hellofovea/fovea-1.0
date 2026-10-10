@@ -459,6 +459,10 @@ enum OT {
         static let script = Font.system(size: 14, weight: .medium, design: .serif)
         /// The end's three parts, each with room around it.
         static let closingGap: CGFloat = 34
+        /// How far the run is: a short thin line at the foot of every page, in the accent.
+        static let progressWidth: CGFloat = 160
+        static let progressHeight: CGFloat = 3
+        static let progressBottom: CGFloat = 34
     }
 
     // MARK: Marks and the pointer (round three of Oct 6 #3, #8; WorkbenchTokens.Feedback)
