@@ -6,6 +6,8 @@ macOS app. Read this before writing code.
 
 ## Current task
 
+**Fovea 1.0 (`FoveaV1/`, Oct 9) is the app now:** the first run, the window and the notch as one `Fovea.app` on the real desktop and the real notch, forked from the three prototypes below (which stay for design work). How to run it and its layout: `FoveaV1/README.md`. What was decided and what departs from the rules here: `docs/v1/V1.md`. Work on the product goes there; the prototypes below are the design references.
+
 Two surfaces, one app, both runnable prototypes:
 
 - The **window UI** (Home + Settings), driven by `AppModel` (`Sources/Fovea/App/AppModel.swift`). Spec: `FABLE_5_1_MASTER_BUILD_PROMPT.md` in the agent handoff folder. The dev team's App UI review (Oct 6), every row's decision and what it departs from here (a Language section, Memory's inferred areas): `docs/window/FEEDBACK_2026-10-06.md`, built in `Prototypes/FoveaCaptures`.
@@ -109,6 +111,8 @@ Required macOS permissions, all with usage descriptions in `Info.plist` (generat
 ## Commands
 
 ```
+v1:      cd FoveaV1 && scripts/bundle.sh [debug] && open build/Fovea.app   # the one app (FoveaV1/README.md)
+         swift test --package-path FoveaV1
 build:   swift build
 run:     swift run Fovea                       # or scripts/bundle-app.sh → build/Fovea.app
 test:    swift test
