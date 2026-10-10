@@ -47,9 +47,9 @@ struct Options {
         o.play = args.contains("--play")
         for arg in args where arg.hasPrefix("--play-from=") { o.playFrom = String(arg.dropFirst("--play-from=".count)); o.play = true }
         for arg in args where arg.hasPrefix("--pace=") { o.pace = Double(arg.dropFirst("--pace=".count)) }
-        o.practiceAgent = args.contains("--practice-agent")
+        o.practiceAgent = args.contains("--practice-agent") || args.contains("--smoke-first-run")
         o.noTyping = args.contains("--no-typing")
-        o.mute = args.contains("--mute")
+        o.mute = args.contains("--mute") || args.contains("--smoke-first-run")
         return o
     }
 }

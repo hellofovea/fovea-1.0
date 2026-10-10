@@ -33,9 +33,10 @@ extension WorkbenchModel {
 
     /// Opens Dispatch Version 2's control board (the hover's panel): from the radio (it stays
     /// until Esc or another choice), from the hover (it closes when the pointer leaves), or after
-    /// Send (the new session in focus a while). Never opens empty (PRD §8).
+    /// Send (the new session in focus a while). Never opens empty (PRD §8); on the real Mac, with
+    /// nothing running, it greets the person instead ("Hello, Ryan. Start building here.", Oct 9).
     func showAgentPanel(pinned: Bool, sent: String? = nil) {
-        guard !v2BoardOrder.isEmpty else { return }
+        guard !v2BoardOrder.isEmpty || live != nil else { return }
         if !panelOpen { panelOpened = Date() }
         if v2Focus == nil || !v2BoardOrder.contains(where: { $0.id == v2Focus }) {
             v2Focus = v2BoardOrder.first?.id
@@ -113,7 +114,11 @@ extension WorkbenchModel {
             panelExit?.cancel()
             panelExit = nil
             panelLeftNotch = nil
-            guard hoverOpens, notchState == .silent, panelArmed, !v2BoardOrder.isEmpty, panelDwell == nil else { return }
+            // The board already up (just sent) and the pointer comes to the notch: it's been
+            // hovered all the same (the first run counts it).
+            if notchState == .v2Board { live?.director?.islandDidEmit(.boardOpened(byHover: true)) }
+            guard hoverOpens, notchState == .silent, panelArmed, !v2BoardOrder.isEmpty || live != nil, panelDwell == nil,
+                  live?.director?.allowsBoard() ?? true else { return }
             // Back just after a hover closed it: the person meant it; no second dwell.
             if let closed = panelHoverClosed, now.timeIntervalSince(closed) < P.reopenWindow {
                 showAgentPanel(pinned: false)

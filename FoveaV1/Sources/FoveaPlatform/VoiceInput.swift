@@ -24,6 +24,10 @@ public struct VoiceResult: Sendable {
     public var text: String
     public var failure: VoiceFailure?
     public var seconds: Double
+
+    public init(text: String, failure: VoiceFailure?, seconds: Double) {
+        self.text = text; self.failure = failure; self.seconds = seconds
+    }
 }
 
 @MainActor

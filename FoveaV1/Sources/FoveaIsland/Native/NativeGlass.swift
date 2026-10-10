@@ -9,6 +9,9 @@ extension EnvironmentValues {
     /// Whether surfaces use Liquid Glass where the system has it. Off for drawings made off screen
     /// (`ImageRenderer`), where glass has nothing behind it to take its color from.
     @Entry var liquidGlass = true
+    /// The real Mac's glass: the system's blur of what's behind the window, not Liquid Glass,
+    /// which bends only what its own window draws (the island's draws nothing under it).
+    @Entry var behindWindowGlass = false
     /// The mock display's color scheme, set where the display sets it (MockScreen), so a panel can
     /// take it back inside the island, which is dark (docs/island/NATIVE.md).
     @Entry var displayScheme: ColorScheme = .dark
@@ -18,6 +21,7 @@ extension EnvironmentValues {
 /// solid rim and a soft shadow. `tint` colors the glass; `interactive` lets it answer the pointer.
 struct GlassSurface<S: Shape>: ViewModifier {
     @Environment(\.liquidGlass) private var liquid
+    @Environment(\.behindWindowGlass) private var behindWindow
     @Environment(\.colorScheme) private var scheme
     let shape: S
     var tint: Color?
@@ -25,7 +29,18 @@ struct GlassSurface<S: Shape>: ViewModifier {
 
     func body(content: Content) -> some View {
         let N = WorkbenchTokens.Native.self
-        if liquid, #available(macOS 26.0, *) {
+        if behindWindow, liquid {
+            let dark = scheme == .dark
+            content
+                .background {
+                    ZStack {
+                        BehindWindowBlur(material: dark ? N.liveMaterialDark : N.liveMaterialLight, dark: dark)
+                        Rectangle().fill(dark ? N.liveTintDark : N.liveTintLight)
+                    }
+                    .clipShape(shape)
+                    .overlay(shape.stroke(dark ? N.liveRimDark : N.liveRimLight, lineWidth: N.rimWidth))
+                }
+        } else if liquid, #available(macOS 26.0, *) {
             content.glassEffect(glass, in: shape)
         } else {
             content
@@ -53,6 +68,31 @@ struct GlassSurface<S: Shape>: ViewModifier {
         if let tint { g = g.tint(tint) }
         if interactive { g = g.interactive() }
         return g
+    }
+}
+
+/// The system's blur of what's behind the window, for the real Mac's glass. The caller's
+/// `clipShape` trims it to the shape (an NSVisualEffectView `maskImage` renders upside down and
+/// inset inside SwiftUI's hosting: Sources/Fovea/Island/IslandMaterialView.swift). Always active:
+/// the island's panel is rarely key, and a blur that followed the window's state would go flat.
+struct BehindWindowBlur: NSViewRepresentable {
+    let material: NSVisualEffectView.Material
+    let dark: Bool
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.blendingMode = .behindWindow
+        view.state = .active
+        update(view)
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) { update(view) }
+
+    private func update(_ view: NSVisualEffectView) {
+        if view.material != material { view.material = material }
+        let appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        if view.appearance?.name != appearance?.name { view.appearance = appearance }
     }
 }
 

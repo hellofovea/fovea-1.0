@@ -114,12 +114,13 @@ public enum AppHider {
         public init(bundleID: String, pid: Int32) { self.bundleID = bundleID; self.pid = pid }
     }
 
-    /// Hides every ordinary app that's showing, but Fovea. Returns what it hid.
+    /// Hides every ordinary app that's showing, but Fovea; Finder too, so its windows go (its
+    /// desktop's icons stay: `DesktopCover` covers them). Returns what it hid.
     @MainActor public static func hideOthers() -> [Hidden] {
         let me = ProcessInfo.processInfo.processIdentifier
         var hidden: [Hidden] = []
         for app in NSWorkspace.shared.runningApplications
-        where app.activationPolicy == .regular && !app.isHidden && app.processIdentifier != me && app.bundleIdentifier != "com.apple.finder" {
+        where app.activationPolicy == .regular && !app.isHidden && app.processIdentifier != me {
             // hide() reports "refused" even when it works; what's hidden is checked by listing.
             _ = app.hide()
             hidden.append(Hidden(bundleID: app.bundleIdentifier ?? "", pid: app.processIdentifier))

@@ -20,7 +20,7 @@ bundle is signed with your Apple Development identity, so the grants survive a r
 ## What you'll see
 
 - **The first time,** the first run:
-  1. "What should we call you?", then sign up with an email or Google. Hello greets you by name. Clear my screen is offered.
+  1. "What should we call you?", then sign up with an email or Google. Hello greets you by name. Clear my screen is offered: it hides the other apps and covers the desktop's icons with your wallpaper.
   2. Make it yours: the accent, the glow, and the notch's Glass, Panels and Size.
   3. Grant Fovea Access. Each list has an Allow button: macOS adds Fovea to it and System Settings opens there, for you to switch Fovea on. Accessibility is seen live; Screen Recording needs one Quit & Reopen, after which the run picks up where it was.
   4. The microphone, then speech recognition (macOS's own prompts), then "Say this out loud".
@@ -68,6 +68,8 @@ bundle is signed with your Apple Development identity, so the grants survive a r
 | `--mute` | No sound |
 | `--demo <state>` | Stage a notch state, with the Workbench's sample sessions and no microphone: `voiceFlow`, `transcribing`, `pasteNotFound`, `error:<name>`, `v2Voice`, `v2Send`, `v2Board`, `v2Chat`, `whole`, `pulled`, `preview:aura`, `preview:panel` |
 | `--data-dir=<path>` | Keep everything there instead of Application Support (a test run of its own) |
+| `--smoke` | The notch walked through its states and checked, then quit: Voiceflow, Dispatch, the board, a session (expanded, asking more, closed, pulled out), the prefs. Its window invisible, no keys or pointer watched, nothing reaching another app, a data folder of its own. Prints each check and `SMOKE PASS`. `--smoke-shots=<folder>` also pictures each state (its window then visible) |
+| `--smoke-first-run` | The first run's teaching walked the same way, the practice agent answering, nothing about the Mac changed (no Dock, no login item, no apps hidden) |
 | `--shot <file.png>` | A picture of Fovea's own windows a moment after launch (`--shot-after=<seconds>`), then quit; no Screen Recording needed. In a first run, `<file>.stage.png` too, drawn off screen |
 | `FOVEA_NO_ACTIVATE=1` | Stay in the background |
 

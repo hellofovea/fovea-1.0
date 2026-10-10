@@ -134,7 +134,7 @@ extension OnboardingModel {
             lines += ["Keep the packing list as it is laid out: a title, then one \"- item\" per line."]
         }
         lines += ["This is someone's first try of Fovea, which hands you what they point at and what they say.",
-                  "Work only in \"\(folder)\". When you're done, reply with one short sentence saying what you did."]
+                  "Work only in \"\(folder)\". When you're done, reply in two or three short sentences: what you did, and anything worth checking."]
         return lines.joined(separator: "\n")
     }
 
@@ -144,7 +144,7 @@ extension OnboardingModel {
         agentActivity = "Starting"
         if sendsToRealAgent, let executable = agentExecutable {
             let text = turn == 0 ? prompt(for: request)
-                : "\(request.words) Keep the same layout, with a heading for each group. Reply with one short sentence."
+                : "\(request.words) Keep the same layout, with a heading for each group. Reply in a sentence or two."
             runner.run(executable: executable, prompt: text, folder: practice.folder,
                        resume: turn == 0 ? nil : agentSession) { [weak self] event in
                 self?.agentEvent(event, session: id, turn: turn, task: request.step)
@@ -168,7 +168,7 @@ extension OnboardingModel {
                 return
             }
             agentSession = session ?? agentSession
-            answered(session: id, turn: turn, task: task, reply: Self.oneLine(reply))
+            answered(session: id, turn: turn, task: task, reply: Self.trimmed(reply))
         case .failed(let why):
             agentNote = "Claude Code didn't finish (\(why)) The practice agent answered instead."
             practiceAgent(session: id, turn: turn, task: task)
@@ -224,7 +224,10 @@ extension OnboardingModel {
         guard let index = sessions.firstIndex(where: { $0.id == id }), sessions[index].turns.indices.contains(turn) else { return }
         sessions[index].turns[turn].answer = reply
         agentActivity = ""
-        if let islandID = sessions[index].islandID { host?.sessionAnswered(islandID, reply) }
+        let changed = task == .weeklyUpdate ? [PracticeFiles.update] : [PracticeFiles.list]
+        if let islandID = sessions[index].islandID {
+            host?.sessionAnswered(islandID, reply, files: changed.filter { practice.exists($0) })
+        }
         answered.insert(task)
         sound.cue(.allow)
         switch task {
@@ -235,22 +238,19 @@ extension OnboardingModel {
                 editedFiles.insert(PracticeFiles.update)
                 showPreview(PracticeFiles.update)
             }
+            // As in real use (Oct 9, evening): a slow answer waits on the board, Done; a quick one
+            // opens by itself. Nothing is opened for the person.
             if step == .hover {
-                if flow.done.contains(.hoverNotch) {
-                    openSessionRow(id)
-                } else {
-                    say("Done. Move your pointer to the notch to see it.", hold: false)
-                }
+                if !flow.done.contains(.hoverNotch) { say("Done. Move your pointer to the notch to see it.", hold: false) }
                 beat(.answer)
             }
         case .followUp:
+            // The session is open where it was asked; the answer comes into it.
             editedFiles.insert(PracticeFiles.list)
-            openSessionRow(id)
             showPreview(PracticeFiles.list)
             if step == .followUp { beat(.followAnswer) }
         default:
             editedFiles.insert(PracticeFiles.list)
-            openSessionRow(id)
             showPreview(PracticeFiles.list)
             if step == .packList { beat(.answer) }
         }
@@ -295,13 +295,11 @@ extension OnboardingModel {
         animate(OT.Motion.calm) { previewFile = nil }
     }
 
-    /// The reply, as one line: its first sentence, not too long.
-    static func oneLine(_ reply: String) -> String {
-        let flat = reply.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces)
-        if let end = flat.firstIndex(where: { ".!?".contains($0) }), flat.distance(from: flat.startIndex, to: end) > 12 {
-            return String(flat[...end])
-        }
-        return flat.count > 160 ? String(flat.prefix(157)) + "…" : flat
+    /// The reply as the agent wrote it (Oct 9, evening: the whole of it, in the session), only
+    /// not endless.
+    static func trimmed(_ reply: String) -> String {
+        let text = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.count > 900 ? String(text.prefix(897)) + "…" : text
     }
 
     // MARK: Dictation (Oct 9): two windows, your own words

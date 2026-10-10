@@ -20,6 +20,11 @@ public struct DataLocation: Sendable {
             let path = (String(flag.dropFirst("--data-dir=".count)) as NSString).expandingTildeInPath
             return DataLocation(root: URL(fileURLWithPath: path, isDirectory: true))
         }
+        // A smoke run never touches the person's own data: a folder of its own.
+        if args.contains(where: { $0.hasPrefix("--smoke") }) {
+            return DataLocation(root: FileManager.default.temporaryDirectory
+                .appendingPathComponent("fovea-smoke-\(UUID().uuidString.prefix(8))", isDirectory: true))
+        }
         // Its own folder, by bundle id: "Fovea" is another Fovea app's (gaze, logs, namespaces).
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return DataLocation(root: support.appendingPathComponent("app.fovea", isDirectory: true))

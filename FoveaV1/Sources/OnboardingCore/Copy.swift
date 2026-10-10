@@ -186,7 +186,7 @@ public enum Copy {
         case (_, .answer):
             return step == .hover ? "Still writing. It opens when it's done." : "Your agent is on it."
         case (_, .followKey):
-            return "Press \(dictation) to ask more."
+            return "Open the packing list from the notch, then press \(dictation) to ask more."
         case (_, .followAnswer):
             return "Say the line, then press \(dictation)."
         case (_, .feedbackKey):

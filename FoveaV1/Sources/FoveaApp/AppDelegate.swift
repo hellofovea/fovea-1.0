@@ -16,6 +16,10 @@ import FoveaCore
 ///   --data-dir=<path>      keep everything there instead of Application Support
 ///   --settings <pane[:id]> open Settings on a pane
 ///   --demo <state>         stage a notch state (IslandController.stage), no microphone
+///   --smoke                the notch walked through its states, checked, then quit (LiveSmoke):
+///                          its window invisible, no keys or pointer watched, its own data folder
+///   --smoke-first-run      the first run's teaching walked and checked the same way (OnboardingSmoke),
+///                          the practice agent answering
 ///   --shot <file.png>      a picture of Fovea's own windows a moment after launch, then quit
 ///                          (`--shot-after=<seconds>`, 2.5 by default): to look at a state without
 ///                          Screen Recording, since an app may always take its own windows
@@ -74,6 +78,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // The notch lives for the whole process, whatever the window does.
         island = IslandController(prefs: prefs, captures: captures, dictionary: dictionary)
+        if CommandLine.arguments.contains("--smoke-first-run") {
+            island.start(smoke: true)
+            onboarding.reset()
+            let run = OnboardingCoordinator(prefs: prefs, island: island, dictionary: dictionary, state: onboarding) {}
+            run.smoke = true
+            firstRun = run
+            run.start()
+            Task { @MainActor in
+                let passed = await OnboardingSmoke.run(run)
+                exit(passed ? 0 : 1)
+            }
+            return
+        }
+        if CommandLine.arguments.contains("--smoke") {
+            island.start(smoke: true)
+            Task { @MainActor in
+                let passed = await LiveSmoke.run(self.island)
+                exit(passed ? 0 : 1)
+            }
+            return
+        }
         island.start()
         if let i = CommandLine.arguments.firstIndex(of: "--demo"), i + 1 < CommandLine.arguments.count {
             let state = CommandLine.arguments[i + 1]

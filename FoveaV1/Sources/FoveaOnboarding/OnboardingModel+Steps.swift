@@ -93,7 +93,6 @@ extension OnboardingModel {
         }
         if step == .permissions {
             if flow.isComplete {
-                animate(OT.Motion.content) { captionText = Copy.permissionCaptions[2] }
                 sound.cue(.allow)
                 after(OT.Timing.autoAdvance, "advance") { [weak self] in
                     guard let self else { return }
@@ -107,8 +106,6 @@ extension OnboardingModel {
                 after(OT.Timing.nextList, "nextList") { [weak self] in
                     guard let self else { return }
                     self.animate(OT.Motion.calm) { self.settingsPane = .screenRecording }
-                    self.animate(OT.Motion.content) { self.captionText = Copy.permissionCaptions[1] }
-                    self.dragTried = false
                 }
             }
             return
@@ -218,49 +215,6 @@ extension OnboardingModel {
         let origin = pageOrigin
         let r = pageLayouts[tab]?.parts[name] ?? CGRect(x: 28, y: 60, width: 600, height: 200)
         return r.offsetBy(dx: origin.x, dy: origin.y).insetBy(dx: -8, dy: -8)
-    }
-
-    /// Return on the review card. The agent runs as a process of Fovea's, so there's no Automation
-    /// prompt (that's only for handing words to Terminal).
-    func send() {
-        guard readyToSend, let request else { return }
-        sound.cue(.step)
-        let session = PracticeSession(task: step, title: theme(of: request), agent: agentName,
-                                      turns: [.init(ask: request.words, answer: nil)])
-        sessions.append(session)
-        openSessionID = session.id
-        flow.add(PracticeRecord(kind: .dispatch, words: request.words, referents: request.referents.map(record),
-                                agent: agentName, chat: OT.Practice.chat, theme: theme(of: request),
-                                secondsBeforeEnd: request.step == .weeklyUpdate ? 300 : 200))
-        // The update goes on being written while the next step shows where to watch it; the
-        // packing list's row shows on the board at once.
-        if step == .packList { showIsland(.board, OT.Motion.open) }
-        dispatch(request, session: session.id, turn: 0)
-        beat(.send)
-    }
-
-    /// Jumped straight to the follow-up: a finished packing session to ask more in.
-    func prepareFollowUpSession() {
-        practice.write(PracticeFiles.list, PracticeFiles.listStart + OT.Send.practiceAdded)
-        let session = PracticeSession(task: .packList, title: "Packing for the snow", agent: agentName,
-                                      turns: [.init(ask: Copy.step(.packList).script ?? "", answer: OT.Send.practiceReply)])
-        sessions.append(session)
-        answered.insert(.packList)
-        openSessionID = session.id
-        showIsland(.session, OT.Motion.open)
-    }
-
-    /// fn in the open session, then fn again: the follow-up joins the packing session.
-    func askMore() {
-        guard let index = sessions.lastIndex(where: { $0.task == .packList }) else { return }
-        let ask = Copy.step(.followUp).script ?? ""
-        sessions[index].turns.append(.init(ask: ask, answer: nil))
-        openSessionID = sessions[index].id
-        flow.add(PracticeRecord(kind: .dispatch, words: ask, agent: agentName, chat: OT.Practice.chat,
-                                theme: "Sorting the packing list", secondsBeforeEnd: 150))
-        showIsland(.session, OT.Motion.open)
-        dispatch(PracticeRequest(words: ask, referents: [], step: .followUp), session: sessions[index].id,
-                 turn: sessions[index].turns.count - 1)
     }
 
     func theme(of request: PracticeRequest) -> String {

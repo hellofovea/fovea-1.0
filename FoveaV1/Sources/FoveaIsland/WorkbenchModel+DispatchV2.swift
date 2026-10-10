@@ -170,6 +170,23 @@ extension WorkbenchModel {
         V2ChatLayout.make(model: self, task: v2FocusTask, followed: v2Focus.flatMap { v2Followed[$0] }, metrics: metrics)
     }
 
+    /// Asking more by voice in an open session (Oct 9, evening): the session stays, its answer in
+    /// view, and the voice bar is a band between the notch and it (Voiceflow's waveform, the aura,
+    /// what's taken), there while it listens and transcribes.
+    var v2AsksOver: Bool {
+        guard notchState == .v2Voice || notchState == .v2Transcribing, let id = v2Continuing else { return false }
+        return v2Task(id) != nil
+    }
+
+    /// Back to the open session after asking more by voice (sent, dropped, or nothing heard).
+    func returnToV2Chat(_ id: String) {
+        guard v2Task(id) != nil else { notchState = .silent; return }
+        v2Continuing = nil
+        v2Focus = id
+        v2ChatInteracted = true
+        notchState = .v2Chat
+    }
+
     /// The island's outline for this flow's own states (the voice bar is Voiceflow's).
     var v2Outline: StackLayout.Outline? {
         switch notchState {
@@ -345,6 +362,8 @@ extension WorkbenchModel {
         if let director = live?.director, !director.allowsVoice(dispatch: true) { return }
         restingFlow = .dispatchV2
         v2Continuing = id
+        // Asking more keeps the session on screen under the bar (Oct 9, evening).
+        if let id { v2Focus = id }
         if notchState != .v2Voice { clearReferents() }
         notchState = .v2Voice
         live?.director?.islandDidEmit(id == nil ? .voiceOpened(dispatch: true) : .followUpStarted)
@@ -578,7 +597,7 @@ extension WorkbenchModel {
             v2Checked.insert(id)
             return
         }
-        guard v2Quick(id) else { return }
+        guard showAnswers, v2Quick(id) else { return }
         if notchState == .v2Board, panelSentTask == id { return }
         if notchState == .silent { showV2Chat(id, popped: true) }
     }
@@ -620,7 +639,7 @@ extension WorkbenchModel {
         if let id = v2Focus { v2Checked.insert(id) }
         v2Expanded = false
         v2ChatFromBoard = false
-        if v2BoardOrder.isEmpty { notchState = .silent } else { showAgentPanel(pinned: true) }
+        if v2BoardOrder.isEmpty, live == nil { notchState = .silent } else { showAgentPanel(pinned: true) }
     }
 
     /// ✕ or Esc on the chat: back to the board if it came from there; otherwise the island rests.
@@ -632,6 +651,10 @@ extension WorkbenchModel {
         v2Expanded = false
         if v2ChatFromBoard {
             showAgentPanel(pinned: v2BoardPinned)
+        } else if live != nil {
+            // The real Mac: back to the board (Hello when nothing runs), which goes a moment
+            // after the pointer is away, as after Send (Oct 9: the notch's default is the board).
+            showAgentPanel(pinned: false, sent: v2Focus)
         } else {
             notchState = .silent
         }

@@ -5,16 +5,9 @@ import FoveaKit
 import FoveaPlatform
 
 // What the first run asks of the real island (FoveaOnboarding drives it; the island never knows
-// the first run's steps): a line under the notch, typed out ("Hi. I live up here."), one that is
-// itself the tile to drag into System Settings' list, the microphone test's bar, and sessions run
-// by the agent on this Mac instead of the Workbench's script.
-
-/// A line under the notch.
-struct GuideCaption: Equatable {
-    var text: String
-    /// The line is Fovea's app, to drag into a System Settings list.
-    var draggable: Bool
-}
+// the first run's steps): the microphone test's bar, and sessions run by the agent on this Mac
+// instead of the Workbench's script. The first run says nothing at the notch (Oct 9, evening:
+// every word of it is on its bar); the island shows only its own states.
 
 /// Something taken off the screen, as the first run hands it to the agent.
 package struct IslandReferent: Sendable {
@@ -59,6 +52,8 @@ extension WorkbenchModel {
         }
         guard director.runSession(id, words: text, referents: referents, followUp: followUp) else { return false }
         directorSessions.insert(id)
+        directorSteps[id] = []
+        directorFiles[id] = []
         return true
     }
 
@@ -68,15 +63,23 @@ extension WorkbenchModel {
         let lower = activity.lowercased()
         let work: AgentWork = lower.hasPrefix("editing") || lower.hasPrefix("writing") ? .editing
             : lower.hasPrefix("looking") || lower.hasPrefix("reading") ? .reading : .thinking
+        // Kept as a step, for the fold under the answer: what it did, on what.
+        let object = ["looking at ", "editing ", "writing ", "reading "].first { lower.hasPrefix($0) }
+            .map { String(activity.dropFirst($0.count)) }
+        let kind: StepKind = work == .editing ? .edit : work == .reading ? (object == nil ? .list : .read) : .think
+        if directorSteps[id]?.last?.object != object || directorSteps[id]?.last?.kind != kind {
+            directorSteps[id, default: []].append(AgentLiveStep(kind: kind, object: object))
+        }
         withAnimation(WorkbenchTokens.Panel.change) {
             apply(AgentBeat(activity: activity, work: work, object: nil), to: i)
         }
     }
 
-    /// The director's agent answered.
-    func finishDirectorSession(_ id: String, answer: String, failed: Bool = false) {
+    /// The director's agent answered, with the files it changed.
+    func finishDirectorSession(_ id: String, answer: String, files: [String] = [], failed: Bool = false) {
         guard let i = agentTasks.firstIndex(where: { $0.id == id }) else { return }
         directorAnswers[id] = answer
+        directorFiles[id] = files
         withAnimation(WorkbenchTokens.Panel.change) {
             apply(AgentBeat(activity: failed ? "Didn't finish" : "Done", work: failed ? .failed : .done,
                             state: failed ? .failed : .complete,
@@ -88,19 +91,12 @@ extension WorkbenchModel {
         v2FinishedAt[id] = Date()
         v2Runs[id] = nil
         live?.director?.islandDidEmit(.sessionAnswered)
-        // A quick answer opens by itself, as the Workbench's do.
-        if notchState == .silent, v2Quick(id) { showV2Chat(id, popped: true) }
+        // A quick answer opens by itself, as the Workbench's do (and as Settings › Notch asks).
+        if notchState == .silent, showAnswers, v2Quick(id) { showV2Chat(id, popped: true) }
     }
 }
 
 extension IslandController {
-    /// A line under the notch (nil: none). Draggable, it is Fovea itself, to drop into a list.
-    package func setCaption(_ text: String?, draggable: Bool = false) {
-        withAnimation(WorkbenchTokens.Motion.open) {
-            model.guideCaption = text.map { GuideCaption(text: $0, draggable: draggable) }
-        }
-    }
-
     /// The microphone test: the voice bar listening (the first run's own meter feeds it).
     package func showListening(_ on: Bool) {
         if on {
@@ -125,7 +121,9 @@ extension IslandController {
 
     /// The director's agent at work, and done.
     package func updateSession(_ id: String, activity: String) { model.updateDirectorSession(id, activity: activity) }
-    package func finishSession(_ id: String, answer: String) { model.finishDirectorSession(id, answer: answer) }
+    package func finishSession(_ id: String, answer: String, files: [String] = []) {
+        model.finishDirectorSession(id, answer: answer, files: files)
+    }
     package func failSession(_ id: String, why: String) { model.finishDirectorSession(id, answer: why, failed: true) }
 
     /// Opens a session's chat at the notch.
@@ -176,50 +174,5 @@ extension IslandController {
         model.agentTasks.removeAll { ids.contains($0.id) }
         model.directorSessions.removeAll()
         rest()
-    }
-}
-
-/// The line under the notch: a glass capsule just below it, in the notch's look, typed out as it
-/// comes. It never covers or redraws the notch itself (the hardware's is the notch). Draggable, it
-/// carries Fovea.app, as a Finder icon would.
-struct GuideCaptionView: View {
-    let model: WorkbenchModel
-    let caption: GuideCaption
-
-    var body: some View {
-        let label = HStack(spacing: 8) {
-            if caption.draggable {
-                Image(nsImage: NSApp.applicationIconImage)
-                    .resizable()
-                    .frame(width: 20, height: 20)
-            }
-            Text(caption.text)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(WorkbenchTokens.ink(0.9))
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background {
-            if #available(macOS 26.0, *) {
-                Color.clear.glassEffect(.regular, in: Capsule())
-            } else {
-                Capsule().fill(.regularMaterial)
-            }
-        }
-        .contentShape(Capsule())
-        .padding(.top, model.metrics.safeAreaTop + 8)
-        Group {
-            if caption.draggable {
-                label.onDrag {
-                    NSItemProvider(contentsOf: Bundle.main.bundleURL) ?? NSItemProvider()
-                }
-                .help("Drag Fovea into the list")
-            } else {
-                label
-            }
-        }
-        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 }

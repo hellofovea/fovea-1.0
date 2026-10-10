@@ -28,7 +28,10 @@ struct ResumePoint: Codable {
 @MainActor
 package final class OnboardingCoordinator: OnboardingHost {
     let model: OnboardingModel
-    private let island: IslandController
+    let island: IslandController
+    /// `--smoke-first-run`: the stage invisible, nothing about the Mac changed (no Dock, no login
+    /// item, no apps hidden).
+    package var smoke = false
     private let prefsStore: PrefsStore
     private let state: OnboardingStateStore
     private let dictionary: DictionaryStore
@@ -77,15 +80,17 @@ package final class OnboardingCoordinator: OnboardingHost {
         island.autoPreview = false
         // An immersive tour: no Dock while Fovea is in front (Oct 9, evening). It's back whenever
         // another app is (System Settings, for the permissions), and when the tour ends.
-        NSApp.presentationOptions = [.hideDock]
+        if !smoke { NSApp.presentationOptions = [.hideDock] }
         island.setChats([model.practiceChat])
         buildStage()
+        // Back from Screen Recording's Quit & Reopen with the screen cleared: the cover again.
+        if !state.state.hiddenApps.isEmpty { coverDesktop() }
         model.start()
         if let resume = state.state.resume.flatMap({ try? JSONDecoder().decode(ResumePoint.self, from: $0) }) {
             model.agentsOn = Set(resume.agentsOn.compactMap(Agent.init(rawValue:)))
         }
         startWatching()
-        if ProcessInfo.processInfo.environment["FOVEA_NO_ACTIVATE"] == nil { NSApp.activate(ignoringOtherApps: true) }
+        if ProcessInfo.processInfo.environment["FOVEA_NO_ACTIVATE"] == nil, !smoke { NSApp.activate(ignoringOtherApps: true) }
     }
 
     // MARK: The stage
@@ -102,6 +107,7 @@ package final class OnboardingCoordinator: OnboardingHost {
         }
         window.contentView = hosting
         window.setFrame(screen.frame, display: true)
+        if smoke { window.alphaValue = 0 }
         window.makeKeyAndOrderFront(nil)
         self.window = window
         self.hosting = hosting
@@ -160,7 +166,6 @@ package final class OnboardingCoordinator: OnboardingHost {
 
     // MARK: OnboardingHost
 
-    func caption(_ text: String?, draggable: Bool) { island.setCaption(text, draggable: draggable) }
 
     func previewAura(_ on: Bool) {
         if on { island.showPreview(.aura, seconds: 3600) } else { island.endPreview() }
@@ -185,7 +190,7 @@ package final class OnboardingCoordinator: OnboardingHost {
     func openIslandSession(_ id: String) { island.openSession(id) }
     func stageRequest(words: String, items: [StagedReferent]) { island.stageRequest(words: words, items: items) }
     func sessionActivity(_ id: String, _ line: String) { island.updateSession(id, activity: line) }
-    func sessionAnswered(_ id: String, _ answer: String) { island.finishSession(id, answer: answer) }
+    func sessionAnswered(_ id: String, _ answer: String, files: [String]) { island.finishSession(id, answer: answer, files: files) }
 
     var prefs: FoveaPrefs {
         get { prefsStore.prefs }
@@ -247,19 +252,30 @@ package final class OnboardingCoordinator: OnboardingHost {
     }
 
     func clearScreen() {
-        guard state.state.hiddenApps.isEmpty else { return }
+        guard !smoke, state.state.hiddenApps.isEmpty else { return }
         let hidden = AppHider.hideOthers().map { HiddenApp(bundleID: $0.bundleID, pid: $0.pid) }
-        state.update { $0.hiddenApps = hidden }
+        // Something to remember even when nothing was showing, so the cover comes back after
+        // Screen Recording's Quit & Reopen and goes at the end.
+        state.update { $0.hiddenApps = hidden.isEmpty ? [HiddenApp(bundleID: "", pid: 0)] : hidden }
+        coverDesktop()
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// The person's wallpaper over the desktop's icons, only the practice files on it.
+    private func coverDesktop() {
+        guard let screen = Screens.island else { return }
+        let coast = FoveaFiles.url("Photos/coast.jpg").flatMap { NSImage(contentsOf: $0) }
+        DesktopCover.show(on: screen, fallback: coast)
     }
 
     var screenCleared: Bool { !state.state.hiddenApps.isEmpty }
 
     /// Puts back the apps the run hid (at the end, or when Fovea quits mid-run).
     package func restoreApps() {
+        DesktopCover.hide()
         let hidden = state.state.hiddenApps
         guard !hidden.isEmpty else { return }
-        AppHider.restore(hidden.map { AppHider.Hidden(bundleID: $0.bundleID, pid: $0.pid) })
+        AppHider.restore(hidden.filter { $0.pid != 0 }.map { AppHider.Hidden(bundleID: $0.bundleID, pid: $0.pid) })
         state.update { $0.hiddenApps = [] }
     }
 
@@ -275,7 +291,6 @@ package final class OnboardingCoordinator: OnboardingHost {
         island.autoPreview = true
         NSApp.presentationOptions = []
         island.setChats(nil)
-        island.setCaption(nil)
         island.endPreview()
         island.clearSessions()
         restoreApps()
@@ -288,7 +303,7 @@ package final class OnboardingCoordinator: OnboardingHost {
         if !model.importedWords.isEmpty {
             dictionary.add(model.importedWords.map { (word: $0.word, heardAs: $0.heardAs) })
         }
-        LoginItem.set(prefsStore.prefs.openAtLogin)
+        if !smoke { LoginItem.set(prefsStore.prefs.openAtLogin) }
         state.update {
             $0.complete = true
             $0.completedAt = Date()

@@ -52,6 +52,12 @@ extension WorkbenchModel {
         if notchState.choosingChat { layout.outline = chatLayout.outline }
         if notchState == .agentPanel { layout.outline = panelLayout.outline }
         if let v2 = v2Outline { layout.outline = v2 }
+        // Asking more over an open session: the session's outline, the bar's band on top of it.
+        if v2AsksOver, !stackExpanded {
+            var chat = v2ChatLayout.outline
+            chat.size.height += WorkbenchTokens.Island.spec.voiceBelow
+            layout.outline = chat
+        }
         // Feedback #2: the notice in place of the bar, or inside it (the bar wider, its stack and
         // waveform stepping back); #4: the waveform moves left for the countdown at the right.
         if notchState == .voiceError, let error = voiceError {
@@ -258,6 +264,12 @@ extension WorkbenchModel {
         // board or a result it closes it; beside the notch it rests the island.
         case .v2Voice, .v2Transcribing:
             if v2RouteOpen { withAnimation(WorkbenchTokens.V2.resize) { v2RouteOpen = false }; return true }
+            // Asking more over a session: back to it as it was.
+            if v2AsksOver, let id = v2Continuing {
+                if live != nil { live?.cancelListening() }
+                returnToV2Chat(id)
+                return true
+            }
             notchState = .silent
             return true
         case .v2Send:

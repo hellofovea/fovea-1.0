@@ -82,9 +82,12 @@ private struct PanelFigure: View {
         let panelHeight = 2 * rowHeight + (spacious ? 8 : 4) + (spacious ? 24 : 16)
         ZStack(alignment: .top) {
             if look.panels == .attached {
-                // One glass shape with the island, hanging from the top edge with its ears.
+                // One glass shape with the island, hanging from a black band the menu bar's height
+                // (the notch grown wider, as the real notch draws it: Oct 9, evening).
                 NotchGlass(shape: IslandShape(topRadius: G.topRadius, bottomRadius: spacious ? 22 : 18), look: look)
-                    .frame(width: width, height: G.notch.height + panelHeight)
+                    .frame(width: width, height: panelHeight)
+                    .padding(.top, G.notch.height)
+                Rectangle().fill(.black).frame(width: width, height: G.notch.height)
                 rows.frame(width: width, alignment: .leading).padding(.top, G.notch.height)
             } else {
                 // A glass panel under the notch, a gap between, as Control Center hangs.

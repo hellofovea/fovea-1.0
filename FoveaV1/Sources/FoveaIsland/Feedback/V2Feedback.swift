@@ -413,7 +413,11 @@ extension WorkbenchModel {
     /// What the agent did for the exchange now, for the fold under its answer: a request's own;
     /// a sample session on the board, its steps.
     func v2Work(_ task: AgentTaskItem) -> V2Work {
-        if directorSessions.contains(task.id) { return V2Work(seconds: Int(v2Elapsed(task.id).map { _ in 30 } ?? 30), entries: []) }
+        if directorSessions.contains(task.id) {
+            // The first run's agent: what it reported, and how long it took.
+            let seconds = v2Started[task.id].map { Int((v2FinishedAt[task.id] ?? Date()).timeIntervalSince($0)) } ?? 0
+            return V2Work(seconds: max(1, seconds), entries: (directorSteps[task.id] ?? []).map { .step($0) })
+        }
         if v2Requests[task.id] == nil, let steps = AgentBoard.liveSteps[task.id] {
             return V2Work(seconds: 40 + 15 * steps.count, entries: steps.map { .step($0) })
         }
@@ -423,7 +427,9 @@ extension WorkbenchModel {
 
     /// What it made, to open.
     func v2Artifacts(_ task: AgentTaskItem) -> [V2Artifact] {
-        if directorSessions.contains(task.id) { return [] }
+        if directorSessions.contains(task.id) {
+            return (directorFiles[task.id] ?? []).map { V2Artifact(title: $0, symbol: "doc.text") }
+        }
         let request = v2Requests[task.id] ?? v2Request
         return request.artifacts(followUp: v2FollowUps.contains(task.id), changes: task.changes)
     }

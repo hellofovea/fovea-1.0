@@ -14,8 +14,6 @@ import CapturesCore
 /// What the first run asks of the rest of Fovea (OnboardingCoordinator does it).
 @MainActor
 protocol OnboardingHost: AnyObject {
-    /// The line under the notch (nil: none); draggable, it is Fovea, to drop into a list.
-    func caption(_ text: String?, draggable: Bool)
     /// The notch shows the Dispatch bar with its glow, or the board, while choices are made.
     func previewAura(_ on: Bool)
     func previewPanel()
@@ -30,7 +28,7 @@ protocol OnboardingHost: AnyObject {
     /// macOS's own prompts: the microphone, then speech recognition.
     func askMicrophoneAndSpeech(_ done: @escaping (Bool) -> Void)
     func sessionActivity(_ id: String, _ line: String)
-    func sessionAnswered(_ id: String, _ answer: String)
+    func sessionAnswered(_ id: String, _ answer: String, files: [String])
     /// The person's choices, as the island and the window read them.
     var prefs: FoveaPrefs { get set }
     func openPermission(_ permission: OnboardingCore.Permission)
@@ -91,8 +89,6 @@ extension OnboardingModel: IslandDirector {
         case .rested:
             if case .voice = island, step == .dictation { dictationTarget = nil }
             island = .rest
-            // A held line goes back to the step's own once the island rests.
-            if !captionText.isEmpty, captionShown, notchTaught { host?.caption(captionText, draggable: false) }
         }
     }
 
@@ -102,7 +98,10 @@ extension OnboardingModel: IslandDirector {
             if isPracticeTry { return !flow.done.contains(.send) }
             // The follow-up: asking more in the open packing session.
             if step == .followUp { return true }
-            return step.stage == .home || finished
+            if step.stage == .home || finished { return true }
+            // Pressed where it isn't taught: said on the bar, never swallowed without a word.
+            if notchTaught, !step.isReading { hint("Not yet. Follow this step first.") }
+            return false
         }
         if step == .dictation {
             guard pointerOver != nil else {
@@ -120,7 +119,16 @@ extension OnboardingModel: IslandDirector {
             }
             return true
         }
-        return finished
+        if finished { return true }
+        if step == .followUp { hint("Open the packing list from the notch first, then press \(keys.spoken(.dictation)).") }
+        else if notchTaught, !step.isReading { hint("Not yet. Follow this step first.") }
+        return false
+    }
+
+    /// The board opens from the notch only once the notch is being taught, and not on a page to
+    /// read (Oct 9: nothing at the notch before it's needed).
+    func allowsBoard() -> Bool {
+        finished || (notchTaught && !step.isReading)
     }
 
     /// fn ⌃ again: on, once the task's things are taken; else the board says what's missing and

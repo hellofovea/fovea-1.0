@@ -56,18 +56,6 @@ extension OnboardingModel {
         if over != pointerOver { animate(OT.Motion.content) { pointerOver = over } }
     }
 
-    /// A row on the board: its session opens.
-    func openSessionRow(_ id: UUID) {
-        guard let session = sessions.first(where: { $0.id == id }) else { return }
-        openSessionID = id
-        if let islandID = session.islandID { host?.openIslandSession(islandID) }
-    }
-
-    func openSession(for task: Step) {
-        guard let session = sessions.last(where: { $0.task == task }) else { return }
-        openSessionRow(session.id)
-    }
-
     var openSession: PracticeSession? {
         sessions.first { $0.id == openSessionID } ?? sessions.last
     }

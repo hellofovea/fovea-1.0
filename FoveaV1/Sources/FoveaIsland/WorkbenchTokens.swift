@@ -1021,14 +1021,14 @@ enum WorkbenchTokens {
         // the panel's edges.
         static let readingSideMargin: CGFloat = 40
         static let readingBottomMargin: CGFloat = 16
-        static var expandedWidth: CGFloat { pick(773, 840) }
+        static var expandedWidth: CGFloat { pick(840, 880) }
         static var expandGlyph: Font { pick(Font.system(size: 10, weight: .semibold), .system(size: 10, weight: .semibold)) }
         static let grabHitWidth: CGFloat = 120
         /// The column the requests, the answers, the bar and the box keep when expanded: about 90
         /// characters a line at the answer's size (13.5 and 15 pt SF Pro set 6.3 and 6.9 pt a
         /// character), the long end of Practical Typography's 45–90, for answers full of paths and
         /// code. 130 pt each side in Spacious (140 in Compact), the outline in the right one.
-        static var readingMeasure: CGFloat { pick(515, 560) }
+        static var readingMeasure: CGFloat { pick(560, 620) }
         /// Every exchange, oldest first, parted by space (no rules).
         static var historyTurnGap: CGFloat { pick(28, 32) }
         static var historyQuestionGap: CGFloat { pick(11, 12) }
@@ -1417,6 +1417,10 @@ enum WorkbenchTokens {
         static var width: CGFloat { pick(368, 400) }
         static var paddingH: CGFloat { pick(5.5, 6) }
         static var paddingBottom: CGFloat { pick(7, 8) }
+        /// Nothing running (the real Mac, Oct 9): the board greets the person instead, in two
+        /// lines, the title's face over the line's.
+        static var helloHeight: CGFloat { pick(50, 56) }
+        static let helloLead = "Start building here."
         static var bottomRadius: CGFloat { pick(19, 22) }
         static var row: CGFloat { pick(40, 46) }
         static let rowsVisible = 6
@@ -1901,6 +1905,17 @@ enum WorkbenchTokens {
         /// stays legible over a busy photo (HIG, Materials: legibility first).
         static let panelTintLight = Color.white.opacity(0.4)
         static let panelTintDark = Color.black.opacity(0.45)
+        /// On the real Mac (Fovea 1.0, Oct 9): Liquid Glass only bends what its own window draws,
+        /// and the island's window draws nothing under it, so the glass went flat gray. There the
+        /// glass is the system's blur of what's behind the window (the desktop, the apps), a light
+        /// tint toward the appearance over it, and the rim. Lighter than the Workbench's tints:
+        /// the person wanted to see through it, the light glass above all.
+        static let liveMaterialLight: NSVisualEffectView.Material = .popover
+        static let liveMaterialDark: NSVisualEffectView.Material = .hudWindow
+        static let liveTintLight = Color.white.opacity(0.18)
+        static let liveTintDark = Color.black.opacity(0.22)
+        static let liveRimLight = Color.white.opacity(0.55)
+        static let liveRimDark = Color.white.opacity(0.14)
         /// Off screen, where glass has nothing behind it: a solid of its tone.
         static let offscreenLight = Color(white: 0.96, opacity: 0.94)
         static let offscreenDark = Color(white: 0.17, opacity: 0.94)

@@ -49,8 +49,12 @@ extension WorkbenchModel {
         v2Transcribe = Task { [weak self] in
             let result = await live.finishWords()
             guard let self, !Task.isCancelled, self.notchState == .v2Transcribing else { return }
+            let continuing = self.v2Continuing.flatMap { self.v2Task($0) != nil ? $0 : nil }
             guard !result.text.isEmpty else {
-                if result.failure == .speechDenied { self.showVoiceError(.speechPermission) } else { self.showNoSpeech() }
+                if result.failure == .speechDenied { self.showVoiceError(.speechPermission) }
+                // Asking more and nothing heard: back to the session as it was.
+                else if let id = continuing { self.returnToV2Chat(id) }
+                else { self.showNoSpeech() }
                 return
             }
             self.v2Words = result.text
@@ -61,8 +65,10 @@ extension WorkbenchModel {
             if rest > 0 { try? await Task.sleep(for: .seconds(rest)) }
             guard !Task.isCancelled, self.notchState == .v2Transcribing else { return }
             live.director?.islandDidEmit(.transcribing(dispatch: true))
-            if let id = self.v2Continuing, self.v2Task(id) != nil {
-                self.askMoreV2(id, text: result.text)
+            if let id = continuing {
+                // The new question goes into the session, which stays on screen, working.
+                self.askMoreV2(id, text: result.text, inWindow: true)
+                self.returnToV2Chat(id)
             } else if !self.v2ReviewBeforeSend {
                 self.sendWithoutReview()
             } else {
@@ -96,7 +102,7 @@ extension WorkbenchModel {
     func liveCapture(_ live: IslandLive, _ rect: CGRect, animated: Bool) async {
         selection = nil
         try? await Task.sleep(for: WorkbenchTokens.Capture.clearDelay)
-        guard ScreenCapturer.allowed || live.director != nil else {
+        guard ScreenCapturer.allowed || live.director != nil || live.smoke != nil else {
             showBarNotice(.screenRecording)
             return
         }
@@ -112,7 +118,7 @@ extension WorkbenchModel {
 
     /// ⌘ twice: the whole screen, Fovea's own surfaces left out.
     func liveWholeScreen(_ live: IslandLive) async {
-        guard ScreenCapturer.allowed || live.director != nil else {
+        guard ScreenCapturer.allowed || live.director != nil || live.smoke != nil else {
             showBarNotice(.screenRecording)
             return
         }

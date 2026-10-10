@@ -239,6 +239,10 @@ final class WorkbenchModel {
     var liveScheme: ColorScheme = .dark
     /// Fovea: the board opens on the hover only when the person lets it, after their wait.
     @ObservationIgnored var hoverOpens = true
+    /// The name the board greets the person by when nothing is running (prefs' account name).
+    var greetingName = ""
+    /// Settings › Notch › "Show an answer as soon as it's back": a quick answer opens by itself.
+    @ObservationIgnored var showAnswers = true
     @ObservationIgnored var hoverDwell: (start: Double, cap: Double) = (WorkbenchTokens.Panel.dwell, WorkbenchTokens.Panel.dwellCap)
     /// Fovea: the words the person said for the Dispatch request now (the script plays the work).
     var v2Words: String?
@@ -252,10 +256,12 @@ final class WorkbenchModel {
     @ObservationIgnored var highlightAsked: Date?
     /// The first run: the line under the notch; the sessions its agent runs, and their answers;
     /// the microphone test's level; the chats it offers in Choose chat.
-    var guideCaption: GuideCaption?
-    var captionFrame: CGRect?
     var directorSessions: Set<String> = []
     var directorAnswers: [String: String] = [:]
+    /// What the director's agent did for the exchange now (its steps as it reported them), and
+    /// the files it changed, for the fold under its answer and the buttons under that.
+    var directorSteps: [String: [AgentLiveStep]] = [:]
+    var directorFiles: [String: [String]] = [:]
     var previewLevel: Float = 0 { didSet { if previewing { audioLevel = previewLevel } } }
     var directorSuggestions: [V2Suggestion]?
     var metrics: ScreenMetrics { display }

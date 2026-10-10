@@ -863,8 +863,8 @@ struct ClearScreen: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Text(model.screenCleared ? "Your apps will come back when the tour ends."
-                 : "For the tour, Fovea shows you around on a clear screen, so your other apps hide for now. They'll come back when the tour ends.")
+            Text(model.screenCleared ? "Your apps and the desktop's icons come back when the tour ends."
+                 : "For the tour, Fovea shows you around on a clear screen, so your other apps and the desktop's icons hide for now. They'll come back when the tour ends.")
                 .font(.system(size: 12)).foregroundStyle(ink.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 340)

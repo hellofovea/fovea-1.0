@@ -239,7 +239,7 @@ struct MockIsland: View {
         // Feedback #19: with the words' review off, the chosen chat's agent at the bar's right; a
         // click opens where it goes (Dispatch's suggestions and every chat) and the model, under it.
         .overlay(alignment: .top) {
-            let shown = state == .v2Voice && !model.v2ReviewBeforeSend && !model.stackExpanded
+            let shown = state == .v2Voice && !model.v2ReviewBeforeSend && !model.stackExpanded && !model.v2AsksOver
             let spec = WorkbenchTokens.Island.spec
             let notch = NotchGeometry.notchRect(metrics: model.metrics, spec: spec)
             ZStack(alignment: .top) {
@@ -331,8 +331,12 @@ struct MockIsland: View {
                 .accessibilityHidden(!shown)
         }
         .overlay(alignment: .top) {
-            let shown = state == .v2Chat
+            // Asking more by voice, the session stays, under the bar's band (Oct 9, evening).
+            let over = model.v2AsksOver && !model.stackExpanded
+            let shown = state == .v2Chat || over
             V2ChatContent(model: model, layout: model.v2ChatLayout)
+                .offset(y: over ? WorkbenchTokens.Island.spec.voiceBelow : 0)
+                .animation(model.islandAnimation, value: over)
                 .modifier(VoiceContentTransition(progress: shown ? 1 : 0))
                 .animation(v2Content(shown), value: shown)
                 .allowsHitTesting(shown)

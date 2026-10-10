@@ -33,8 +33,11 @@ extension WorkbenchModel {
             }
         case .voiceFlow, .v2Voice:
             if stackExpanded { return .panel }
+            if v2AsksOver { return .split }
             if notchState == .v2Voice, !v2ReviewBeforeSend, v2RouteOpen { return .split }
             return .island
+        case .v2Transcribing:
+            return v2AsksOver ? .split : .island
         default:
             return .island
         }
@@ -142,6 +145,11 @@ struct NativeSurface<Edge: View>: ViewModifier, Animatable {
     var gap: CGFloat
     /// The notch itself, black as the hardware is, at the top of the glass.
     var notch: StackLayout.Outline
+    /// The resting island's size: the glass comes in as the island grows past it.
+    var rest: CGSize
+    /// The real Mac: the band the island hangs from (the screen's top edge to `earY`, the menu
+    /// bar's foot) is black, as the notch is, so the notch reads as grown wider (Oct 9, evening).
+    var blackBand = false
     var edge: (IslandEdge) -> Edge
     @Environment(\.displayScheme) private var displayScheme
 
@@ -158,7 +166,7 @@ struct NativeSurface<Edge: View>: ViewModifier, Animatable {
                            width: max(0, s.width - 2 * s.topRadius), height: max(0, s.height - panelTop))
         let radius = max(0, min(s.bottomRadius, panel.width / 2, panel.height / 2))
         let islandShape = IslandShape(topRadius: s.islandTop, bottomRadius: s.islandBottom, earY: earY)
-        let grown = max(island.width - notch.size.width, island.height - notch.size.height)
+        let grown = max(island.width - rest.width, island.height - rest.height)
         let islandGlass = min(1, max(0, grown / WorkbenchTokens.Native.islandGlassRamp))
         content
             .frame(width: s.width, height: s.height, alignment: .bottom)
@@ -199,6 +207,15 @@ struct NativeSurface<Edge: View>: ViewModifier, Animatable {
                                                                bottom: -N.glassShadowRoom, trailing: -N.glassShadowRoom))
                             }
                             .offset(x: island.minX, y: -N.glassLift)
+                    }
+                    // The real Mac: black from the screen's edge to the menu bar's foot, the island's
+                    // width, coming in with the glass (at rest only the notch shows).
+                    if blackBand, earY > 0, islandGlass > 0.001 {
+                        Rectangle()
+                            .fill(WorkbenchTokens.Island.surface)
+                            .frame(width: island.width, height: min(earY, island.height))
+                            .opacity(Double(islandGlass))
+                            .offset(x: island.minX)
                     }
                     // The notch on it stays black, as the hardware is.
                     IslandShape(topRadius: notch.topRadius, bottomRadius: notch.bottomRadius, earY: earY)
@@ -249,15 +266,19 @@ struct IslandSurface: ViewModifier {
     let layout: StackLayout
 
     func body(content: Content) -> some View {
-        // Full screen, the island hangs from the black band, not the screen's top edge.
-        let earY = model.screenContent.fullScreen ? model.metrics.safeAreaTop : 0
+        // Full screen, the island hangs from the black band, not the screen's top edge. On the real
+        // Mac it always does: the band beside the notch is black, the glass below it.
+        let live = model.live != nil
+        let earY = model.screenContent.fullScreen || live ? model.metrics.safeAreaTop : 0
         if WorkbenchTokens.isNative {
             let rest = NotchGeometry.frames(density: .resting, metrics: model.metrics, spec: WorkbenchTokens.Island.spec)
             content
                 .modifier(NativeSurface(shapes: model.nativeShapes, earY: earY, gap: WorkbenchTokens.Native.panelGap,
-                                        notch: model.live != nil ? Self.hardwareNotch(model)
+                                        notch: live ? Self.hardwareNotch(model)
                                             : StackLayout.Outline(size: CGSize(width: rest.width, height: rest.minHeight),
-                                                                  topRadius: rest.topRadius, bottomRadius: rest.bottomRadius)) { edge in
+                                                                  topRadius: rest.topRadius, bottomRadius: rest.bottomRadius),
+                                        rest: CGSize(width: rest.width, height: rest.minHeight),
+                                        blackBand: live) { edge in
                     AgentEdgeLayer(model: model, edge: edge)
                 })
                 .animation(model.islandAnimation, value: model.nativeShapes)

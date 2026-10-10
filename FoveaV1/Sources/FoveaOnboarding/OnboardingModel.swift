@@ -9,12 +9,8 @@ import CapturesCore
 /// run no longer draws one), heard through its events, and the lines it asks for under the notch.
 enum IslandPhase: Equatable {
     case rest
-    /// One line under the notch.
-    case caption
     /// Make it yours: the Dispatch bar listening, in the chosen aura.
     case auraPreview
-    /// The permissions: one line under the notch that is itself the tile to drag (Oct 9).
-    case dragCaption
     case voice(VoiceKind)
     case transcribing(VoiceKind)
     /// The request on the review card (Choose chat).
@@ -174,9 +170,6 @@ final class OnboardingModel {
     /// The rest of Fovea: the real island, the prefs, System Settings (OnboardingCoordinator).
     @ObservationIgnored weak var host: OnboardingHost?
     var island: IslandPhase = .rest
-    var captionText = ""
-    /// A line is under the notch (the step's own, or a held one).
-    var captionShown = false
     /// The notch's look, as Make it yours sets it (Oct 9): the glass, the panels, the size.
     var notchAppearance: NotchAppearance = .dark
     var notchPanels: NativePanels = .attached
@@ -275,8 +268,6 @@ final class OnboardingModel {
     var alert: MockAlert?
     /// The tile being dragged from the notch toward the list, in display points.
     var tileDrag: CGPoint?
-    /// The drag has been tried once: the ghost stops showing how.
-    var dragTried = false
 
     // MARK: Agents
 
@@ -529,14 +520,11 @@ final class OnboardingModel {
             doItForMe()
             return
         case .hover:
-            // As if the notch were hovered; the practice answer stands in if the agent is slow.
+            // As if the notch were hovered: the board opens, the update on it (Done, or the
+            // practice answer standing in if the agent is slow), to open as any day.
             beat(.hoverNotch)
-            if answered.contains(.weeklyUpdate) {
-                openSession(for: .weeklyUpdate)
-            } else {
-                usePracticeAnswer()
-                showIsland(.board, OT.Motion.open)
-            }
+            if !answered.contains(.weeklyUpdate) { usePracticeAnswer() }
+            showIsland(.board, OT.Motion.open)
             return
         case .agents:
             // No agents: the practice agent answers the tasks.
@@ -606,9 +594,10 @@ final class OnboardingModel {
             say(copy.caption, hold: false)
             if answered.contains(.weeklyUpdate) { beat(.answer) }
         case .followUp:
+            // The packing list waits on the board (or is already open): the person opens it, as
+            // they would any day, and asks more there.
             if let session = sessions.last(where: { $0.task == .packList }) {
                 openSessionID = session.id
-                showIsland(.session, OT.Motion.open)
             } else {
                 say("Send the packing list first: press \(keys.spoken(.request)).", hold: false)
             }
@@ -754,41 +743,27 @@ final class OnboardingModel {
 
     // MARK: The Island
 
-    /// What the step asks of the island: a line under the notch (draggable in the permissions),
-    /// the Dispatch bar's glow while it's chosen, the microphone test's bar, the board, a session.
-    /// The rest the person does with the keys.
+    /// What the step asks of the island: the Dispatch bar's glow while it's chosen, the microphone
+    /// test's bar, the board, a session. The rest the person does with the keys. The first run
+    /// says nothing at the notch: every word is on its bar (Oct 9, evening).
     func showIsland(_ phase: IslandPhase, _ animation: Animation) {
         animate(animation) { island = phase }
         guard let host else { return }
-        // Nothing at the notch before the teaching starts (Oct 9), nor on a page to read after it
-        // ("That's everything." didn't help: Oct 9, evening), but Make it yours, where the notch
-        // pulls down to show the light and the look as they're chosen.
+        // Nothing at the notch before the teaching starts (Oct 9), nor on a page to read after it,
+        // but Make it yours, where the notch pulls down to show the light and the look as they're
+        // chosen. (The microphone test's level is on the bar.)
         guard (notchTaught && !step.isReading) || (step == .makeItYours && phase == .auraPreview) else {
-            captionShown = false
-            host.caption(nil, draggable: false)
             host.previewAura(false)
-            if notchTaught, step.isReading, phase == .rest || phase == .caption { host.islandRest() }
+            if notchTaught, step.isReading, phase == .rest { host.islandRest() }
             return
         }
         switch phase {
         case .rest:
-            captionShown = false
-            host.caption(nil, draggable: false)
             host.previewAura(false)
             host.islandRest()
-        case .caption:
-            captionShown = true
-            host.caption(captionText, draggable: false)
-        case .dragCaption:
-            captionShown = true
-            host.caption(captionText, draggable: true)
         case .auraPreview:
-            captionShown = false
-            host.caption(nil, draggable: false)
             host.previewAura(true)
         case .voice(.dictation) where step == .microphone:
-            captionShown = false
-            host.caption(nil, draggable: false)
             host.listening(true)
         case .board:
             host.openBoard()
@@ -806,35 +781,18 @@ final class OnboardingModel {
     /// picks the notch's glass in Make it yours (Oct 9).
     var boardDark: Bool { notchAppearance == .dark }
 
-    /// One line under the notch, typed out. Held lines go back to what the step showed once read.
+    /// A word for the person, on the bar (Oct 9, evening: never under the notch). A step's own
+    /// line is its title, already on the bar; anything else shows a while in place of the
+    /// instruction. On a page to read, the island rests.
     func say(_ text: String, hold: Bool) {
-        animate(OT.Motion.content) { captionText = text }
-        guard notchTaught, !step.isReading else {
-            if notchTaught { showIsland(.rest, OT.Motion.close) }
-            return
-        }
-        if step == .permissions {
-            showIsland(.dragCaption, OT.Motion.open)
-        } else if island == .rest || island == .caption || island == .dragCaption || !captionShown {
-            showIsland(.caption, OT.Motion.barOpen)
-        } else {
-            host?.caption(text, draggable: false)
-        }
-        if hold { scheduleCaptionReturn(for: text) }
+        if notchTaught, step.isReading, island != .rest { showIsland(.rest, OT.Motion.close) }
+        guard !text.isEmpty, text != copy.caption else { return }
+        hint(text)
     }
 
     /// How long a line stays: long enough to be typed, then read (Oct 9).
     func holdTime(for text: String) -> Double {
         (typing ? Typewriter.duration(of: text) : 0) + OT.Typing.readAfter
-    }
-
-    /// A held line goes back to the step's own after a moment.
-    private func scheduleCaptionReturn(for text: String) {
-        after(holdTime(for: text), "caption") { [weak self] in
-            guard let self, self.captionShown, self.notchTaught, !self.step.isReading else { return }
-            self.animate(OT.Motion.content) { self.captionText = self.copy.caption }
-            self.host?.caption(self.captionText, draggable: self.step == .permissions)
-        }
     }
 
     /// Said on the board while a request is open, so the voice bar stays as it is.

@@ -40,6 +40,8 @@ struct V2BoardLayout: Equatable {
                 rows += 1
             }
         }
+        // Nothing running: the greeting's room.
+        if rows == 0 { visible = B.helloHeight }
         let height = V2Geometry.top(metrics) + visible + B.paddingBottom
         return V2BoardLayout(outline: StackLayout.Outline(size: CGSize(width: B.width, height: height),
                                                           topRadius: spec.expandedTopRadius, bottomRadius: B.bottomRadius),
@@ -79,6 +81,8 @@ struct V2ChatLayout: Equatable {
     /// The words' column: how wide, and where it starts from the panel's left edge.
     var column: CGFloat = V2Geometry.contentWidth
     var columnX: CGFloat = V2Geometry.contentX
+    /// The usual size drawing the session's exchanges (it was asked more than once).
+    var history = false
 
     @MainActor
     static func make(model: WorkbenchModel, task: AgentTaskItem?, followed: String? = nil, metrics: ScreenMetrics) -> V2ChatLayout {
@@ -104,6 +108,18 @@ struct V2ChatLayout: Equatable {
             return V2ChatLayout(outline: V2Geometry.outline(content: fixed + history, bottom: V.grabArea, width: panelWidth, metrics: metrics),
                                 question: 0, body: history, scrolls: full > room + 0.5, textWidth: column, queue: queued,
                                 contentWidth: width, expanded: true, questionLines: 0, size: .expanded, column: column, columnX: columnX)
+        }
+        // Usual, a session asked more than once shows its exchanges (the last answer stays in view
+        // while the next one works: Oct 9, evening), as tall as the usual body, at the latest.
+        if let task, !(model.v2History[task.id] ?? []).isEmpty {
+            let fixed = V.chatHeader + V.headerRule + queue + B.actionRow + B.inputGap + V.inputHeight + V.gap
+            let full = V2SessionHistory.height(model: model, task: task, width: column)
+            let room = F.chatBodyMax + V.chatHeader
+            let history = min(full, room)
+            return V2ChatLayout(outline: V2Geometry.outline(content: fixed + history, bottom: V.grabArea, width: panelWidth, metrics: metrics),
+                                question: 0, body: history, scrolls: full > room + 0.5, textWidth: column, queue: queued,
+                                contentWidth: width, expanded: false, questionLines: 0, size: .usual, column: column,
+                                columnX: columnX, history: true)
         }
         let lines = 2
         let question = V2Geometry.measure(followed ?? task?.request ?? "", size: V.questionSize, weight: .semibold,
@@ -165,7 +181,11 @@ struct V2BoardList: View {
         let sections = model.v2BoardSections
         ZStack(alignment: .topLeading) {
             Color.clear
-            if model.offscreenRender {
+            if sections.isEmpty {
+                V2BoardHello(name: model.greetingName)
+                    .frame(width: V2BoardLayout.contentWidth, height: layout.listHeight)
+                    .offset(x: V2BoardLayout.contentX, y: V2Geometry.top(model.metrics))
+            } else if model.offscreenRender {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(sections.enumerated()), id: \.element.section) { i, part in
                         lead(part, first: i == 0)
@@ -489,7 +509,10 @@ struct V2ChatContent: View {
                 VStack(alignment: .leading, spacing: 0) {
                     header(task).frame(height: V.chatHeader)
                     Rectangle().fill(V.headerRuleColor).frame(width: layout.contentWidth, height: V.headerRule)
-                    if layout.size == .expanded {
+                    if layout.history {
+                        V2SessionHistory(model: model, task: task, layout: layout)
+                            .frame(width: layout.contentWidth, height: layout.body)
+                    } else if layout.size == .expanded {
                         // Every exchange, the outline in the right margin; under it a rule as the
                         // header's, so what scrolls passes under the two rules.
                         V2SessionHistory(model: model, task: task, layout: layout)
@@ -791,5 +814,27 @@ struct V2RouteSheet: View {
     static func height(model: WorkbenchModel) -> CGFloat {
         let V = WorkbenchTokens.V2.self
         return V.chipRow + browserHeight(rows: model.v2BrowseRows.count) + 1 + 2 * V.sheetRuleGap + V2ModelSheet.height(chats: false)
+    }
+}
+
+/// The board with nothing running, on the real Mac (Oct 9, evening): a greeting, never an empty
+/// panel. "Hello, Ryan." over "Start building here."
+struct V2BoardHello: View {
+    let name: String
+
+    var body: some View {
+        let B = WorkbenchTokens.Board.self
+        let who = name.trimmingCharacters(in: .whitespaces)
+        VStack(alignment: .leading, spacing: B.lineGap) {
+            Text(who.isEmpty ? "Hello." : "Hello, \(who).")
+                .font(B.titleFont)
+                .foregroundStyle(B.title)
+            Text(B.helloLead)
+                .font(B.lineFont)
+                .foregroundStyle(B.line)
+        }
+        .padding(.horizontal, B.rowPaddingH)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 }

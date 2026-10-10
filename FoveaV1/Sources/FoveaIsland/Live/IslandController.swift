@@ -53,7 +53,18 @@ package final class IslandController {
         set { live.director = newValue }
     }
 
-    package func start() {
+    /// `smoke` (LiveSmoke): the island's window invisible, the person's keys and pointer never
+    /// watched, the stand-ins at its edges; the model and its states as they always are.
+    package func start(smoke: Bool = false) {
+        if smoke {
+            live.smoke = IslandLive.Smoke()
+            build()
+            panel?.alphaValue = 0
+            model.startLiveSteps()
+            observePrefs()
+            observeModel()
+            return
+        }
         build()
         startKeys()
         model.pointer.onMove = { [weak self] point in
@@ -115,9 +126,6 @@ package final class IslandController {
             let size = (model.notchState == .v2Board ? model.v2BoardLayout.hoverSize : nil) ?? model.stackLayout.outline.size
             rects.append(CGRect(x: (w - size.width) / 2 - 8, y: 0, width: size.width + 16, height: size.height + 8))
         }
-        if model.guideCaption != nil, model.notchState == .silent, let frame = model.captionFrame {
-            rects.append(frame.insetBy(dx: -4, dy: -4))
-        }
         for item in model.v2Detached {
             if let side = item.docked {
                 let x: CGFloat = side == .left ? 0 : w - 64
@@ -155,6 +163,7 @@ package final class IslandController {
     /// ⌘'s crosshair and ⌥'s accent arrow, over any app; the app's own pointer otherwise.
     private var pointerStyle: ScreenPointer.Style = .system
     private func updatePointer() {
+        guard live.smoke == nil else { return }
         let style: ScreenPointer.Style = model.capturing ? .crosshair
             : model.highlighting ? .custom(AccentArrow.cursor(model.accent)) : .system
         let changed: Bool
@@ -207,7 +216,6 @@ package final class IslandController {
     private func observeModel() {
         withObservationTracking {
             _ = model.notchState; _ = model.capturing; _ = model.highlighting; _ = model.v2DragOut; _ = model.v2Detached
-            _ = model.guideCaption; _ = model.captionFrame
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.updateClickThrough()
@@ -234,6 +242,8 @@ package final class IslandController {
         model.glowDrift = p.glowDrift > 0.001
         model.v2ReviewBeforeSend = p.reviewFirst
         model.hoverOpens = p.hoverOpens
+        model.showAnswers = p.showAnswers
+        if model.greetingName != p.accountName { model.greetingName = p.accountName }
         model.hoverDwell = p.hoverWait.dwell
         guard preview, autoPreview, model.notchState == .silent || model.previewing else { return }
         let glowChanged = before.glowPalette != p.glowPalette || before.glowHue != p.glowHue
@@ -241,6 +251,12 @@ package final class IslandController {
         let lookChanged = before.notchAppearance != p.notchAppearance || before.panels != p.panels
             || before.density != p.density || before.accent != p.accent
         if glowChanged { showPreview(.aura) } else if lookChanged { showPreview(.panel) }
+    }
+
+    /// The smoke run changes the prefs as Settings would.
+    var prefsForSmoke: FoveaPrefs {
+        get { prefs.prefs }
+        set { prefs.prefs = newValue }
     }
 
     package enum Preview { case aura, panel }
@@ -308,15 +324,13 @@ struct IslandLayerView: View {
             Group {
                 V2DetachedLayer(model: model)
                 MockIsland(model: model)
-                if let caption = model.guideCaption, model.notchState == .silent {
-                    GuideCaptionView(model: model, caption: caption)
-                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(ScreenSpace.name)) } action: { model.captionFrame = $0 }
-                }
                 CaptureOverlay(model: model)
             }
             .opacity(model.hidingOwnSurfaces ? 0 : 1)
             .animation(nil, value: model.hidingOwnSurfaces)
             .environment(\.displayScheme, scheme)
+            // The real Mac's glass: a blur of what's behind the window (NativeGlass.swift).
+            .environment(\.behindWindowGlass, true)
         }
         .frame(width: model.display.frame.width, height: model.display.frame.height, alignment: .top)
         .coordinateSpace(name: ScreenSpace.name)

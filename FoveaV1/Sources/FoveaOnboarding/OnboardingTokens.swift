@@ -118,8 +118,6 @@ enum OT {
         static let referentLayerOffset: CGFloat = 5
         static let referentRotation: [Double] = [0, 4, -3]
 
-        /// The permissions' line under the notch, which is itself the tile to drag (Oct 9).
-        static let dragCaptionHeight: CGFloat = 40
         static let dragIcon: CGFloat = 22
         static let dragIconGap: CGFloat = 8
         static let reviewWidth: CGFloat = 560
@@ -363,20 +361,6 @@ enum OT {
         static let readAfter: Double = 1.6
     }
 
-    // MARK: The drag, shown (Oct 9)
-
-    enum DragHint {
-        /// One glide, then a rest, then again.
-        static let loop: Double = 3.4
-        static let lifted: Double = 0.3
-        static let glide: Double = 1.5
-        static let fade: Double = 0.45
-        /// How far below the notch the arc's control point sits.
-        static let sag: CGFloat = 40
-        static let pathOpacity: Double = 0.55
-        static let ghostOpacity: Double = 0.9
-    }
-
     // MARK: The blog, a real local site (Oct 9)
 
     enum Site {
@@ -436,13 +420,13 @@ enum OT {
 
         **Support.** 14 tickets open, 5 fewer than Monday; the oldest is 3 days old. Most are about signing in with SSO (6).
         """
-        static let practiceUpdateReply = "Wrote this week's update to weekly-update.md: growth, what shipped, and support."
+        static let practiceUpdateReply = "Wrote this week's update to weekly-update.md, in three parts: growth, from the signups chart; what shipped, the six merged pull requests; and support, the open tickets. Check the support numbers before Maya posts it: they're from this morning."
         /// The practice agent's pace, between its lines.
         static let practiceBeat: Double = 1.1
         static let practiceAdded = "- Insulated jacket\n- Warm gloves\n- Microspikes\n- Sunglasses\n"
-        static let practiceReply = "Added an insulated jacket, warm gloves, microspikes and sunglasses for the snow."
+        static let practiceReply = "Added an insulated jacket, warm gloves, microspikes and sunglasses to your packing list, for the fresh snow up top. The report says the light goes by four, so the headlamp you already had stays on it."
         static let practiceSorted = "Packing list\n\nClothes\n- Insulated jacket\n- Warm gloves\n- Sunglasses\n\nGear\n- Tent\n- Sleeping bag\n- Headlamp\n- Stove\n- Microspikes\n"
-        static let practiceSortedReply = "Sorted the list into Clothes and Gear."
+        static let practiceSortedReply = "Sorted the list into Clothes and Gear, each item kept as it was. The jacket, gloves and sunglasses are under Clothes; the tent, stove and microspikes under Gear."
     }
 
     // MARK: The board (Oct 9: Stage only)

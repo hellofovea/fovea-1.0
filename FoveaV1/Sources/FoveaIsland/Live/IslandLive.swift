@@ -30,6 +30,20 @@ final class IslandLive {
     /// Set by the model while it listens: the level for the waveform and the glow.
     var level: Double = 0
 
+    /// `--smoke` (LiveSmoke.swift): the real island with stand-ins at its edges, so nothing reaches
+    /// the microphone, the app in front, the screen or Accessibility. Off otherwise.
+    struct Smoke {
+        /// The words each listening hears, in turn ("" for silence).
+        var words: [String] = []
+        /// A text field to paste into, or none (Paste not found).
+        var canPaste = false
+        var pasted: [String] = []
+        /// What a click with the highlighter finds there.
+        var file: (url: URL, rect: CGRect)?
+        var run: (rects: [CGRect], text: String)?
+    }
+    var smoke: Smoke?
+
     init(prefs: PrefsStore, captures: CaptureLibrary, dictionary: DictionaryStore, screen: NSScreen) {
         self.prefs = prefs; self.captures = captures; self.dictionary = dictionary; self.screen = screen
     }
@@ -49,6 +63,7 @@ final class IslandLive {
     // MARK: Listening
 
     func startListening(level: @escaping (Float) -> Void) async -> VoiceFailure? {
+        if smoke != nil { sessionStart = Date(); return nil }
         voice.onLevel = { [weak self] l in
             self?.level = Double(l)
             level(l)
@@ -67,6 +82,10 @@ final class IslandLive {
 
     /// The words, once the person stops: cleaned, the dictionary's corrections made.
     func finishWords() async -> VoiceResult {
+        if smoke != nil {
+            let said = smoke?.words.isEmpty == false ? smoke!.words.removeFirst() : ""
+            return VoiceResult(text: said.isEmpty ? "" : TranscriptCleaner.clean(said), failure: nil, seconds: 1)
+        }
         var result = await voice.finish()
         level = 0
         var text = result.text
@@ -78,6 +97,7 @@ final class IslandLive {
     }
 
     func cancelListening() {
+        if smoke != nil { level = 0; return }
         voice.cancel()
         level = 0
     }
@@ -88,12 +108,14 @@ final class IslandLive {
 
     /// Somewhere to paste: the onboarding's own windows, or a text field in the app in front.
     var canPaste: Bool {
+        if let smoke { return smoke.canPaste }
         if director?.pasteTarget() == true { return true }
         guard !Paster.secureInput else { return false }
         return AXReader.focusedTextInput() != nil
     }
 
     func paste(_ text: String) {
+        if smoke != nil { smoke?.pasted.append(text); return }
         if director?.paste(text) == true { return }
         Paster.paste(text)
     }
@@ -102,6 +124,11 @@ final class IslandLive {
 
     /// A part of the screen, as it is under Fovea's own marks.
     func image(of rect: CGRect) async -> NSImage? {
+        if smoke != nil {
+            return NSImage(size: NSSize(width: max(rect.width, 1), height: max(rect.height, 1)), flipped: false) { r in
+                NSColor.systemTeal.setFill(); r.fill(); return true
+            }
+        }
         let windows = [panel?.windowNumber].compactMap { $0 }
         guard let cg = try? await ScreenCapturer.capture(rect, on: screen, excluding: windows) else {
             return director?.image(of: rect)
@@ -125,18 +152,21 @@ final class IslandLive {
 
     /// The words between two points of a drag, line by line, in the island's points.
     func textRun(from a: CGPoint, to b: CGPoint) -> (rects: [CGRect], text: String)? {
+        if let smoke { return smoke.run }
         if let own = director?.textRun(from: a, to: b) { return own }
         guard let run = AXReader.textRun(from: global(a), to: global(b)) else { return nil }
         return (run.lines.map(local), run.text)
     }
 
     func paragraph(at p: CGPoint) -> (rects: [CGRect], text: String)? {
+        if let smoke { return smoke.run }
         if let own = director?.paragraph(at: p) { return own }
         guard let para = AXReader.paragraph(at: global(p)) else { return nil }
         return (para.lines.map(local), para.text)
     }
 
     func file(at p: CGPoint) -> (url: URL, rect: CGRect)? {
+        if let smoke { return smoke.file.flatMap { $0.rect.contains(p) ? $0 : nil } }
         if let own = director?.file(at: p) { return own }
         guard let found = AXReader.file(at: global(p)) else { return nil }
         return (found.url, found.frame.map(local) ?? CGRect(x: p.x - 24, y: p.y - 24, width: 48, height: 48))
@@ -218,6 +248,8 @@ package protocol IslandDirector: AnyObject {
     func islandDidEmit(_ event: IslandEvent)
     /// fn and fn ⌃ work now (the keyboard only where keys are taught).
     func allowsVoice(dispatch: Bool) -> Bool
+    /// The pointer at the notch opens the board now (not before the notch is taught).
+    func allowsBoard() -> Bool
     /// A practice window under the pointer takes the words.
     func pasteTarget() -> Bool
     func paste(_ text: String) -> Bool
