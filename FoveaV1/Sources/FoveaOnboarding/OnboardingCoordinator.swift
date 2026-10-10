@@ -61,13 +61,16 @@ package final class OnboardingCoordinator: OnboardingHost {
         model.host = self
         if let resume {
             for raw in resume.allowed { if let p = OnboardingCore.Permission(rawValue: raw) { model.flow.allow(p) } }
-            model.flow.personal = resume.personal
             model.flow.language = resume.language
             model.flow.email = resume.email
             model.flow.name = resume.name
         } else {
             model.flow.language = prefs.prefs.language
         }
+        // Make it yours starts from the choices as they're kept (Oct 10: a resumed tour showed the
+        // hue at 0° while the notch glowed at the 227° Settings had, Ocean coming out green).
+        let p = prefs.prefs
+        model.flow.personal = Personalization(accent: p.accent, aura: p.glowPalette, auraHue: p.glowHue, auraDrift: p.glowDrift)
         model.openAtLogin = prefs.prefs.openAtLogin
         model.typedEmail = prefs.prefs.accountEmail
         model.typedName = prefs.prefs.accountName

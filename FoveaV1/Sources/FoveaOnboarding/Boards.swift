@@ -52,9 +52,17 @@ struct StageBoard: View {
             TourProgress(model: model)
                 .padding(.bottom, OT.Board.progressBottom)
         }
+        // The sound at the bottom left; Exit tour at the bottom right (Oct 10).
         .overlay(alignment: .bottomLeading) {
-            TourCorner(model: model, onPage: model.step.isReading)
+            MuteButton(model: model)
+                .padding(.horizontal, 4)
+                .background { if !model.step.isReading { Capsule().fill(.ultraThinMaterial) } }
+                .playTarget(.mute, model)
                 .padding(.leading, 20).padding(.bottom, 20)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            TourCorner(model: model, onPage: model.step.isReading)
+                .padding(.trailing, 20).padding(.bottom, 20)
         }
         .environment(\.boardInk, BoardInk(dark: model.boardDark))
         .environment(\.colorScheme, model.boardDark ? .dark : .light)
@@ -210,9 +218,9 @@ struct TourProgress: View {
     }
 }
 
-/// The sound and Exit tour, in the bottom left of every page. Exit puts the tour away at once,
-/// keeping the place: Home opens, and the tour picks up from there. Off a page to read, the two
-/// sit on glass of their own, over whatever the desktop shows.
+/// Exit tour, in the bottom right of every page (Oct 10). It puts the tour away at once, keeping
+/// the place: Home opens, and the tour picks up from there. Off a page to read, it sits on glass of
+/// its own, over whatever the desktop shows.
 struct TourCorner: View {
     let model: OnboardingModel
     let onPage: Bool
@@ -220,7 +228,6 @@ struct TourCorner: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            MuteButton(model: model)
             Button(action: { model.exitTour() }) {
                 Text("Exit tour")
                     .font(.system(size: 11.5, weight: .medium))

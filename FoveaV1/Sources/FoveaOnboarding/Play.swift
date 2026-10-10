@@ -25,8 +25,9 @@ enum PlayTarget: Hashable {
     case agentWish
     case connectApp
     case eyeTracking
-    /// The corner: the sound and Exit tour (Oct 10).
+    /// Exit tour, bottom right, and the sound, bottom left (Oct 10).
     case corner
+    case mute
 }
 
 extension View {
