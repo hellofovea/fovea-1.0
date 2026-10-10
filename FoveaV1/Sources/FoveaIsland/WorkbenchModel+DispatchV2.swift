@@ -181,7 +181,10 @@ extension WorkbenchModel {
     }
 
     /// Where the request goes: the person's pick, else the first suggestion.
-    var v2Pick: V2Suggestion { v2PickStorage ?? v2Request.suggestions[0] }
+    var v2Pick: V2Suggestion { v2PickStorage ?? v2Suggestions[0] }
+
+    /// The chats Choose chat offers: the first run's, or the request's.
+    var v2Suggestions: [V2Suggestion] { directorSuggestions ?? v2Request.suggestions }
 
     /// How long one of the person's requests took (or has taken so far), for its status line;
     /// nil for sessions Fovea didn't send.
@@ -338,10 +341,13 @@ extension WorkbenchModel {
     /// fn⌃ (new), or fn on an expanded chat (`continuing` it): the aura listens; left Option
     /// held takes regions, passages and files, twice the whole screen. Whatever was out there carries on.
     func startV2Voice(continuing id: String? = nil) {
+        // The first run: fn ⌃ works only where it's taught.
+        if let director = live?.director, !director.allowsVoice(dispatch: true) { return }
         restingFlow = .dispatchV2
         v2Continuing = id
         if notchState != .v2Voice { clearReferents() }
         notchState = .v2Voice
+        live?.director?.islandDidEmit(id == nil ? .voiceOpened(dispatch: true) : .followUpStarted)
     }
 
     /// fn⌃ again (or Return): the session ends; what was said is transcribed (the aura's progress
@@ -349,6 +355,8 @@ extension WorkbenchModel {
     /// chat with what was taken.
     func finishV2Voice() {
         guard notchState == .v2Voice else { return }
+        // The first run: not yet, until what the task asks for is taken (it says why).
+        if let director = live?.director, !director.allowsFinish(continuing: v2Continuing != nil) { return }
         capturing = false
         optionTurnedOn = nil
         v2TranscribeStart = Date()
@@ -395,14 +403,14 @@ extension WorkbenchModel {
     func sendV2Now() {
         guard notchState == .v2Send else { return }
         let pick = v2Pick
-        let index = v2Request.suggestions.firstIndex(of: pick)
+        let index = v2Suggestions.firstIndex(of: pick)
         let label: V2RoutingLabel = index == 0 ? .keptFirst : (index.map { .picked($0 + 1) } ?? .browsed)
         send(pick, label: label)
     }
 
     /// Choose chat's ↑↓: the next or the previous suggestion into the pill.
     func stepV2Pick(_ step: Int) {
-        let suggestions = v2Request.suggestions
+        let suggestions = v2Suggestions
         let i = suggestions.firstIndex(of: v2Pick) ?? 0
         chooseV2(suggestions[max(0, min(suggestions.count - 1, i + step))])
     }
@@ -416,7 +424,12 @@ extension WorkbenchModel {
         let images = liveReferents.map(\.image)
         let id = makeV2Session(pick, at: 0)
         if !images.isEmpty { v2Attachments[id] = images }
-        run(id, from: 0)
+        // The first run: its agent (Claude Code on this Mac) works it, not the script.
+        if let director = live?.director, directorSend(director, id: id, followUp: false, text: v2Spoken) {
+            decorateV2(id, beat: 0)
+        } else {
+            run(id, from: 0)
+        }
         showBoardAfterSend(id)
     }
 
@@ -455,7 +468,12 @@ extension WorkbenchModel {
         v2Checked.remove(id)
         v2FinishedAt[id] = nil
         v2Started[id] = Date()
-        run(id, from: 0, script: more.script, pace: request.pace)
+        if directorSessions.contains(id), let director = live?.director,
+           directorSend(director, id: id, followUp: true, text: v2Followed[id] ?? more.spoken) {
+            // The first run's agent answers the follow-up.
+        } else {
+            run(id, from: 0, script: more.script, pace: request.pace)
+        }
         if inWindow {
             v2Sessions.insert(id)
         } else {

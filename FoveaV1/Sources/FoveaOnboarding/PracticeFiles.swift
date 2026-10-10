@@ -31,6 +31,13 @@ final class PracticeFiles {
 
     func url(_ name: String) -> URL { folder.appendingPathComponent(name) }
 
+    /// Where a picture the island took goes, for the agent to open.
+    func captureURL(_ name: String) -> URL {
+        let captures = url(OT.Site.capturesFolder)
+        try? FileManager.default.createDirectory(at: captures, withIntermediateDirectories: true)
+        return captures.appendingPathComponent(name)
+    }
+
     var pages: URL { url(Self.pagesFolder) }
     func page(_ tab: PracticeTab) -> URL { pages.appendingPathComponent("\(tab.rawValue).html") }
 

@@ -394,6 +394,13 @@ extension WorkbenchModel {
     /// A beat's plan, files and answer, from the sample request's tables.
     func decorateV2(_ id: String, beat: Int, followUp: Bool? = nil) {
         guard let i = agentTasks.firstIndex(where: { $0.id == id }) else { return }
+        // The first run's sessions: the agent's own answer, no scripted plan or changes.
+        if directorSessions.contains(id) {
+            agentTasks[i].plan = []
+            agentTasks[i].changes = []
+            if agentTasks[i].state == .complete { agentTasks[i].answer = directorAnswers[id] }
+            return
+        }
         let request = v2Requests[id] ?? v2Request
         let more = followUp ?? v2FollowUps.contains(id)
         if followUp == true { v2FollowUps.insert(id) }
@@ -406,6 +413,7 @@ extension WorkbenchModel {
     /// What the agent did for the exchange now, for the fold under its answer: a request's own;
     /// a sample session on the board, its steps.
     func v2Work(_ task: AgentTaskItem) -> V2Work {
+        if directorSessions.contains(task.id) { return V2Work(seconds: Int(v2Elapsed(task.id).map { _ in 30 } ?? 30), entries: []) }
         if v2Requests[task.id] == nil, let steps = AgentBoard.liveSteps[task.id] {
             return V2Work(seconds: 40 + 15 * steps.count, entries: steps.map { .step($0) })
         }
@@ -415,6 +423,7 @@ extension WorkbenchModel {
 
     /// What it made, to open.
     func v2Artifacts(_ task: AgentTaskItem) -> [V2Artifact] {
+        if directorSessions.contains(task.id) { return [] }
         let request = v2Requests[task.id] ?? v2Request
         return request.artifacts(followUp: v2FollowUps.contains(task.id), changes: task.changes)
     }
@@ -507,7 +516,7 @@ extension WorkbenchModel {
     /// shows it on its way.
     func sendWithoutReview() {
         let pick = v2Pick
-        let index = v2Request.suggestions.firstIndex(of: pick)
+        let index = v2Suggestions.firstIndex(of: pick)
         v2RouteOpen = false
         send(pick, label: index == 0 ? .keptFirst : (index.map { .picked($0 + 1) } ?? .browsed))
     }

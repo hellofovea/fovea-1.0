@@ -1,8 +1,11 @@
 import AppKit
+import Observation
 import FoveaKit
 import FoveaStore
 import FoveaWindow
 import FoveaIsland
+import FoveaOnboarding
+import FoveaPlatform
 import FoveaCore
 
 /// Fovea's dev flags. The app itself needs none.
@@ -43,6 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var onboarding: OnboardingStateStore!
     private(set) var home: HomeWindowController!
     private(set) var island: IslandController!
+    private var firstRun: OnboardingCoordinator?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if options.resetAll { location.eraseAll() } else { location.prepare() }
@@ -79,8 +83,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         home = HomeWindowController(stores: WindowStores(prefs: prefs, captures: captures, dictionary: dictionary))
         NSApp.mainMenu = home.mainMenu(quit: #selector(quit(_:)), quitTarget: self)
 
-        if !options.noActivate { NSApp.activate(ignoringOtherApps: true) }
-        home.show()
+        // The first run, until it's done (and resumed where it was after Screen Recording's Quit &
+        // Reopen); then Home, unless Fovea opened at login.
+        if !onboarding.state.complete && !options.openHome {
+            let run = OnboardingCoordinator(prefs: prefs, island: island, dictionary: dictionary, state: onboarding) { [weak self] in
+                guard let self else { return }
+                self.firstRun = nil
+                self.home.show()
+                self.observeLoginItem()
+            }
+            firstRun = run
+            run.start()
+        } else {
+            if !options.noActivate { NSApp.activate(ignoringOtherApps: true) }
+            if !LoginItem.launchedAtLogin || options.openHome { home.show() }
+            observeLoginItem()
+        }
+    }
+
+    /// "Open at login" in Settings › Account: registered with macOS as it changes.
+    private func observeLoginItem() {
+        withObservationTracking { _ = prefs.prefs.openAtLogin } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                LoginItem.set(self.prefs.prefs.openAtLogin)
+                self.observeLoginItem()
+            }
+        }
     }
 
     /// Closing the window never quits: the notch stays.
@@ -88,7 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// The Dock icon: Home comes back.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag { home.show() }
+        if !flag, firstRun == nil { home.show() }
         return true
     }
 
@@ -98,7 +127,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dictionary.flush()
     }
 
+    /// Quit from the menu: a first run under way puts back the apps it hid.
     @objc func quit(_ sender: Any?) {
+        firstRun?.restoreApps()
         NSApp.terminate(sender)
     }
 }

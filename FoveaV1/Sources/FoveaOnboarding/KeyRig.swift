@@ -1,37 +1,19 @@
 import AppKit
 import Carbon.HIToolbox
 
-/// The first run's keys, from the copied monitors: fn alone (dictation, or asking more), fn ⌃ (a
-/// request), ⌘ either side (a screenshot: a tap for one drag, held while dragging, twice for the
-/// whole screen), left ⌥ (the highlighter: a tap for one mark, held while dragging), and Return
-/// and Esc in the window. The modifiers held light the guide's keycaps.
+/// The first run's own keys: the modifiers held, to light the guide's keycaps; and Return, Esc and
+/// space in Fovea's windows (Continue; the microphone test's space for a Mac without one). fn, fn ⌃,
+/// ⌘ and left ⌥ are the real island's (FoveaIsland), heard as its events.
 @MainActor
 final class KeyRig {
-    var onRequest: () -> Void = {}
-    var onDictation: () -> Void = {}
-    var onCommandDown: () -> Void = {}
-    var onCommandUp: (_ tap: Bool) -> Void = { _ in }
-    var onCommandDouble: () -> Void = {}
-    var onOptionDown: () -> Void = {}
-    var onOptionUp: (_ tap: Bool) -> Void = { _ in }
     var onFlags: (Set<String>) -> Void = { _ in }
     var onReturn: () -> Bool = { false }
     var onEscape: () -> Bool = { false }
     /// Space down or up: talking, for the microphone test on a Mac without a microphone.
     var onSpace: (_ down: Bool) -> Bool = { _ in false }
-
-    let fn = ModifierPressMonitor.function()
-    let leftCommand = ModifierHoldMonitor.leftCommand()
-    let rightCommand = ModifierHoldMonitor.rightCommand()
-    let leftOption = ModifierHoldMonitor.leftOption()
     private var monitors: [Any] = []
 
     func start() {
-        wire()
-        fn.start()
-        leftCommand.start()
-        rightCommand.start()
-        leftOption.start()
         if let local = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged, handler: { [weak self] event in
             self?.onFlags(Self.labels(event.modifierFlags))
             return event
@@ -49,20 +31,9 @@ final class KeyRig {
         }) { monitors.append(ups) }
     }
 
-    /// The closures each monitor calls. Separate from `start` so the smoke run can feed the
-    /// monitors synthetic edges without installing event monitors.
-    func wire() {
-        fn.onPress = { [weak self] in
-            guard let self else { return }
-            if self.fn.heldDuring.contains(.control) { self.onRequest() } else { self.onDictation() }
-        }
-        for command in [leftCommand, rightCommand] {
-            command.onDown = { [weak self] in self?.onCommandDown() }
-            command.onUp = { [weak self] tap in self?.onCommandUp(tap) }
-            command.onDoublePress = { [weak self] in self?.onCommandDouble() }
-        }
-        leftOption.onDown = { [weak self] in self?.onOptionDown() }
-        leftOption.onUp = { [weak self] tap in self?.onOptionUp(tap) }
+    func stop() {
+        monitors.forEach { NSEvent.removeMonitor($0) }
+        monitors.removeAll()
     }
 
     func handleKey(_ event: NSEvent) -> Bool {

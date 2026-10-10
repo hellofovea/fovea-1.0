@@ -237,7 +237,7 @@ struct V2SendContent: View {
                 HStack(spacing: V.chipGap) {
                     Text("Suggested").font(V.labelFont).foregroundStyle(V.labelColor)
                         .padding(.trailing, V.labelTrailing)
-                    ForEach(request.suggestions) { pick in
+                    ForEach(model.v2Suggestions) { pick in
                         V2SuggestionChip(model: model, pick: pick, chosen: model.v2Pick == pick)
                     }
                     Spacer(minLength: 0)

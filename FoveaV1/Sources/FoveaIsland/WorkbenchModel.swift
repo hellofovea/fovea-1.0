@@ -250,6 +250,14 @@ final class WorkbenchModel {
     var glowDriftAmount: Double = 0.5
     /// When Accessibility was last asked for the words under the highlighter.
     @ObservationIgnored var highlightAsked: Date?
+    /// The first run: the line under the notch; the sessions its agent runs, and their answers;
+    /// the microphone test's level; the chats it offers in Choose chat.
+    var guideCaption: GuideCaption?
+    var captionFrame: CGRect?
+    var directorSessions: Set<String> = []
+    var directorAnswers: [String: String] = [:]
+    var previewLevel: Float = 0 { didSet { if previewing { audioLevel = previewLevel } } }
+    var directorSuggestions: [V2Suggestion]?
     var metrics: ScreenMetrics { display }
     /// The detail column's size, reported by the stage.
     var columnSize: CGSize = .zero
@@ -275,7 +283,7 @@ final class WorkbenchModel {
     /// whose Silent notch was chosen. Every flow's Silent notch rests the notch the same way.
     var restingFlow: NotchFlow = .voiceflow
     /// The microphone level while listening, 0…1. Simulated: Core's meter, the product's own.
-    private(set) var audioLevel: Float = 0
+    var audioLevel: Float = 0
     @ObservationIgnored private let meter = SimulatedAudioMeter()
     @ObservationIgnored private var metering: Task<Void, Never>?
     /// fn, press-to-toggle (Voiceflow), and fn⌃ (Dispatch Version 2). Started by the app once
@@ -871,7 +879,11 @@ final class WorkbenchModel {
     /// speech detected or Paste not found it starts afresh.
     func toggleVoiceFlow() {
         switch notchState {
-        case .silent: notchState = .voiceFlow
+        case .silent:
+            // The first run: fn works only where it's taught.
+            if let director = live?.director, !director.allowsVoice(dispatch: false) { return }
+            notchState = .voiceFlow
+            live?.director?.islandDidEmit(.voiceOpened(dispatch: false))
         // Dispatch Version 2's own presses are taken first (v2FunctionKey); here fn is dictation.
         case .v2Voice, .v2Transcribing, .v2Send, .v2Board, .v2Chat:
             notchState = .voiceFlow
@@ -980,7 +992,10 @@ final class WorkbenchModel {
         }
         if !state.collects, wasCollecting { stopRecordingClock() }
         if state.listening { startMetering() } else { stopMetering() }
-        if state == .silent { live?.sessionEnded() }
+        if state == .silent {
+            live?.sessionEnded()
+            live?.director?.islandDidEmit(.rested)
+        }
         if !state.collects {
             capturingStorage = false
             highlightingStorage = false
@@ -1013,6 +1028,8 @@ final class WorkbenchModel {
             }
             return
         }
+        // The first run's microphone test feeds the level itself.
+        if live?.director != nil, previewing, notchState == .voiceFlow { return }
         guard metering == nil else { return }
         metering = Task { [weak self] in
             guard let self, let levels = try? await self.meter.start() else { return }

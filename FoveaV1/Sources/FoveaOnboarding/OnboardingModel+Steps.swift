@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import OnboardingCore
+import FoveaIsland
 
 // The scripted parts of the first run: the permissions as macOS asks for them, connecting the
 // agents, the sends, the follow-up, the real Home. The keys, the pages, the files and the agent's
@@ -37,7 +38,20 @@ extension OnboardingModel {
 
     /// The one button before the system's own prompt (Apple HIG: a plain verb, then macOS asks).
     func askMicrophone() {
-        animate(OT.Motion.calm) { alert = .microphone }
+        guard let host else {
+            animate(OT.Motion.calm) { alert = .microphone }
+            return
+        }
+        // macOS's own prompts: the microphone, then speech recognition (1.0 turns words into text
+        // on this Mac).
+        host.askMicrophoneAndSpeech { [weak self] allowed in
+            guard let self else { return }
+            guard allowed else {
+                self.say("Fovea needs the microphone to hear you. Allow it in System Settings, or skip for now.", hold: true)
+                return
+            }
+            self.grant(.microphone)
+        }
     }
 
     func alertAnswered(_ allow: Bool) {
@@ -170,9 +184,33 @@ extension OnboardingModel {
         default:
             return
         }
+        // The pictures now, for the stack at the notch and the agent's files.
+        var items: [StagedReferent] = []
+        for i in referents.indices {
+            switch referents[i].kind {
+            case .wholeScreen, .region:
+                let shot: ScreenCapture.Shot?
+                if case .region(let r) = referents[i].kind {
+                    shot = ScreenCapture.region(r, model: self, tab: referents[i].tab, name: "part-\(i + 1).png")
+                } else {
+                    shot = ScreenCapture.whole(model: self, tab: .analytics, name: "screen-\(i + 1).png")
+                }
+                if let shot {
+                    referents[i].image = shot.image
+                    referents[i].path = shot.path
+                    items.append(.picture(shot.image, source: "\(referents[i].tab?.title ?? "Desktop") · Fovea"))
+                }
+            case .passage(let p):
+                items.append(.passage(paragraphTexts[p] ?? PracticePage.paragraphs[min(p, PracticePage.paragraphs.count - 1)],
+                                      source: "Trail report · Fovea"))
+            case .file(let file):
+                items.append(.file(practice.url(file.name)))
+            }
+        }
         request = PracticeRequest(words: copy.script ?? "", referents: referents, step: step)
         beat(.review)
-        showIsland(.review, OT.Motion.open)
+        island = .review
+        host?.stageRequest(words: copy.script ?? "", items: items)
     }
 
     /// A tab's part, in display points, with a little room around it.

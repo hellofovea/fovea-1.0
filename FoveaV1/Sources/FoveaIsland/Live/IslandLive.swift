@@ -228,4 +228,11 @@ package protocol IslandDirector: AnyObject {
     func paragraph(at p: CGPoint) -> (rects: [CGRect], text: String)?
     func file(at p: CGPoint) -> (url: URL, rect: CGRect)?
     func decorate(_ capture: Capture) -> Capture
+    /// fn ⌃ again: the request may go on (the task's things are taken), else the director says why.
+    func allowsFinish(continuing: Bool) -> Bool
+    /// A part of the screen dragged over: taken, or missed (the director says so).
+    func acceptRegion(_ rect: CGRect) -> Bool
+    func acceptFile(_ url: URL) -> Bool
+    /// Its agent works the session (returns false to leave it to the script).
+    func runSession(_ id: String, words: String, referents: [IslandReferent], followUp: Bool) -> Bool
 }

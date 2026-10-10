@@ -766,7 +766,7 @@ struct V2RouteSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: V.chipGap) {
                 Text("Suggested").font(V.labelFont).foregroundStyle(V.labelColor).padding(.trailing, V.labelTrailing)
-                ForEach(model.v2Request.suggestions) { pick in
+                ForEach(model.v2Suggestions) { pick in
                     V2SuggestionChip(model: model, pick: pick, chosen: model.v2Pick == pick)
                 }
                 Spacer(minLength: 0)

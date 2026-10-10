@@ -1,4 +1,5 @@
 import Foundation
+@_exported import FoveaKit
 
 // Fovea's first run, as data: the stages, the steps in each, and what every step waits for.
 // Pure, so the order and the rules can be tested without a screen (Tests/OnboardingCoreTests).
@@ -292,20 +293,8 @@ public enum Permission: String, CaseIterable, Sendable, Codable {
 }
 
 /// The language Fovea listens in. Oct 9: English and Chinese only; any other is typed under More…
-/// and kept as a request, for the languages to add next.
-public enum Language: String, CaseIterable, Sendable, Codable {
-    case english, chinese
-
-    public var title: String { rawValue.capitalized }
-
-    /// On the hello board's row, before More….
-    public static let featured: [Language] = [.english, .chinese]
-
-    /// What to start on: Chinese for a Mac that reads Chinese first, English otherwise.
-    public static func preferred(_ identifiers: [String]) -> Language {
-        identifiers.first?.lowercased().hasPrefix("zh") == true ? .chinese : .english
-    }
-}
+/// and kept as a request, for the languages to add next. FoveaKit's, shared with Settings.
+public typealias Language = FoveaLanguage
 
 /// The coding agents Fovea sends to (Oct 9: Claude Code and Codex, and more to come).
 public enum Agent: String, CaseIterable, Sendable, Codable {
@@ -414,22 +403,14 @@ public enum DictationApp: String, CaseIterable, Sendable {
     public var isSystem: Bool { self == .textReplacements }
 }
 
-/// The accent, as macOS offers it (Fovea Captures' `AccentChoice`): Multicolor follows the Mac's
-/// own accent; the eight colors put one accent through Fovea. Chosen at the start.
-public enum AccentName: String, CaseIterable, Sendable, Codable {
-    case multicolor, blue, purple, pink, red, orange, yellow, green, graphite
-    public var title: String { rawValue.capitalized }
-}
+/// The accent, as macOS offers it: Multicolor follows the Mac's own accent; the eight colors put
+/// one accent through Fovea. Chosen at the start. FoveaKit's, shared with Settings and the notch.
+public typealias AccentName = FoveaAccent
 
-/// The glow in the Dispatch voice bar, Fovea's aura (Settings › Notch, `GlowChoice`): a palette
-/// to start from, turned round the color wheel, wandering as much as you like. Custom's spread
-/// stays in Settings; the first run offers the templates.
-public enum AuraPalette: String, CaseIterable, Sendable, Codable {
-    case colorful, ocean, sunset, forest, candy, ice, gold, mono
-    public var title: String { rawValue.capitalized }
-    /// Mono is gray: there's no hue to turn and nothing to drift.
-    public var turns: Bool { self != .mono }
-}
+/// The glow in the Dispatch voice bar, Fovea's aura (Settings › Notch): a palette to start from,
+/// turned round the color wheel, wandering as much as you like. Custom's spread stays in Settings;
+/// the first run offers the templates (`GlowPalette.templates`). FoveaKit's.
+public typealias AuraPalette = GlowPalette
 
 /// What the person made theirs at the start, carried to the real Home at the end.
 public struct Personalization: Equatable, Sendable, Codable {

@@ -167,6 +167,7 @@ struct GlassBar: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: OT.Board.stageBarRadius, style: .continuous))
         .background(RoundedRectangle(cornerRadius: OT.Board.stageBarRadius, style: .continuous).fill(OT.Colors.stageGlass))
         .overlay(RoundedRectangle(cornerRadius: OT.Board.stageBarRadius, style: .continuous).strokeBorder(OT.Colors.white(0.1)))
+        .playTarget(.board, model)
         .animation(OT.Motion.board, value: model.keyboardWanted)
     }
 }

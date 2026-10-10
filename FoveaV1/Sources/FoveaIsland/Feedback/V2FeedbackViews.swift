@@ -496,7 +496,7 @@ struct V2ModelSheet: View {
         VStack(alignment: .leading, spacing: F.sheetGap) {
             if showsChats {
                 row("Chat") {
-                    ForEach(model.v2Request.suggestions) { pick in
+                    ForEach(model.v2Suggestions) { pick in
                         V2SheetChip(title: pick.title, icon: pick.agent, chosen: model.v2Pick == pick) { model.chooseV2(pick) }
                     }
                 }

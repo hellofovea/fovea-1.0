@@ -100,6 +100,8 @@ extension WorkbenchModel {
             showBarNotice(.screenRecording)
             return
         }
+        // The first run: a drag that misses what the task asks for is said, not taken.
+        if let director = live.director, !director.acceptRegion(rect) { return }
         guard let image = await live.image(of: rect) else {
             showBarNotice(.screenRecording)
             return
@@ -130,6 +132,7 @@ extension WorkbenchModel {
     func finishLiveHighlight(_ live: IslandLive, from a: CGPoint, to b: CGPoint) {
         if hypot(a.x - b.x, a.y - b.y) <= 3 {
             if let found = live.file(at: b) {
+                if let director = live.director, !director.acceptFile(found.url) { highlighting = false; return }
                 markFile(url: found.url, rect: found.rect)
                 live.director?.islandDidEmit(.referentTaken(kind: .file, rect: found.rect))
                 highlighting = false

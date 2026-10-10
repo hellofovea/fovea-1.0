@@ -67,7 +67,10 @@ struct BoardExtras: View {
     var body: some View {
         switch model.step {
         case .hello:
-            LanguagePicker(model: model)
+            VStack(spacing: 18) {
+                LanguagePicker(model: model)
+                ClearScreen(model: model)
+            }
         case .makeItYours:
             Personalize(model: model)
         case .permissions:
@@ -161,7 +164,9 @@ struct LanguagePicker: View {
 
 /// Make it yours: Fovea's accent, then, well apart from it (Oct 9: two choices, a real gap between),
 /// the light the notch shows while it listens for an agent: its palette, its hue, and how much it
-/// drifts, a dial from still to lively (Oct 8).
+/// drifts, a dial from still to lively (Oct 8); then the notch itself (Oct 9): its glass light or
+/// dark, what opens below attached or floating, and the room it takes. Each shows at the real notch
+/// as it's chosen, and Settings › Notch starts with it.
 struct Personalize: View {
     let model: OnboardingModel
     @Environment(\.boardInk) private var ink
@@ -189,7 +194,7 @@ struct Personalize: View {
             VStack(alignment: .leading, spacing: 10) {
                 label(Copy.auraLabel)
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
-                    ForEach(AuraPalette.allCases, id: \.self) { aura in
+                    ForEach(GlowPalette.templates, id: \.self) { aura in
                         Button(action: { model.setAura(aura) }) {
                             AuraChip(aura: aura, hue: model.personal.auraHue, chosen: model.personal.aura == aura)
                         }
@@ -214,12 +219,56 @@ struct Personalize: View {
                     .transition(.opacity)
                 }
             }
+            Spacer().frame(height: OT.Board.sectionGap)
+            VStack(alignment: .leading, spacing: 10) {
+                label("THE NOTCH")
+                NotchChoiceRow(title: "Glass", options: NotchAppearance.allCases, chosen: model.notchAppearance,
+                               name: \.title) { model.setNotchAppearance($0) }
+                NotchChoiceRow(title: "Panels", options: NativePanels.allCases, chosen: model.notchPanels,
+                               name: \.title) { model.setNotchPanels($0) }
+                NotchChoiceRow(title: "Size", options: NotchDensity.allCases, chosen: model.notchDensity,
+                               name: \.title) { model.setNotchDensity($0) }
+            }
         }
         .animation(OT.Motion.calm, value: model.personal.aura)
     }
 
     private func label(_ text: String) -> some View {
         Text(text).font(OT.Type_.guideEyebrow).foregroundStyle(ink.tertiary)
+    }
+}
+
+/// One of the notch's choices: its name, and the two ways it can be, as the hello board's
+/// language segments are drawn.
+struct NotchChoiceRow<Value: Hashable>: View {
+    let title: String
+    let options: [Value]
+    let chosen: Value
+    let name: KeyPath<Value, String>
+    let choose: (Value) -> Void
+    @Environment(\.boardInk) private var ink
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(title).font(OT.Type_.guideBody).foregroundStyle(ink.secondary).frame(width: 52, alignment: .leading)
+            HStack(spacing: 2) {
+                ForEach(options, id: \.self) { option in
+                    let on = option == chosen
+                    Button(action: { choose(option) }) {
+                        Text(option[keyPath: name])
+                            .font(.system(size: 12.5, weight: on ? .semibold : .medium))
+                            .foregroundStyle(on ? ink.buttonText : ink.secondary)
+                            .padding(.horizontal, 12)
+                            .frame(height: 26)
+                            .background(Capsule().fill(on ? ink.button : .clear))
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(2)
+            .background(Capsule().fill(ink.fill))
+        }
     }
 }
 
@@ -364,6 +413,21 @@ struct PermissionRows: View {
                         .foregroundStyle(now || allowed ? ink.primary : ink.secondary)
                 }
                 .animation(OT.Motion.content, value: allowed)
+            }
+            // Screen Recording counts only once Fovea has reopened (macOS's rule); its own
+            // Quit & Reopen does it, or this.
+            if model.settingsPane == .screenRecording, !model.flow.allowed.contains(.screenRecording) {
+                Button(action: { model.host?.reopen() }) {
+                    Text("Quit & Reopen")
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(ink.primary)
+                        .padding(.horizontal, 14).frame(height: 28)
+                        .background(Capsule().strokeBorder(ink.hairline))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
+                .help("Once Fovea is in the list and switched on")
             }
         }
     }
@@ -694,6 +758,35 @@ struct DictionaryImportView: View {
     }
 }
 
+/// "Clear my screen" (asked, Oct 9): the other apps hide for the tour, so only Fovea's practice
+/// windows are on screen, and exactly those apps come back at the end. Never done without asking,
+/// so a call or a document isn't hidden by surprise.
+struct ClearScreen: View {
+    let model: OnboardingModel
+    @Environment(\.boardInk) private var ink
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Button(action: { model.clearScreen() }) {
+                HStack(spacing: 6) {
+                    Image(systemName: model.screenCleared ? "checkmark" : "rectangle.dashed")
+                        .font(.system(size: 11, weight: .bold))
+                    Text(model.screenCleared ? "Screen cleared" : "Clear my screen")
+                }
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(ink.primary)
+                .padding(.horizontal, 16).frame(height: 32)
+                .background(Capsule().strokeBorder(ink.hairline))
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(model.screenCleared)
+            Text(model.screenCleared ? "Your apps come back when the tour ends." : "Your other apps hide for the tour and come back at the end.")
+                .font(.system(size: 12)).foregroundStyle(ink.tertiary)
+        }
+    }
+}
+
 /// The last board (Oct 9, round two): two things, spread out. Next time, start from the notch; and
 /// eye tracking is in beta, with a way to ask for it.
 struct Closing: View {
@@ -720,6 +813,12 @@ struct Closing: View {
                 .disabled(model.eyeTrackingAsked)
                 .playTarget(.eyeTracking, model)
             }
+            // Open at login: on unless turned off here (or in Settings › Account).
+            Toggle(isOn: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) })) {
+                Text("Open Fovea at login").font(.system(size: 13, weight: .medium)).foregroundStyle(ink.primary)
+            }
+            .toggleStyle(.switch)
+            .tint(model.accentColor)
         }
         .frame(maxWidth: .infinity)
     }

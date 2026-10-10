@@ -27,7 +27,10 @@ extension OnboardingModel {
         animate(OT.Motion.content) { micPhase = .listening }
         showIsland(.voice(.dictation), OT.Motion.barOpen)
         guard !options.harness else { return }
-        mic.onLevel = { [weak self] level in self?.heardLevel(level) }
+        mic.onLevel = { [weak self] level in
+            self?.heardLevel(level)
+            self?.host?.listeningLevel(level)
+        }
         lastMicSample = Date()
         mic.start { [weak self] ok in
             guard let self, self.micPhase == .listening, !ok else { return }
@@ -38,6 +41,7 @@ extension OnboardingModel {
     func stopMicTest() {
         mic.stop()
         mic.onLevel = nil
+        host?.listening(false)
         spaceTalk?.invalidate()
         spaceTalk = nil
     }
@@ -154,6 +158,7 @@ extension OnboardingModel {
         switch event {
         case .activity(let line):
             animate(OT.Motion.content) { agentActivity = line }
+            if let islandID = sessions.first(where: { $0.id == id })?.islandID { host?.sessionActivity(islandID, line) }
         case .done(let reply, let session):
             // Signed out, the tool still "answers": with a sign-in line. That's a failure here.
             if reply.localizedCaseInsensitiveContains("not logged in") || reply.contains("/login") {
@@ -185,6 +190,7 @@ extension OnboardingModel {
         for (index, line) in steps.enumerated() {
             after(OT.Send.practiceBeat * Double(index), "\(wait):\(index)") { [weak self] in
                 self?.animate(OT.Motion.content) { self?.agentActivity = line }
+                if let islandID = self?.sessions.first(where: { $0.id == id })?.islandID { self?.host?.sessionActivity(islandID, line) }
             }
         }
         after(OT.Send.practiceBeat * Double(steps.count), "\(wait):done") { [weak self] in
@@ -218,6 +224,7 @@ extension OnboardingModel {
         guard let index = sessions.firstIndex(where: { $0.id == id }), sessions[index].turns.indices.contains(turn) else { return }
         sessions[index].turns[turn].answer = reply
         agentActivity = ""
+        if let islandID = sessions[index].islandID { host?.sessionAnswered(islandID, reply) }
         answered.insert(task)
         sound.cue(.allow)
         switch task {
@@ -299,70 +306,7 @@ extension OnboardingModel {
 
     // MARK: Dictation (Oct 9): two windows, your own words
 
-    /// fn: the window under the pointer takes the words. The feedback first, then Messages.
-    func startDictation() {
-        guard let target = pointerOver else {
-            hint("Put your pointer on a window first.")
-            return
-        }
-        let owed = flow.waitingFor
-        if owed?.contains(.feedbackKey) == true, target != .feedback {
-            hint("Start with the feedback window, on the left.")
-            return
-        }
-        if owed?.contains(.replyKey) == true, target != .messages {
-            hint("Now Messages, on the right.")
-            return
-        }
-        dictationTarget = target
-        heardSoFar = ""
-        speechNote = nil
-        if owed?.contains(.feedbackKey) == true { beat(.feedbackKey) }
-        if owed?.contains(.replyKey) == true { beat(.replyKey) }
-        showIsland(.voice(.dictation), OT.Motion.barOpen)
-        guard !options.harness, !playing else { return }
-        guard SpeechInput.available else {
-            speechNote = SpeechInput.why
-            return
-        }
-        mic.onLevel = { [weak self] level in self?.micLevel = level }
-        speech.onPartial = { [weak self] text in self?.heardSoFar = text }
-        speech.start(language: flow.language, meter: mic) { [weak self] ok, why in
-            guard let self, !ok else { return }
-            self.speechNote = why
-        }
-    }
-
-    /// fn again: the words are written up.
-    func finishDictation() {
-        speech.finish()
-        transcribe(.dictation)
-    }
-
-    func cancelDictation() {
-        speech.cancel()
-        mic.stop()
-        dictationTarget = nil
-        heardSoFar = ""
-        rest()
-    }
-
-    /// Written up: the words land in the window they were said into, cleaned (fillers out, a
-    /// capital and a full stop). Real words wait for the recognizer's last say; the play's (or a
-    /// Mac without speech) land the line it would have said.
-    func dictationWritten() {
-        guard let target = dictationTarget else { rest(); return }
-        let spoken = speech.finalText ?? heardSoFar
-        let words = spoken.isEmpty || !SpeechInput.available || options.harness || playing
-            ? (target == .feedback ? OT.Dictation.sampleFeedback : OT.Dictation.sampleReply)
-            : spoken
-        land(Self.cleaned(words), in: target)
-    }
-
     func land(_ words: String, in target: DictationWindow) {
-        speech.cancel()
-        mic.stop()
-        mic.onLevel = nil
         animate(OT.Motion.content) {
             switch target {
             case .feedback: feedbackText = feedbackText.isEmpty ? words : feedbackText + " " + words
@@ -373,7 +317,6 @@ extension OnboardingModel {
                                 secondsBeforeEnd: target == .feedback ? 90 : 60))
         dictationTarget = nil
         heardSoFar = ""
-        rest()
         let owed = flow.waitingFor
         if target == .feedback, owed?.contains(.feedbackLanded) == true { beat(.feedbackLanded) }
         if target == .messages, owed?.contains(.replyLanded) == true { beat(.replyLanded) }

@@ -5,7 +5,8 @@ import OnboardingCore
 import FoveaCore
 import CapturesCore
 
-/// What the Island shows. The first run keeps its own state and never borrows the Workbench's.
+/// What the island is doing, as the first run follows it: the real island's own states (the first
+/// run no longer draws one), heard through its events, and the lines it asks for under the notch.
 enum IslandPhase: Equatable {
     case rest
     /// One line under the notch.
@@ -85,6 +86,8 @@ struct PracticeSession: Equatable, Identifiable {
         var answer: String?
     }
     let id = UUID()
+    /// Its session on the real island.
+    var islandID: String?
     /// The task that sent it.
     var task: Step
     var title: String
@@ -168,8 +171,20 @@ final class OnboardingModel {
 
     // MARK: The Island
 
+    /// The rest of Fovea: the real island, the prefs, System Settings (OnboardingCoordinator).
+    @ObservationIgnored weak var host: OnboardingHost?
     var island: IslandPhase = .rest
     var captionText = ""
+    /// A line is under the notch (the step's own, or a held one).
+    var captionShown = false
+    /// The notch's look, as Make it yours sets it (Oct 9): the glass, the panels, the size.
+    var notchAppearance: NotchAppearance = .dark
+    var notchPanels: NativePanels = .attached
+    var notchDensity: NotchDensity = .spacious
+    /// "Clear my screen" was pressed: the other apps are hidden until the end.
+    var screenCleared = false
+    /// Open Fovea at login, as "You're set" offers it.
+    var openAtLogin = true
     /// A word on the board mid-task ("That missed the pull requests."), in place of the instruction
     /// for a moment: the Island keeps the voice bar open meanwhile.
     var hintText: String?
@@ -253,7 +268,6 @@ final class OnboardingModel {
     var heardSoFar = ""
     var feedbackSent = false
     var speechNote: String?
-    @ObservationIgnored let speech = SpeechInput()
 
     // MARK: Bringing your words (Oct 9)
 
@@ -377,6 +391,11 @@ final class OnboardingModel {
         if options.harness || options.practiceAgent { useRealAgent = false }
         if !options.harness { sound.startAmbient() }
         if !options.harness { startKeys() }
+        if let prefs = host?.prefs {
+            notchAppearance = prefs.notchAppearance
+            notchPanels = prefs.panels
+            notchDensity = prefs.density
+        }
         // No opening moment (Oct 9): the run opens on hello.
         enter(flow.step)
     }
@@ -392,18 +411,10 @@ final class OnboardingModel {
     /// synthetic edges without installing any event monitor.
     func makeRig() -> KeyRig {
         let rig = KeyRig()
-        rig.onRequest = { [weak self] in self?.requestKey() }
-        rig.onDictation = { [weak self] in self?.dictationKey() }
-        rig.onCommandDown = { [weak self] in self?.commandDown() }
-        rig.onCommandUp = { [weak self] tap in self?.commandUp(tap: tap) }
-        rig.onCommandDouble = { [weak self] in self?.commandDouble() }
-        rig.onOptionDown = { [weak self] in self?.optionDown() }
-        rig.onOptionUp = { [weak self] tap in self?.optionUp(tap: tap) }
         rig.onFlags = { [weak self] down in self?.keysDown = down }
         rig.onReturn = { [weak self] in self?.returnKey() ?? false }
         rig.onEscape = { [weak self] in self?.escapeKey() ?? false }
         rig.onSpace = { [weak self] down in self?.spaceKey(down) ?? false }
-        rig.wire()
         return rig
     }
 
@@ -533,11 +544,13 @@ final class OnboardingModel {
             showIsland(.auraPreview, OT.Motion.barOpen)
         case .permissions:
             dragTried = false
-            showIsland(.dragCaption, OT.Motion.open)
             captionText = Copy.permissionCaptions[flow.allowed.contains(.accessibility) ? 1 : 0]
-            animate(OT.Motion.calm) {
-                settingsPane = flow.allowed.contains(.accessibility) ? .screenRecording : .accessibility
-            }
+            showIsland(.dragCaption, OT.Motion.open)
+            let pane: Permission = flow.allowed.contains(.accessibility) ? .screenRecording : .accessibility
+            animate(OT.Motion.calm) { settingsPane = pane }
+            // The real System Settings, at the list (it opens where it was last left).
+            if pane == .screenRecording { host?.keepResumePoint() }
+            host?.openPermission(pane)
         case .microphone:
             micPhase = .waiting
             say(copy.caption, hold: false)
@@ -556,7 +569,7 @@ final class OnboardingModel {
                 openSessionID = session.id
                 showIsland(.session, OT.Motion.open)
             } else {
-                prepareFollowUpSession()
+                say("Send the packing list first: press \(keys.spoken(.request)).", hold: false)
             }
         case .dictationIntro, .dictation, .dictionary, .home:
             if step == .home { clearPracticeFiles() }
@@ -582,7 +595,6 @@ final class OnboardingModel {
         if step != .dictation {
             dictationTarget = nil
             heardSoFar = ""
-            speech.cancel()
         }
     }
 
@@ -701,14 +713,51 @@ final class OnboardingModel {
 
     // MARK: The Island
 
+    /// What the step asks of the island: a line under the notch (draggable in the permissions),
+    /// the Dispatch bar's glow while it's chosen, the microphone test's bar, the board, a session.
+    /// The rest the person does with the keys.
     func showIsland(_ phase: IslandPhase, _ animation: Animation) {
         animate(animation) { island = phase }
+        guard let host else { return }
+        switch phase {
+        case .rest:
+            captionShown = false
+            host.caption(nil, draggable: false)
+            host.previewAura(false)
+            host.islandRest()
+        case .caption:
+            captionShown = true
+            host.caption(captionText, draggable: false)
+        case .dragCaption:
+            captionShown = true
+            host.caption(captionText, draggable: true)
+        case .auraPreview:
+            captionShown = false
+            host.caption(nil, draggable: false)
+            host.previewAura(true)
+        case .voice(.dictation) where step == .microphone:
+            captionShown = false
+            host.caption(nil, draggable: false)
+            host.listening(true)
+        case .board:
+            host.openBoard()
+        case .session:
+            if let id = openSession?.islandID { host.openIslandSession(id) }
+        default:
+            break
+        }
     }
 
-    /// One line in the Island, typed out. Held lines go back to what the step showed once read.
+    /// One line under the notch, typed out. Held lines go back to what the step showed once read.
     func say(_ text: String, hold: Bool) {
         animate(OT.Motion.content) { captionText = text }
-        if island != .caption { showIsland(.caption, OT.Motion.barOpen) }
+        if step == .permissions {
+            showIsland(.dragCaption, OT.Motion.open)
+        } else if island == .rest || island == .caption || island == .dragCaption || !captionShown {
+            showIsland(.caption, OT.Motion.barOpen)
+        } else {
+            host?.caption(text, draggable: false)
+        }
         if hold { scheduleCaptionReturn(for: text) }
     }
 
@@ -720,8 +769,9 @@ final class OnboardingModel {
     /// A held line goes back to the step's own after a moment.
     private func scheduleCaptionReturn(for text: String) {
         after(holdTime(for: text), "caption") { [weak self] in
-            guard let self, self.island == .caption else { return }
+            guard let self, self.captionShown else { return }
             self.animate(OT.Motion.content) { self.captionText = self.copy.caption }
+            self.host?.caption(self.captionText, draggable: self.step == .permissions)
         }
     }
 
@@ -737,10 +787,46 @@ final class OnboardingModel {
 
     // MARK: Make it yours
 
-    func setAccent(_ accent: AccentName) { animate(OT.Motion.calm) { flow.personal.accent = accent }; sound.cue(.tick) }
-    func setAura(_ aura: AuraPalette) { animate(OT.Motion.calm) { flow.personal.aura = aura }; sound.cue(.tick) }
-    func setAuraHue(_ hue: Double) { flow.personal.auraHue = hue }
-    func setAuraDrift(_ drift: Double) { flow.personal.auraDrift = drift }
+    // Each choice goes to the prefs the island and the window read, so the real notch shows it as
+    // it's made, and Home and Settings start with it.
+    func setAccent(_ accent: AccentName) {
+        animate(OT.Motion.calm) { flow.personal.accent = accent }
+        host?.prefs.accent = accent
+        sound.cue(.tick)
+    }
+    func setAura(_ aura: AuraPalette) {
+        animate(OT.Motion.calm) { flow.personal.aura = aura }
+        host?.prefs.glowPalette = aura
+        sound.cue(.tick)
+    }
+    func setAuraHue(_ hue: Double) {
+        flow.personal.auraHue = hue
+        host?.prefs.glowHue = hue
+    }
+    func setAuraDrift(_ drift: Double) {
+        flow.personal.auraDrift = drift
+        host?.prefs.glowDrift = drift
+    }
+    /// The notch's look (Oct 9): the glass light or dark, its panels attached or floating, the
+    /// room it takes. The board shows at the notch, so the choice is seen.
+    func setNotchAppearance(_ a: NotchAppearance) {
+        animate(OT.Motion.calm) { notchAppearance = a }
+        host?.prefs.notchAppearance = a
+        host?.previewPanel()
+        sound.cue(.tick)
+    }
+    func setNotchPanels(_ p: NativePanels) {
+        animate(OT.Motion.calm) { notchPanels = p }
+        host?.prefs.panels = p
+        host?.previewPanel()
+        sound.cue(.tick)
+    }
+    func setNotchDensity(_ d: NotchDensity) {
+        animate(OT.Motion.calm) { notchDensity = d }
+        host?.prefs.density = d
+        host?.previewPanel()
+        sound.cue(.tick)
+    }
 
     /// The accent as a color: Multicolor is the Mac's own accent.
     var accentColor: Color { AccentPalette.color(personal.accent) }
@@ -756,6 +842,19 @@ final class OnboardingModel {
             flow.language = language
             languageMoreOpen = false
         }
+        host?.prefs.language = language
+        sound.cue(.tick)
+    }
+
+    func setOpenAtLogin(_ on: Bool) {
+        animate(OT.Motion.calm) { openAtLogin = on }
+        host?.prefs.openAtLogin = on
+    }
+
+    /// "Clear my screen" (Oct 9): the other apps hide for the tour, and exactly those come back.
+    func clearScreen() {
+        host?.clearScreen()
+        animate(OT.Motion.calm) { screenCleared = host?.screenCleared ?? true }
         sound.cue(.tick)
     }
 
@@ -766,6 +865,7 @@ final class OnboardingModel {
     func requestLanguage(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         flow.languageRequest = trimmed.isEmpty ? nil : trimmed
+        if !trimmed.isEmpty, host?.prefs.requestedLanguages.contains(trimmed) == false { host?.prefs.requestedLanguages.append(trimmed) }
     }
 }
 

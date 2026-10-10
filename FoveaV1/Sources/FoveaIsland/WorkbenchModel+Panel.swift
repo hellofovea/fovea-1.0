@@ -113,15 +113,16 @@ extension WorkbenchModel {
             panelExit?.cancel()
             panelExit = nil
             panelLeftNotch = nil
-            guard notchState == .silent, panelArmed, !v2BoardOrder.isEmpty, panelDwell == nil else { return }
+            guard hoverOpens, notchState == .silent, panelArmed, !v2BoardOrder.isEmpty, panelDwell == nil else { return }
             // Back just after a hover closed it: the person meant it; no second dwell.
             if let closed = panelHoverClosed, now.timeIntervalSince(closed) < P.reopenWindow {
                 showAgentPanel(pinned: false)
+                live?.director?.islandDidEmit(.boardOpened(byHover: true))
                 return
             }
             panelDwell = Task { [weak self] in
                 let start = Date()
-                try? await Task.sleep(for: .seconds(P.dwell))
+                try? await Task.sleep(for: .seconds(self?.live != nil ? (self?.hoverDwell.start ?? P.dwell) : P.dwell))
                 while true {
                     guard let self, !Task.isCancelled else { return }
                     if self.panelZone != .inside {
@@ -130,10 +131,11 @@ extension WorkbenchModel {
                             self.panelDwell = nil
                             return
                         }
-                    } else if self.panelAtRest || Date().timeIntervalSince(start) >= P.dwellCap {
+                    } else if self.panelAtRest || Date().timeIntervalSince(start) >= (self.live != nil ? self.hoverDwell.cap : P.dwellCap) {
                         self.panelDwell = nil
                         guard self.notchState == .silent else { return }
                         self.showAgentPanel(pinned: false)
+                        self.live?.director?.islandDidEmit(.boardOpened(byHover: true))
                         return
                     }
                     try? await Task.sleep(for: .seconds(P.dwellCheck))

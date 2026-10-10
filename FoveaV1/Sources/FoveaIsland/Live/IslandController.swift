@@ -110,6 +110,9 @@ package final class IslandController {
             let size = (model.notchState == .v2Board ? model.v2BoardLayout.hoverSize : nil) ?? model.stackLayout.outline.size
             rects.append(CGRect(x: (w - size.width) / 2 - 8, y: 0, width: size.width + 16, height: size.height + 8))
         }
+        if model.guideCaption != nil, model.notchState == .silent, let frame = model.captionFrame {
+            rects.append(frame.insetBy(dx: -4, dy: -4))
+        }
         for item in model.v2Detached {
             if let side = item.docked {
                 let x: CGFloat = side == .left ? 0 : w - 64
@@ -183,6 +186,7 @@ package final class IslandController {
     private func observeModel() {
         withObservationTracking {
             _ = model.notchState; _ = model.capturing; _ = model.highlighting; _ = model.v2DragOut; _ = model.v2Detached
+            _ = model.guideCaption; _ = model.captionFrame
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.updateClickThrough()
@@ -282,6 +286,10 @@ struct IslandLayerView: View {
             Group {
                 V2DetachedLayer(model: model)
                 MockIsland(model: model)
+                if let caption = model.guideCaption, model.notchState == .silent {
+                    GuideCaptionView(model: model, caption: caption)
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(ScreenSpace.name)) } action: { model.captionFrame = $0 }
+                }
                 CaptureOverlay(model: model)
             }
             .opacity(model.hidingOwnSurfaces ? 0 : 1)

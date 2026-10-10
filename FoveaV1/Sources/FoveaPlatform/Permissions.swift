@@ -107,6 +107,7 @@ public enum AppHider {
     public struct Hidden: Codable, Hashable, Sendable {
         public var bundleID: String
         public var pid: Int32
+        public init(bundleID: String, pid: Int32) { self.bundleID = bundleID; self.pid = pid }
     }
 
     /// Hides every ordinary app that's showing, but Fovea. Returns what it hid.
