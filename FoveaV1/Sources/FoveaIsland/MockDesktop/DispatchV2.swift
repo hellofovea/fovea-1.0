@@ -209,7 +209,6 @@ struct V2SendContent: View {
 
     var body: some View {
         let V = WorkbenchTokens.V2.self
-        let request = model.v2Request
         ZStack(alignment: .topLeading) {
             Color.clear
             VStack(alignment: .leading, spacing: 0) {
