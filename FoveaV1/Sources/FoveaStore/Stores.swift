@@ -39,9 +39,15 @@ public struct DataLocation: Sendable {
         try? FileManager.default.createDirectory(at: media, withIntermediateDirectories: true)
     }
 
-    /// Everything Fovea kept, gone (`--reset-all`).
+    /// Everything Fovea kept, gone (`--reset-all`), but the first run's desktop picture
+    /// (`Wallpapers/`, put there by hand: Tahoe Day).
     public func eraseAll() {
-        try? FileManager.default.removeItem(at: root)
+        let files = FileManager.default
+        let keep: Set<String> = ["Wallpapers"]
+        for item in (try? files.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
+        where !keep.contains(item.lastPathComponent) {
+            try? files.removeItem(at: item)
+        }
         prepare()
     }
 }
