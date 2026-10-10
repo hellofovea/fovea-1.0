@@ -98,11 +98,6 @@ struct MainView: View {
                     switch model.page {
                     case .captures:
                         CapturesPage().transition(.page(forward: model.pageForward))
-                            // The notch's panels attached: Home's switcher hangs from the page's top
-                            // edge as the notch hangs from the screen's (NotchLook.swift).
-                            .overlay(alignment: .top) {
-                                if model.prefs.panels == .attached, model.windowError == nil { NotchSwitcher(hanging: true) }
-                            }
                     case .day:
                         CapturesPage(day: true).transition(.page(forward: model.pageForward))
                     case .settings:
@@ -219,10 +214,10 @@ struct Toolbar: ToolbarContent {
             }
             // Its own glass track, so the pill sits the same 4 pt in on every side.
             if #available(macOS 26.0, *) {
-                ToolbarItem(placement: .principal) { HomeSwitcherSlot().toolbarScheme(p) }
+                ToolbarItem(placement: .principal) { KindPicker().toolbarScheme(p) }
                     .sharedBackgroundVisibility(.hidden)
             } else {
-                ToolbarItem(placement: .principal) { HomeSwitcherSlot().toolbarScheme(p) }
+                ToolbarItem(placement: .principal) { KindPicker().toolbarScheme(p) }
             }
             // Search draws its own glass (a circle, then a capsule as it opens), so the slot it
             // keeps for the open field doesn't show as an empty capsule; you, a circle of glass
@@ -680,10 +675,12 @@ struct CapturesPage: View {
                         // The grid as one centered block, as wide as its columns: the space left
                         // over goes to both sides equally instead of piling up on the right.
                         VStack(alignment: .leading, spacing: 0) {
-                            // The top is above the inset, so scrolling to it shows the inset too; with
-                            // the switcher hanging from the page's top, below it.
-                            Color.clear.frame(height: model.cardSpacing.metrics.contentInset
-                                              + (!day && model.prefs.panels == .attached ? T.Library.islandHeight : 0)).id("top")
+                            // The top is above the inset, so scrolling to it shows the inset too.
+                            Color.clear.frame(height: model.cardSpacing.metrics.contentInset).id("top")
+                            // Home greets you by name (Oct 9), on the first page only.
+                            if !day, model.query.tokens.isEmpty, model.query.kind == nil, !model.greetingName.isEmpty {
+                                HomeGreeting(name: model.greetingName)
+                            }
                             content(layout)
                         }
                         .frame(width: layout.contentWidth, alignment: .leading)
@@ -979,5 +976,19 @@ struct ToastRise: ViewModifier, Animatable {
     func body(content: Content) -> some View {
         let travel = motion.reduce ? 0 : 1 - progress
         content.opacity(progress).offset(y: 8 * travel).blur(radius: 2 * travel)
+    }
+}
+
+/// "Hello, Ryan": Home greets you by the name you gave the first run, at the top of the first page.
+struct HomeGreeting: View {
+    @Environment(\.palette) private var palette
+    let name: String
+
+    var body: some View {
+        Text("Hello, \(name)")
+            .font(.system(size: 26, weight: .semibold))
+            .foregroundStyle(palette.text)
+            .padding(.bottom, 18)
+            .accessibilityAddTraits(.isHeader)
     }
 }

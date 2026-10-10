@@ -27,22 +27,35 @@ public struct StepCopy: Equatable, Sendable {
 }
 
 public enum Copy {
-    public static func step(_ step: Step, keys: KeyMap = .current, agents: [Agent] = []) -> StepCopy {
+    public static func step(_ step: Step, keys: KeyMap = .current, agents: [Agent] = [], name: String? = nil) -> StepCopy {
         let agent = agents.first?.name
         let dictation = keys.spoken(.dictation)
         let keysHelp = "Keys not lighting up? Allow Device Control and Data Access, and set Keyboard › Press 🌐 key to Do Nothing."
         switch step {
-        case .hello:
-            // One line, no paragraph under it (Oct 8).
+        case .signIn:
             return StepCopy(
                 caption: "Hi. I live up here.",
-                title: "Point at anything, say what you want.",
+                title: "Sign in to Fovea",
+                body: "With your email, so your settings and history are yours.",
+                button: "Continue")
+        case .name:
+            return StepCopy(
+                caption: "Hi. I live up here.",
+                title: "What should we call you?",
+                button: "Continue")
+        case .hello:
+            // Greeted by name (Oct 9), then the one line (Oct 8).
+            let who = name.map { $0.trimmingCharacters(in: .whitespaces) }.flatMap { $0.isEmpty ? nil : $0 }
+            return StepCopy(
+                caption: who.map { "Hi, \($0). I live up here." } ?? "Hi. I live up here.",
+                title: who.map { "Hello, \($0)." } ?? "Hello.",
+                body: "Point at anything, say what you want.",
                 button: "Begin")
         case .makeItYours:
             return StepCopy(
                 caption: "This is how I glow when you talk to an agent.",
                 title: "Make it yours",
-                body: "Your accent, and the light the notch makes while it listens. Both stay in Settings.",
+                body: "Your accent, the light the notch makes while it listens, and the notch itself. All of it stays in Settings.",
                 button: "Looks good")
         case .permissions:
             // Both lists in one step, named and nothing more (Oct 9, round two).

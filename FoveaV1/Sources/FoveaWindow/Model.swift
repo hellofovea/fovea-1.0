@@ -705,7 +705,11 @@ final class CapturesModel {
 
     // The App UI review (Oct 6): you, support, updates, and the states the window draws.
     /// Your name and photo (row 8): yours to change; the email comes from how you signed in.
-    var profileName = "Ryan"
+    var profileName = "" { didSet { if profileName != oldValue { onPrefsEdited?() } } }
+    /// The email you signed in with (the first run).
+    var profileEmail = ""
+    /// The name Home greets you by.
+    var greetingName: String { profileName.trimmingCharacters(in: .whitespaces) }
     var profilePhoto: NSImage?
     /// A photo over 2 MB was chosen: said under it for a moment.
     var photoTooLarge = false

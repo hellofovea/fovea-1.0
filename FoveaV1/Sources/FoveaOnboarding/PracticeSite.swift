@@ -57,6 +57,13 @@ final class PracticeSite: NSObject, WKNavigationDelegate {
     }
 
     /// Load it again, from the files, not the cache (a plain load would keep the old stylesheet).
+    /// The run is over: the page and its window go.
+    func close() {
+        webView.stopLoading()
+        window.orderOut(nil)
+        window.close()
+    }
+
     func reload() {
         guard page != nil else { return }
         if webView.url == nil { load(); return }

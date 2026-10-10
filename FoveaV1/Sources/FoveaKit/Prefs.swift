@@ -102,6 +102,9 @@ public struct FoveaPrefs: Codable, Equatable, Sendable {
     public var showAnswers = true
     /// Choose chat before a Dispatch goes ("Review the words first").
     public var reviewFirst = true
+    // You: the email you signed in with, and what Fovea calls you (the first run asks).
+    public var accountEmail = ""
+    public var accountName = ""
     // Fovea.
     public var language: FoveaLanguage = .english
     /// Languages typed under More…, kept to choose what comes next.
@@ -143,6 +146,8 @@ public struct FoveaPrefs: Codable, Equatable, Sendable {
         hoverWait = (try? c.decode(HoverWait.self, forKey: .hoverWait)) ?? d.hoverWait
         showAnswers = (try? c.decode(Bool.self, forKey: .showAnswers)) ?? d.showAnswers
         reviewFirst = (try? c.decode(Bool.self, forKey: .reviewFirst)) ?? d.reviewFirst
+        accountEmail = (try? c.decode(String.self, forKey: .accountEmail)) ?? d.accountEmail
+        accountName = (try? c.decode(String.self, forKey: .accountName)) ?? d.accountName
         language = (try? c.decode(FoveaLanguage.self, forKey: .language)) ?? d.language
         requestedLanguages = (try? c.decode([String].self, forKey: .requestedLanguages)) ?? d.requestedLanguages
         openAtLogin = (try? c.decode(Bool.self, forKey: .openAtLogin)) ?? d.openAtLogin

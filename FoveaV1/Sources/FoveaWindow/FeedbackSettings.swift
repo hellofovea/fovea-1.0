@@ -231,7 +231,7 @@ extension CapturesModel {
     /// Your initial, where there's no photo.
     var initial: String {
         let name = profileName.trimmingCharacters(in: .whitespaces)
-        return name.isEmpty ? "R" : String(name.prefix(1)).uppercased()
+        return name.isEmpty ? "F" : String(name.prefix(1)).uppercased()
     }
 
     /// A sheet is over the window: its toast shows in the sheet instead, where it can be clicked.
@@ -328,7 +328,7 @@ struct ProfileSection: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(model.profileName.isEmpty ? "Your name" : model.profileName)
                             .font(.system(size: 15, weight: .semibold)).foregroundStyle(palette.text)
-                        Text(verbatim: "ryan@example.com").font(.system(size: 12)).foregroundStyle(palette.secondary)
+                        Text(verbatim: model.profileEmail.isEmpty ? "Not signed in" : model.profileEmail).font(.system(size: 12)).foregroundStyle(palette.secondary)
                             .textSelection(.enabled)
                     }
                     Spacer()

@@ -66,6 +66,10 @@ struct BoardExtras: View {
 
     var body: some View {
         switch model.step {
+        case .signIn:
+            AccountField(model: model, kind: .email)
+        case .name:
+            AccountField(model: model, kind: .name)
         case .hello:
             VStack(spacing: 18) {
                 LanguagePicker(model: model)
@@ -221,7 +225,7 @@ struct Personalize: View {
             }
             Spacer().frame(height: OT.Board.sectionGap)
             VStack(alignment: .leading, spacing: 10) {
-                label("THE NOTCH")
+                label("The notch")
                 NotchChoiceRow(title: "Glass", options: NotchAppearance.allCases, chosen: model.notchAppearance,
                                name: \.title) { model.setNotchAppearance($0) }
                 NotchChoiceRow(title: "Panels", options: NativePanels.allCases, chosen: model.notchPanels,
@@ -758,6 +762,42 @@ struct DictionaryImportView: View {
     }
 }
 
+/// The first two steps' one box each: the email to sign in with, then the name to be called by.
+/// Return goes on. (1.0 has no account server yet: the email is kept on this Mac, for Settings ›
+/// Account.)
+struct AccountField: View {
+    enum Kind { case email, name }
+    let model: OnboardingModel
+    let kind: Kind
+    @FocusState private var focused: Bool
+    @Environment(\.boardInk) private var ink
+
+    var body: some View {
+        let binding = kind == .email
+            ? Binding(get: { model.typedEmail }, set: { model.typedEmail = $0 })
+            : Binding(get: { model.typedName }, set: { model.typedName = $0 })
+        VStack(spacing: 8) {
+            TextField(kind == .email ? "you@example.com" : "Your name", text: binding)
+                .textFieldStyle(.plain)
+                .font(.system(size: 16))
+                .foregroundStyle(ink.primary)
+                .multilineTextAlignment(.center)
+                .textContentType(kind == .email ? .emailAddress : .name)
+                .focused($focused)
+                .onSubmit { model.continueTapped() }
+                .padding(.horizontal, 18)
+                .frame(width: 340, height: 42)
+                .background(Capsule().fill(ink.fill))
+                .overlay(Capsule().strokeBorder(model.accentColor.opacity(focused ? 0.8 : 0.3)))
+            Text(kind == .email ? "Kept on this Mac for now." : "Fovea greets you with it.")
+                .font(.system(size: 12)).foregroundStyle(ink.tertiary)
+        }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { focused = true }
+        }
+    }
+}
+
 /// "Clear my screen" (asked, Oct 9): the other apps hide for the tour, so only Fovea's practice
 /// windows are on screen, and exactly those apps come back at the end. Never done without asking,
 /// so a call or a document isn't hidden by surprise.
@@ -876,6 +916,8 @@ struct BoardActions: View {
 
     private var enabled: Bool {
         switch model.step {
+        case .signIn: OnboardingModel.isEmail(model.typedEmail)
+        case .name: !model.typedName.trimmingCharacters(in: .whitespaces).isEmpty
         case .agents: true
         case .microphone: model.micPhase == .waiting
         case .dictionary: !model.importChosen.isEmpty

@@ -41,6 +41,9 @@ public struct Flow: Equatable, Sendable {
     public private(set) var learned: Set<KeyName> = []
     public private(set) var allowed: Set<Permission> = []
     public var language: Language = .english
+    /// The email signed in with, and the name to be called by (the first two steps).
+    public var email: String?
+    public var name: String?
     /// A language typed under More… (Oct 9): kept as a request, not listened in yet.
     public var languageRequest: String?
     /// The accent and the aura, chosen in `makeItYours`.
@@ -58,7 +61,7 @@ public struct Flow: Equatable, Sendable {
     public private(set) var records: [PracticeRecord] = []
     public private(set) var finished = false
 
-    public init(start: Step = .hello) {
+    public init(start: Step = .signIn) {
         step = start
     }
 

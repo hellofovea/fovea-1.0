@@ -160,6 +160,8 @@ package final class HomeWindowController: NSObject {
         set(\.appLanguage, p.language)
         let accent = AccentChoice(rawValue: p.accent.rawValue) ?? .multicolor
         if model.accent != accent { model.accent = accent }
+        if model.profileName != p.accountName { model.profileName = p.accountName }
+        if model.profileEmail != p.accountEmail { model.profileEmail = p.accountEmail }
     }
 
     private func pushPrefs() {
@@ -180,6 +182,7 @@ package final class HomeWindowController: NSObject {
         p.openAtLogin = m.openAtLogin
         p.language = m.appLanguage
         p.accent = FoveaAccent(rawValue: model.accent.rawValue) ?? .multicolor
+        p.accountName = model.profileName
         if p != stores.prefs.prefs { stores.prefs.prefs = p }
     }
 

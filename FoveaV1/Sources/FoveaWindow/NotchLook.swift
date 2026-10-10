@@ -3,12 +3,11 @@ import FoveaKit
 import FoveaLook
 import CapturesCore
 
-// The notch's look, in the window (Oct 9): the notch is Liquid Glass, light or dark, its panels
-// attached to the top edge or floating under it, at Compact or Spacious, in the accent. The window
-// follows it, so the two read as one: Home's switcher (All · Dictation · Dispatch) is the same
-// glass, hanging from the top of the page with ears when the notch's panels are attached, a
-// capsule in the toolbar when they float. Settings › Notch shows the choice on a picture of the
-// top of the screen, and the real notch shows it a moment as it's made.
+// The notch's look, in Settings (Oct 9): the notch is Liquid Glass, light or dark, its panels
+// attached to the top edge or floating under it, at Compact or Spacious, in the accent. Settings ›
+// Notch shows the choice on a picture of the top of the screen, and the real notch shows it a
+// moment as it's made. (Home's switcher stays as Fovea Captures draws it: Oct 9, "keep the
+// original design".)
 
 /// The notch's look as the person chose it, read from Settings' prefs.
 struct NotchLook: Equatable {
@@ -44,61 +43,6 @@ struct NotchGlass<S: Shape>: View {
             }
         }
         .environment(\.colorScheme, look.scheme)
-    }
-}
-
-/// Home's switcher in the notch's glass. Attached: an island hanging from the page's top edge,
-/// ears and all, as the notch hangs from the screen's. Floating: a capsule (in the toolbar).
-struct NotchSwitcher: View {
-    @Environment(CapturesModel.self) private var model
-    @Namespace private var ns
-    var hanging: Bool
-
-    var body: some View {
-        let look = model.notchLook
-        let ears = hanging ? T.Library.islandEars : 0
-        HStack(spacing: 2) {
-            segment("All", kind: nil, on: model.query.kind == nil, look: look) { model.setKind(nil) }
-            ForEach(CaptureKind.allCases, id: \.self) { kind in
-                segment(kind.title, kind: kind, on: model.query.kind == kind, look: look) { model.setKind(kind) }
-            }
-        }
-        .padding(.horizontal, ears + 6)
-        .padding(.bottom, hanging ? 2 : 0)
-        .frame(height: hanging ? T.Library.islandHeight : T.Layout.toolbarControl)
-        .background {
-            if hanging {
-                NotchGlass(shape: IslandShape(topRadius: T.Library.islandEars, bottomRadius: T.Library.islandFoot), look: look)
-            } else {
-                NotchGlass(shape: Capsule(), look: look)
-            }
-        }
-        .environment(\.colorScheme, look.scheme)
-        .animation(model.motion.animation(.swap), value: look)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Show")
-    }
-
-    private func segment(_ title: String, kind: CaptureKind?, on: Bool, look: NotchLook, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 5) {
-                if let kind { KindMark(kind: kind, size: 8) }
-                Text(title).font(.system(size: 12, weight: on ? .semibold : .medium))
-            }
-            .foregroundStyle(look.ink(on ? 0.95 : 0.6))
-            .padding(.horizontal, 11)
-            .frame(height: 26)
-            .background {
-                if on {
-                    // Native's chosen chip: an ink fill on the glass.
-                    Capsule().fill(look.ink(0.12)).matchedGeometryEffect(id: "on", in: ns)
-                }
-            }
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .help(kind.map { "Show only \($0.plural.lowercased())" } ?? "Show everything")
-        .accessibilityAddTraits(on ? [.isSelected] : [])
     }
 }
 
@@ -209,20 +153,6 @@ struct PreviewWallpaper: View {
     var body: some View {
         if let wallpaper = Art.resource("Photos/coast.jpg") {
             Image(nsImage: wallpaper).resizable().aspectRatio(contentMode: .fill)
-        }
-    }
-}
-
-/// The toolbar's center on Home: the switcher as a glass capsule when the notch's panels float;
-/// nothing when they're attached (it hangs from the page then).
-struct HomeSwitcherSlot: View {
-    @Environment(CapturesModel.self) private var model
-
-    var body: some View {
-        if model.prefs.panels == .floating {
-            NotchSwitcher(hanging: false)
-        } else {
-            Color.clear.frame(width: 1, height: 1)
         }
     }
 }

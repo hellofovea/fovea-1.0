@@ -21,6 +21,8 @@ struct ResumePoint: Codable {
     var personal: Personalization
     var language: FoveaLanguage
     var agentsOn: [String]
+    var email: String?
+    var name: String?
 }
 
 @MainActor
@@ -56,10 +58,14 @@ package final class OnboardingCoordinator: OnboardingHost {
             for raw in resume.allowed { if let p = OnboardingCore.Permission(rawValue: raw) { model.flow.allow(p) } }
             model.flow.personal = resume.personal
             model.flow.language = resume.language
+            model.flow.email = resume.email
+            model.flow.name = resume.name
         } else {
             model.flow.language = prefs.prefs.language
         }
         model.openAtLogin = prefs.prefs.openAtLogin
+        model.typedEmail = prefs.prefs.accountEmail
+        model.typedName = prefs.prefs.accountName
         model.screenCleared = !state.state.hiddenApps.isEmpty
         model.onFinished = { [weak self] _ in self?.finished() }
     }
@@ -73,7 +79,7 @@ package final class OnboardingCoordinator: OnboardingHost {
             model.agentsOn = Set(resume.agentsOn.compactMap(Agent.init(rawValue:)))
         }
         startWatching()
-        NSApp.activate(ignoringOtherApps: true)
+        if ProcessInfo.processInfo.environment["FOVEA_NO_ACTIVATE"] == nil { NSApp.activate(ignoringOtherApps: true) }
     }
 
     // MARK: The stage
@@ -194,7 +200,7 @@ package final class OnboardingCoordinator: OnboardingHost {
     func keepResumePoint() {
         let point = ResumePoint(step: model.step.rawValue, allowed: model.flow.allowed.map(\.rawValue),
                                 personal: model.flow.personal, language: model.flow.language,
-                                agentsOn: model.agentsOn.map(\.rawValue))
+                                agentsOn: model.agentsOn.map(\.rawValue), email: model.flow.email, name: model.flow.name)
         let data = try? JSONEncoder().encode(point)
         state.update { $0.resume = data }
     }
@@ -237,6 +243,10 @@ package final class OnboardingCoordinator: OnboardingHost {
         island.clearSessions()
         restoreApps()
         model.practice.remove()
+        for site in model.sites.values { site.close() }
+        model.sites = [:]
+        model.runner.cancel()
+        model.sound.stopAmbient()
         // The words brought in, into the dictionary.
         if !model.importedWords.isEmpty {
             dictionary.add(model.importedWords.map { (word: $0.word, heardAs: $0.heardAs) })

@@ -9,12 +9,20 @@ final class OnboardingCoreTests: XCTestCase {
         XCTAssertLessThan(first(.turnOn), first(.agents))
         XCTAssertLessThan(first(.agents), first(.pointAndSay))
         XCTAssertLessThan(first(.pointAndSay), first(.dictation))
-        XCTAssertEqual(Step.allCases.first, .hello, "the run opens on hello: no opening animation before it")
+        XCTAssertEqual(Step.allCases.first, .signIn, "Fovea 1.0 (Oct 9): the run opens on signing in, then the name, then hello")
+        XCTAssertEqual(Array(Step.allCases.prefix(3)), [.signIn, .name, .hello])
         XCTAssertEqual(Step.allCases.last, .home)
     }
 
     func testHelloThenMakeItYoursComeFirst() {
         var flow = Flow()
+        XCTAssertEqual(flow.step, .signIn)
+        XCTAssertNil(flow.advance(), "an email first")
+        flow.record(.signedIn)
+        XCTAssertEqual(flow.advance(), .name)
+        XCTAssertNil(flow.advance(), "then a name")
+        flow.record(.named)
+        XCTAssertEqual(flow.advance(), .hello)
         XCTAssertTrue(flow.isComplete)
         XCTAssertEqual(flow.advance(), .makeItYours)
         XCTAssertEqual(flow.step.stage, .arrive)
@@ -32,7 +40,19 @@ final class OnboardingCoreTests: XCTestCase {
         XCTAssertEqual(defaults.auraDrift, 0.5, "drift is a spectrum, from still to lively")
         XCTAssertFalse(AuraPalette.mono.turns)
         XCTAssertEqual(AccentName.allCases.count, 9)
-        XCTAssertEqual(AuraPalette.allCases.count, 8)
+        // The first run offers the eight templates; Custom is Settings' (one palette type, FoveaKit's).
+        XCTAssertEqual(AuraPalette.templates.count, 8)
+        XCTAssertFalse(AuraPalette.templates.contains(.custom))
+    }
+
+    /// The keys the first run teaches are the ones Settings › Shortcuts shows and the notch acts on.
+    func testTheFirstRunTeachesFoveasKeys() {
+        let keys = KeyMap.current
+        XCTAssertEqual(keys.request, FoveaKeys.dispatch.keys)
+        XCTAssertEqual(keys.dictation, FoveaKeys.voiceflow.keys)
+        XCTAssertEqual(keys.screenshot, FoveaKeys.region.keys)
+        XCTAssertEqual(keys.highlighter, FoveaKeys.highlighter.keys)
+        XCTAssertEqual(keys.presses(for: .wholeScreen), FoveaKeys.wholeScreen.presses)
     }
 
     func testBothListsAreOneStepThenTheMicrophone() {
@@ -72,7 +92,8 @@ final class OnboardingCoreTests: XCTestCase {
         XCTAssertNil(flow.advance())
         flow.record(.agentsConnected)
         XCTAssertEqual(flow.advance(), .weeklyUpdate, "connected is connected: straight to doing it")
-        XCTAssertFalse(Step.allCases.map(\.rawValue).contains("signIn"))
+        // Signing in is the run's first step (Fovea 1.0), never after the agents.
+        XCTAssertLessThan(Step.allCases.firstIndex(of: .signIn)!, Step.allCases.firstIndex(of: .agents)!)
         XCTAssertFalse(Step.allCases.map(\.rawValue).contains("captureShow"), "you learn by doing: no demo")
         XCTAssertEqual(Agent.supported, [.claudeCode, .codex])
         XCTAssertFalse(Agent.comingNext.isEmpty, "a say in what comes next")
@@ -144,7 +165,8 @@ final class OnboardingCoreTests: XCTestCase {
 
     func testEveryStepHasAWayPast() {
         // Hello, Make it yours and Home can't fail: their button always works.
-        let alwaysOpen: Set<Step> = [.hello, .makeItYours, .home]
+        // Signing in and the name are asked for, not skipped (Fovea 1.0).
+        let alwaysOpen: Set<Step> = [.signIn, .name, .hello, .makeItYours, .home]
         for step in Step.allCases where !alwaysOpen.contains(step) {
             XCTAssertTrue(step.skip.allowed, "\(step) needs a backup")
             var flow = Flow(start: step)
@@ -230,7 +252,8 @@ final class OnboardingCoreTests: XCTestCase {
         XCTAssertEqual(Copy.step(.agents, agents: [.claudeCode]).button, "Connect")
         XCTAssertEqual(Copy.step(.agents, agents: []).button, "Use the practice agent")
         XCTAssertEqual(Copy.step(.hover, agents: [.claudeCode]).caption, "Claude Code is on it.")
-        XCTAssertEqual(Copy.step(.hello).body, "", "hello is one line")
+        XCTAssertEqual(Copy.step(.hello, name: "Ryan").title, "Hello, Ryan.", "hello greets you by name")
+        XCTAssertEqual(Copy.step(.hello).body, "Point at anything, say what you want.", "and then the one line")
         XCTAssertEqual(Copy.step(.permissions).title, "Grant Fovea Access")
         XCTAssertEqual(Copy.step(.permissions).body, "")
         XCTAssertEqual(Copy.step(.weeklyUpdate).caption, "Dispatch from anywhere.")

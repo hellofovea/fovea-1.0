@@ -196,6 +196,19 @@ final class OnboardingModel {
     /// More… is open: a box to type a language into.
     var languageMoreOpen = false
 
+    // MARK: Signing in (Fovea 1.0: an email, then what to call you)
+
+    var typedEmail = ""
+    var typedName = ""
+
+    /// Something@something.something, with no spaces.
+    static func isEmail(_ text: String) -> Bool {
+        let t = text.trimmingCharacters(in: .whitespaces)
+        guard !t.contains(" "), let at = t.firstIndex(of: "@") else { return false }
+        let domain = t[t.index(after: at)...]
+        return at > t.startIndex && domain.contains(".") && !domain.hasPrefix(".") && !domain.hasSuffix(".")
+    }
+
     // MARK: Practice
 
     var practiceScreen: PracticeScreen = .empty
@@ -339,7 +352,7 @@ final class OnboardingModel {
         self.options = options
         pace = options.smoke ? 0.02 : (options.pace ?? 1)
         typing = !options.noTyping
-        var flow = Flow(start: options.step ?? .hello)
+        var flow = Flow(start: options.step ?? .signIn)
         if let step = options.step { flow.jump(to: step) }
         flow.language = Language.preferred(Locale.preferredLanguages)
         self.flow = flow
@@ -347,7 +360,7 @@ final class OnboardingModel {
         practice = PracticeFiles(separate: options.harness || options.play)
     }
 
-    var copy: StepCopy { Copy.step(flow.step, keys: keys, agents: connectedAgents) }
+    var copy: StepCopy { Copy.step(flow.step, keys: keys, agents: connectedAgents, name: flow.name) }
     var step: Step { flow.step }
     var personal: Personalization { flow.personal }
 
@@ -458,6 +471,20 @@ final class OnboardingModel {
 
     func continueTapped() {
         switch step {
+        case .signIn:
+            guard Self.isEmail(typedEmail) else {
+                hint("That doesn't look like an email.")
+                return
+            }
+            flow.email = typedEmail.trimmingCharacters(in: .whitespaces)
+            host?.prefs.accountEmail = flow.email ?? ""
+            beat(.signedIn)
+        case .name:
+            let name = typedName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { return }
+            flow.name = name
+            host?.prefs.accountName = name
+            beat(.named)
         case .agents where !flow.isComplete:
             connectAgents()
             return
@@ -538,6 +565,8 @@ final class OnboardingModel {
         }
         placePage()
         switch step {
+        case .signIn, .name:
+            say(copy.caption, hold: false)
         case .hello:
             say(copy.caption, hold: false)
         case .makeItYours:

@@ -28,6 +28,9 @@ public enum Stage: Int, CaseIterable, Sendable {
 /// from three tabs and a chat, and your packing list. No sign-in after the agents, and no demo
 /// before the tasks: you learn by doing (Oct 9, round two).
 public enum Step: String, CaseIterable, Sendable, Codable {
+    /// Oct 9 (Fovea 1.0): the run starts by signing in with an email, then the name to be called
+    /// by; hello greets you with it.
+    case signIn, name
     case hello, makeItYours
     case permissions, microphone
     case agents
@@ -37,7 +40,7 @@ public enum Step: String, CaseIterable, Sendable, Codable {
 
     public var stage: Stage {
         switch self {
-        case .hello, .makeItYours: .arrive
+        case .signIn, .name, .hello, .makeItYours: .arrive
         case .permissions, .microphone: .turnOn
         case .agents: .agents
         case .weeklyUpdate, .hover, .packList, .followUp: .pointAndSay
@@ -51,6 +54,8 @@ public enum Step: String, CaseIterable, Sendable, Codable {
     public var beats: [Set<Beat>] {
         switch self {
         case .hello, .makeItYours, .dictationIntro, .dictionary, .home: []
+        case .signIn: [[.signedIn]]
+        case .name: [[.named]]
         // Two lists, one drag each (Oct 9: granted together).
         case .permissions: [[.allowedAccessibility], [.allowedScreenRecording]]
         // Allowed, then heard: the person has to say the line before it counts (Oct 8).
@@ -86,7 +91,7 @@ public enum Step: String, CaseIterable, Sendable, Codable {
     /// or at once where there's nothing to fail. Hello, Make it yours and Home always go on.
     public var skip: Skip {
         switch self {
-        case .hello, .makeItYours, .home: .never
+        case .signIn, .name, .hello, .makeItYours, .home: .never
         case .dictationIntro, .dictation, .dictionary: .now
         case .permissions, .agents: .after(8)
         case .microphone, .hover: .after(10)
@@ -116,7 +121,7 @@ public enum Step: String, CaseIterable, Sendable, Codable {
 
     /// Steps for reading, where the board holds the eye; the rest are for doing, and the screen is
     /// the person's.
-    public var isReading: Bool { [.hello, .makeItYours, .agents, .dictationIntro, .dictionary, .home].contains(self) }
+    public var isReading: Bool { [.signIn, .name, .hello, .makeItYours, .agents, .dictationIntro, .dictionary, .home].contains(self) }
 
     /// The step after this one, before any skipping.
     public var next: Step? {
@@ -137,6 +142,8 @@ public enum Skip: Equatable, Sendable {
 /// Something the person did that a step can be waiting for. Pressing a capture key isn't one:
 /// ⌘ and ⌥ only arm what comes next (the first ⌘ of a double press would otherwise count early).
 public enum Beat: String, CaseIterable, Sendable, Codable {
+    /// An email to sign in with, and a name to be called by.
+    case signedIn, named
     case allowedAccessibility, allowedMicrophone, allowedScreenRecording
     /// The microphone test heard a voice.
     case heard
