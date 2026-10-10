@@ -52,7 +52,7 @@ bundle is signed with your Apple Development identity, so the grants survive a r
 | Pictures of the screen (ScreenCaptureKit), Fovea's own surfaces left out | |
 | The highlighter's words, from Accessibility where the app gives them (a picture otherwise) | |
 | The first run's sends to Claude Code (`claude -p`, in a practice folder) | |
-| Home's captures, their pictures, the dictionary, the prefs: in `~/Library/Application Support/Fovea/` | |
+| Home's captures, their pictures, the dictionary, the prefs: in `~/Library/Application Support/app.fovea/` | |
 | System Settings, the permission prompts, Quit & Reopen, Clear my screen, Open at login | |
 
 ## Flags

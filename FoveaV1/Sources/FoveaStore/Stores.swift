@@ -3,7 +3,7 @@ import Observation
 import FoveaKit
 import CapturesCore
 
-// What Fovea keeps on this Mac, in ~/Library/Application Support/Fovea/ (or `--data-dir=`): JSON
+// What Fovea keeps on this Mac, in ~/Library/Application Support/app.fovea/ (or `--data-dir=`): JSON
 // files written whole and atomically, a moment after the last change. One process holds every
 // store, so the island's new capture is Home's at once: they're @Observable, and both surfaces
 // read the same instance (the App makes them and hands them out).
@@ -20,8 +20,9 @@ public struct DataLocation: Sendable {
             let path = (String(flag.dropFirst("--data-dir=".count)) as NSString).expandingTildeInPath
             return DataLocation(root: URL(fileURLWithPath: path, isDirectory: true))
         }
+        // Its own folder, by bundle id: "Fovea" is another Fovea app's (gaze, logs, namespaces).
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return DataLocation(root: support.appendingPathComponent("Fovea", isDirectory: true))
+        return DataLocation(root: support.appendingPathComponent("app.fovea", isDirectory: true))
     }
 
     public func file(_ name: String) -> URL { root.appendingPathComponent(name) }
