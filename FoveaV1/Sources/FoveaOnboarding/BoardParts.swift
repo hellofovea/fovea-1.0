@@ -63,6 +63,7 @@ struct BoardScript: View {
 
 struct BoardExtras: View {
     let model: OnboardingModel
+    @Environment(\.boardInk) private var ink
 
     var body: some View {
         switch model.step {
@@ -71,8 +72,11 @@ struct BoardExtras: View {
         case .name:
             AccountField(model: model, kind: .name)
         case .hello:
-            VStack(spacing: 18) {
+            // Clear my screen set apart from the language (Oct 9), its reason read with it.
+            VStack(spacing: 0) {
                 LanguagePicker(model: model)
+                Rectangle().fill(ink.hairline).frame(width: 220, height: 1)
+                    .padding(.top, 30).padding(.bottom, 26)
                 ClearScreen(model: model)
             }
         case .makeItYours:
@@ -433,23 +437,32 @@ struct PermissionRows: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .frame(maxWidth: 420)
+                .frame(maxWidth: .infinity)
                 .animation(OT.Motion.content, value: allowed)
             }
             // Screen Recording counts only once Fovea has reopened (macOS's rule); its own
             // Quit & Reopen does it, or this.
             if model.asked.contains(.screenRecording), !model.flow.allowed.contains(.screenRecording) {
-                Button(action: { model.host?.reopen() }) {
-                    Text("Quit & Reopen")
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .foregroundStyle(ink.primary)
-                        .padding(.horizontal, 12).frame(height: 24)
-                        .background(Capsule().strokeBorder(ink.hairline))
-                        .contentShape(Capsule())
+                HStack(spacing: 12) {
+                    Button(action: { model.host?.reopen() }) {
+                        Text("Quit & Reopen")
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .foregroundStyle(ink.primary)
+                            .padding(.horizontal, 12).frame(height: 24)
+                            .background(Capsule().strokeBorder(ink.hairline))
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Once Fovea is switched on in Screen & System Audio Recording")
+                    // Still not in the list: + under it, and Fovea, which this shows where it is.
+                    Button(action: { NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL]) }) {
+                        Text("Not in the list? Show Fovea in Finder, then add it with +")
+                            .font(.system(size: 11)).foregroundStyle(ink.tertiary)
+                            .underline()
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
                 .padding(.leading, 26)
-                .help("Once Fovea is switched on in Screen & System Audio Recording")
             }
         }
     }
@@ -548,9 +561,11 @@ struct AgentsView: View {
                 }
             }
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ink.fill))
-            VStack(alignment: .leading, spacing: 10) {
+            // What comes next, centered under the list (Oct 9).
+            VStack(alignment: .center, spacing: 10) {
                 Text(Copy.agentsNext).font(.system(size: 13, weight: .medium)).foregroundStyle(ink.secondary)
-                FlowRow(spacing: 6) {
+                    .frame(maxWidth: .infinity)
+                FlowRow(spacing: 6, centered: true) {
                     ForEach(Agent.comingNext, id: \.self) { name in
                         wish(name)
                     }
@@ -795,6 +810,29 @@ struct AccountField: View {
             ? Binding(get: { model.typedEmail }, set: { model.typedEmail = $0 })
             : Binding(get: { model.typedName }, set: { model.typedName = $0 })
         VStack(spacing: 8) {
+            if kind == .email {
+                // Google, or an email (Oct 9). 1.0 has no account server: Google signs up on this
+                // Mac only, as the email does.
+                Button(action: { model.signUpWithGoogle() }) {
+                    HStack(spacing: 7) {
+                        Text("G").font(.system(size: 13, weight: .bold, design: .rounded))
+                        Text("Continue with Google").font(.system(size: 13, weight: .medium))
+                    }
+                    .foregroundStyle(ink.primary)
+                    .frame(width: 260, height: 30)
+                    .background(Capsule().fill(ink.fill))
+                    .overlay(Capsule().strokeBorder(ink.hairline))
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                HStack(spacing: 10) {
+                    Rectangle().fill(ink.hairline).frame(height: 1)
+                    Text("or").font(.system(size: 11.5)).foregroundStyle(ink.tertiary)
+                    Rectangle().fill(ink.hairline).frame(height: 1)
+                }
+                .frame(width: 260)
+                .padding(.vertical, 4)
+            }
             TextField(kind == .email ? "you@example.com" : "Your name", text: binding)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
@@ -807,7 +845,7 @@ struct AccountField: View {
                 .frame(width: 260, height: 30)
                 .background(Capsule().fill(ink.fill))
                 .overlay(Capsule().strokeBorder(model.accentColor.opacity(focused ? 0.8 : 0.3)))
-            Text(kind == .email ? "Kept on this Mac for now." : "Fovea greets you with it.")
+            Text(kind == .email ? "Either one is kept on this Mac for now." : "Fovea greets you with it.")
                 .font(.system(size: 12)).foregroundStyle(ink.tertiary)
         }
         .onAppear {
@@ -824,7 +862,13 @@ struct ClearScreen: View {
     @Environment(\.boardInk) private var ink
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 12) {
+            Text(model.screenCleared ? "Your apps will come back when the tour ends."
+                 : "For the tour, Fovea shows you around on a clear screen, so your other apps hide for now. They'll come back when the tour ends.")
+                .font(.system(size: 12)).foregroundStyle(ink.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 340)
+                .fixedSize(horizontal: false, vertical: true)
             Button(action: { model.clearScreen() }) {
                 HStack(spacing: 6) {
                     Image(systemName: model.screenCleared ? "checkmark" : "rectangle.dashed")
@@ -839,26 +883,21 @@ struct ClearScreen: View {
             }
             .buttonStyle(.plain)
             .disabled(model.screenCleared)
-            Text(model.screenCleared ? "Your apps will come back when the tour ends."
-                 : "For the tour, Fovea shows you around on a clear screen, so your other apps hide for now. They'll come back when the tour ends.")
-                .font(.system(size: 11.5)).foregroundStyle(ink.tertiary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 360)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
 
-/// The last board (Oct 9, round two): two things, spread out. Next time, start from the notch; and
-/// eye tracking is in beta, with a way to ask for it.
+/// The last board (Oct 9, round two): three things, each with room around it (Oct 9, evening).
+/// Next time, start from the notch; eye tracking is in beta, with a way to request it; and Open at
+/// login.
 struct Closing: View {
     let model: OnboardingModel
     @Environment(\.boardInk) private var ink
 
     var body: some View {
-        VStack(spacing: OT.Board.closingGap) {
+        VStack(spacing: 0) {
             part(symbol: "rectangle.topthird.inset.filled", text: Copy.homeNotch)
-            VStack(spacing: 12) {
+            VStack(spacing: 10) {
                 part(symbol: "eye", text: Copy.eyeTrackingTitle)
                 Button(action: { model.askEyeTracking() }) {
                     HStack(spacing: 6) {
@@ -875,12 +914,14 @@ struct Closing: View {
                 .disabled(model.eyeTrackingAsked)
                 .playTarget(.eyeTracking, model)
             }
+            .padding(.top, OT.Board.closingGap)
             // Open at login: on unless turned off here (or in Settings › Account).
-            Toggle(isOn: Binding(get: { model.openAtLogin }, set: { model.setOpenAtLogin($0) })) {
+            HStack(spacing: 10) {
                 Text("Open Fovea at login").font(.system(size: 12, weight: .medium)).foregroundStyle(ink.primary)
+                SmallSwitch(on: model.openAtLogin, accent: model.accentColor) { model.setOpenAtLogin(!model.openAtLogin) }
+                    .accessibilityLabel("Open Fovea at login")
             }
-            .toggleStyle(.switch)
-            .tint(model.accentColor)
+            .padding(.top, OT.Board.closingGap)
         }
         .frame(maxWidth: .infinity)
     }
@@ -890,6 +931,32 @@ struct Closing: View {
             Image(systemName: symbol).font(.system(size: 13)).foregroundStyle(model.accentColor)
             Text(text).font(.system(size: 14, weight: .medium)).foregroundStyle(ink.primary)
         }
+    }
+}
+
+/// A switch drawn by Fovea, a size smaller than the system's, in the accent whether or not the
+/// window is the key one (the system's goes gray in a window that isn't, and read as off: Oct 9).
+struct SmallSwitch: View {
+    let on: Bool
+    let accent: Color
+    let toggle: () -> Void
+    @Environment(\.boardInk) private var ink
+
+    var body: some View {
+        Button(action: toggle) {
+            Capsule().fill(on ? accent : ink.fill)
+                .overlay(Capsule().strokeBorder(on ? Color.clear : ink.hairline))
+                .frame(width: 28, height: 16)
+                .overlay(alignment: on ? .trailing : .leading) {
+                    Circle().fill(OT.Colors.knobEdge).frame(width: 12, height: 12).padding(2)
+                        .shadow(color: .black.opacity(0.18), radius: 1, y: 0.5)
+                }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .animation(OT.Motion.content, value: on)
+        .accessibilityValue(on ? "On" : "Off")
+        .accessibilityAddTraits(.isButton)
     }
 }
 

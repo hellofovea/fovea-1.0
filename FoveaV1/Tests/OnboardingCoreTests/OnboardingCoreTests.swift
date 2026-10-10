@@ -253,7 +253,7 @@ final class OnboardingCoreTests: XCTestCase {
         XCTAssertEqual(Copy.step(.agents, agents: []).button, "Use the practice agent")
         XCTAssertEqual(Copy.step(.hover, agents: [.claudeCode]).caption, "Claude Code is on it.")
         XCTAssertEqual(Copy.step(.hello, name: "Ryan").title, "Hello, Ryan.", "hello greets you by name")
-        XCTAssertEqual(Copy.step(.hello).body, "Talk to any agent from your window.", "and then the one line")
+        XCTAssertEqual(Copy.step(.hello).body, "Talk to any agent from the notch.", "and then the one line")
         XCTAssertEqual(Copy.step(.permissions).title, "Grant Fovea Access")
         XCTAssertEqual(Copy.step(.permissions).body, "")
         XCTAssertEqual(Copy.step(.weeklyUpdate).caption, "Dispatch from anywhere.")

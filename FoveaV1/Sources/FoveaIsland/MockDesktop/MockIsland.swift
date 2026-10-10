@@ -55,8 +55,10 @@ struct MockIsland: View {
 
     var body: some View {
         let state = model.notchState
-        // The waveform is Voiceflow's; Dispatch Version 2's bar collects referents too, under the aura.
-        let voice = state == .voiceFlow && model.barNotice == nil
+        // The waveform: Voiceflow's, and on Dispatch's bar too, a new request or asking more in a
+        // session (Oct 9, evening: talking to the notch looks the same every time, the bar flowing
+        // as you speak; the aura stays Dispatch's).
+        let voice = (state == .voiceFlow || state == .v2Voice) && model.barNotice == nil
         let layout = model.stackLayout
         let maxH = WorkbenchTokens.Island.waveformMaxHeight
         let T = WorkbenchTokens.Referents.self

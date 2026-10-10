@@ -40,7 +40,7 @@ public enum Copy {
         case .signIn:
             return StepCopy(
                 caption: "",
-                title: "Sign up with your email",
+                title: "Sign up",
                 body: "So your settings and history stay yours.",
                 button: "Continue")
         case .hello:
@@ -49,7 +49,7 @@ public enum Copy {
             return StepCopy(
                 caption: who.map { "Hi, \($0). I live up here." } ?? "Hi. I live up here.",
                 title: who.map { "Hello, \($0)." } ?? "Hello.",
-                body: "Talk to any agent from your window.",
+                body: "Talk to any agent from the notch.",
                 button: "Begin")
         case .makeItYours:
             return StepCopy(
@@ -81,7 +81,6 @@ public enum Copy {
             return StepCopy(
                 caption: "Now, your coding agents.",
                 title: "Connect your coding agents",
-                body: "Fovea hands them what you point at and say.",
                 button: agent != nil ? "Connect" : "Use the practice agent",
                 skipLabel: "Skip for now",
                 skipNote: "The practice agent answers the tasks. Connect agents later in Settings › Connectors.")
@@ -125,7 +124,7 @@ public enum Copy {
             // Two windows, real words (Oct 9); feedback first.
             return StepCopy(
                 caption: "Point, then talk.",
-                title: "Talk into any window. Start with your feedback, then answer Lin.",
+                title: "Start with your feedback for Fovea, then answer Lin.",
                 skipLabel: "Skip dictation")
         case .dictionary:
             return StepCopy(
@@ -138,7 +137,7 @@ public enum Copy {
         case .home:
             return StepCopy(
                 caption: "That's everything.",
-                title: "You're set",
+                title: "You're all set",
                 button: "Done")
         }
     }
@@ -248,6 +247,6 @@ public enum Copy {
     /// The end (Oct 9, round two): two things, spread out.
     public static let homeNotch = "Next time, start from the notch."
     public static let eyeTrackingTitle = "Eye tracking is in beta."
-    public static let eyeTrackingAsk = "Ask for access"
-    public static let eyeTrackingAsked = "Asked. We'll let you know."
+    public static let eyeTrackingAsk = "Request access"
+    public static let eyeTrackingAsked = "Requested. We'll let you know."
 }

@@ -152,7 +152,9 @@ extension WorkbenchModel {
     /// the marks left on the screen.
     func markLiveText(_ live: IslandLive, _ text: String, rects: [CGRect]) {
         let union = rects.dropFirst().reduce(rects.first ?? .zero) { $0.union($1) }
-        highlights.append(ScreenHighlight(rects: rects, file: false, referent: nil))
+        let mark = ScreenHighlight(rects: rects, file: false, referent: nil)
+        highlights.append(mark)
+        fadeLiveMark(mark.id)
         let source = live.source(of: union)
         Task { [weak self] in
             guard let self else { return }
@@ -177,7 +179,33 @@ extension WorkbenchModel {
         guard let card = AttachmentCards.file(file) else { return }
         add(image: card, from: rect, animated: !reduceMotion, kind: .file(name: file.name, size: file.size),
             source: url.deletingLastPathComponent().lastPathComponent)
-        highlights.append(ScreenHighlight(rects: [rect.insetBy(dx: -6, dy: -5)], file: true, referent: referents.last?.id))
+        hoverMark = nil
+        let mark = ScreenHighlight(rects: [rect.insetBy(dx: -6, dy: -5)], file: true, referent: referents.last?.id)
+        highlights.append(mark)
+        fadeLiveMark(mark.id)
+    }
+
+    /// A mark says what was taken, then goes once it has flown into the stack (Oct 9, evening:
+    /// it stayed on, and over the next app too, since the island is on every Space).
+    private func fadeLiveMark(_ id: UUID) {
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(WorkbenchTokens.Feedback.liveMarkHold))
+            self?.highlights.removeAll { $0.id == id }
+        }
+    }
+
+    /// ⌥ on: the file under the pointer is shaded, so it's plain what a click takes. Asked a few
+    /// times a second, not on every move (Accessibility, for a Finder file).
+    func updateHoverMark(_ live: IslandLive, at point: CGPoint?) {
+        guard highlighting, let point else {
+            if hoverMark != nil { hoverMark = nil }
+            return
+        }
+        let now = Date()
+        if let last = hoverMarkAsked, now.timeIntervalSince(last) < 0.06 { return }
+        hoverMarkAsked = now
+        let rect = live.file(at: point).map { $0.rect.insetBy(dx: -6, dy: -5) }
+        if rect != hoverMark { hoverMark = rect }
     }
 
     // MARK: Previews

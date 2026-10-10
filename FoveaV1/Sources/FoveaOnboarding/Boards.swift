@@ -165,8 +165,8 @@ struct GlassBar: View {
                     .transition(.opacity)
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 14)
+        .padding(.horizontal, OT.Board.barPadding.width)
+        .padding(.vertical, OT.Board.barPadding.height)
         .frame(width: model.keyboardWanted ? OT.Board.barWideWidth : OT.Board.stageBarWidth)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: OT.Board.stageBarRadius, style: .continuous))
         .background(RoundedRectangle(cornerRadius: OT.Board.stageBarRadius, style: .continuous)

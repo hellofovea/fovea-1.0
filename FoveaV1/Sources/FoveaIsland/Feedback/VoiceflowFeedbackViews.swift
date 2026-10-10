@@ -183,10 +183,18 @@ struct HighlightMarks: View {
     var body: some View {
         let F = WorkbenchTokens.Feedback.self
         let ink = model.accent.color
+        let live = model.live != nil
         ZStack(alignment: .topLeading) {
+            // ⌥ on: the file under the pointer, shaded before it's clicked.
+            if live, let hover = model.hoverMark {
+                neutral(hover, radius: F.fileMarkRadius, fill: F.liveHoverFill, outline: true)
+                    .transition(.opacity)
+            }
             ForEach(model.highlights) { mark in
                 ForEach(Array(mark.rects.enumerated()), id: \.offset) { _, rect in
-                    if mark.file {
+                    if live {
+                        neutral(rect, radius: mark.file ? F.fileMarkRadius : F.markRadius, fill: F.liveMarkFill, outline: mark.file)
+                    } else if mark.file {
                         RoundedRectangle(cornerRadius: F.fileMarkRadius, style: .continuous)
                             .fill(ink.opacity(F.fileMarkOpacity))
                             .overlay(RoundedRectangle(cornerRadius: F.fileMarkRadius, style: .continuous)
@@ -200,10 +208,13 @@ struct HighlightMarks: View {
             }
             .transition(.opacity)
             if let draft = model.highlightDraft {
-                ForEach(Array(draft.enumerated()), id: \.offset) { _, rect in stroke(rect, ink: ink) }
+                ForEach(Array(draft.enumerated()), id: \.offset) { _, rect in
+                    if live { neutral(rect, radius: F.markRadius, fill: F.liveMarkFill, outline: false) } else { stroke(rect, ink: ink) }
+                }
             }
         }
-        .animation(F.markFade, value: model.highlights)
+        .animation(live ? F.liveMarkFade : F.markFade, value: model.highlights)
+        .animation(F.markFade, value: model.hoverMark)
     }
 
     private func stroke(_ rect: CGRect, ink: Color) -> some View {
@@ -211,6 +222,16 @@ struct HighlightMarks: View {
         return RoundedRectangle(cornerRadius: F.markRadius, style: .continuous)
             .fill(ink.opacity(F.markOpacity))
             .blendMode(.multiply)
+            .frame(width: rect.width, height: rect.height)
+            .offset(x: rect.minX, y: rect.minY)
+    }
+
+    /// The real Mac's mark: light gray, a thin outline where it rings a thing.
+    private func neutral(_ rect: CGRect, radius: CGFloat, fill: Color, outline: Bool) -> some View {
+        let F = WorkbenchTokens.Feedback.self
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        return shape.fill(fill)
+            .overlay(shape.strokeBorder(outline ? F.liveMarkStroke : .clear, lineWidth: F.liveMarkStrokeWidth))
             .frame(width: rect.width, height: rect.height)
             .offset(x: rect.minX, y: rect.minY)
     }

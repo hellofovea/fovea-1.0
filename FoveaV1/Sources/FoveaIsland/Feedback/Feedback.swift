@@ -570,6 +570,7 @@ extension WorkbenchModel {
         if on { capturing = false }
         highlightingStorage = on
         highlightDraft = nil
+        hoverMark = nil
     }
 
     /// The article's lines: the body face's line and its spacing (the page's own numbers).

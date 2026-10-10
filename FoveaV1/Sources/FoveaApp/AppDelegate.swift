@@ -16,6 +16,9 @@ import FoveaCore
 ///   --data-dir=<path>      keep everything there instead of Application Support
 ///   --settings <pane[:id]> open Settings on a pane
 ///   --demo <state>         stage a notch state (IslandController.stage), no microphone
+///   --shot <file.png>      a picture of Fovea's own windows a moment after launch, then quit
+///                          (`--shot-after=<seconds>`, 2.5 by default): to look at a state without
+///                          Screen Recording, since an app may always take its own windows
 struct AppOptions {
     var resetOnboarding = false
     var resetAll = false
@@ -80,6 +83,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        if let i = CommandLine.arguments.firstIndex(of: "--shot"), i + 1 < CommandLine.arguments.count {
+            let url = URL(fileURLWithPath: (CommandLine.arguments[i + 1] as NSString).expandingTildeInPath)
+            let after = CommandLine.arguments.first { $0.hasPrefix("--shot-after=") }
+                .flatMap { Double($0.dropFirst("--shot-after=".count)) } ?? 2.5
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(after))
+                OwnWindowsShot.write(to: url)
+                self.firstRun?.renderStage(to: url.deletingPathExtension().appendingPathExtension("stage.png"))
+                NSApp.terminate(nil)
+            }
+        }
+
         home = HomeWindowController(stores: WindowStores(prefs: prefs, captures: captures, dictionary: dictionary))
         NSApp.mainMenu = home.mainMenu(quit: #selector(quit(_:)), quitTarget: self)
 
@@ -134,5 +149,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func quit(_ sender: Any?) {
         firstRun?.restoreApps()
         NSApp.terminate(sender)
+    }
+}
+
+/// `--shot`: Fovea's own windows on the island's screen, as the window server composites them, in
+/// their order (an app may always take its own windows, with no Screen Recording).
+enum OwnWindowsShot {
+    @MainActor static func write(to url: URL) {
+        guard let screen = Screens.island else { return }
+        let pid = ProcessInfo.processInfo.processIdentifier
+        let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
+        let ids = info.filter { ($0[kCGWindowOwnerPID as String] as? Int32) == pid }
+            .compactMap { $0[kCGWindowNumber as String] as? CGWindowID }
+        guard !ids.isEmpty else { print("shot: no windows"); return }
+        var pointers = ids.map { UnsafeRawPointer(bitPattern: UInt($0)) }
+        guard let array = CFArrayCreate(nil, &pointers, pointers.count, nil) else { return }
+        let bounds = Screens.global(CGRect(origin: .zero, size: screen.frame.size), on: screen)
+        guard let image = CGImage(windowListFromArrayScreenBounds: bounds, windowArray: array, imageOption: [.bestResolution]),
+              let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
+            print("shot: failed"); return
+        }
+        try? png.write(to: url)
+        print("shot: \(url.path)")
     }
 }

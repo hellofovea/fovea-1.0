@@ -72,6 +72,12 @@ package final class OnboardingCoordinator: OnboardingHost {
 
     package func start() {
         island.director = model
+        // The first run shows its choices at the notch itself, for as long as they're picked: the
+        // island's own short previews would cut them off.
+        island.autoPreview = false
+        // An immersive tour: no Dock while Fovea is in front (Oct 9, evening). It's back whenever
+        // another app is (System Settings, for the permissions), and when the tour ends.
+        NSApp.presentationOptions = [.hideDock]
         island.setChats([model.practiceChat])
         buildStage()
         model.start()
@@ -138,6 +144,20 @@ package final class OnboardingCoordinator: OnboardingHost {
         if let pane = model.settingsPane, pane != lastPane { lastPane = pane }
     }
 
+    /// `--shot`: the stage drawn by SwiftUI alone, for when its window can't be on screen (a
+    /// full-screen app's Space): no glass, the layout and the words as they are.
+    package func renderStage(to url: URL) {
+        let screen = Screens.island ?? NSScreen.screens[0]
+        let view = RealStage(model: model)
+            .frame(width: screen.frame.width, height: screen.frame.height)
+            .background(Color(white: 0.2))
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 2
+        guard let image = renderer.cgImage,
+              let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { return }
+        try? png.write(to: url)
+    }
+
     // MARK: OnboardingHost
 
     func caption(_ text: String?, draggable: Bool) { island.setCaption(text, draggable: draggable) }
@@ -146,14 +166,18 @@ package final class OnboardingCoordinator: OnboardingHost {
         if on { island.showPreview(.aura, seconds: 3600) } else { island.endPreview() }
     }
 
-    /// The board a moment at the notch, then the glow again (Make it yours).
+    /// The board a moment at the notch (Make it yours), then the glow again if a light was being
+    /// picked, else nothing.
     func previewPanel() {
         island.showPreview(.panel, seconds: 3)
-        Task { @MainActor in
+        previewReturn?.cancel()
+        previewReturn = Task { @MainActor in
             try? await Task.sleep(for: .seconds(3.2))
-            if self.model.step == .makeItYours { self.island.showPreview(.aura, seconds: 3600) }
+            guard !Task.isCancelled else { return }
+            if self.model.step == .makeItYours, self.model.island == .auraPreview { self.island.showPreview(.aura, seconds: 3600) }
         }
     }
+    private var previewReturn: Task<Void, Never>?
     func listening(_ on: Bool) { island.showListening(on) }
     func listeningLevel(_ level: Double) { island.setListeningLevel(level) }
     func islandRest() { island.rest() }
@@ -239,7 +263,7 @@ package final class OnboardingCoordinator: OnboardingHost {
         state.update { $0.hiddenApps = [] }
     }
 
-    /// "You're set" → Done: the apps back, the practice gone, the first run done, and Home.
+    /// "You're all set" → Done: the apps back, the practice gone, the first run done, and Home.
     func finished() {
         watch?.invalidate()
         watch = nil
@@ -248,6 +272,8 @@ package final class OnboardingCoordinator: OnboardingHost {
         pointer = nil
         localPointer = nil
         island.director = nil
+        island.autoPreview = true
+        NSApp.presentationOptions = []
         island.setChats(nil)
         island.setCaption(nil)
         island.endPreview()

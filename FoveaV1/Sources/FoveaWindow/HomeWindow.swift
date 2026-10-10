@@ -161,7 +161,9 @@ package final class HomeWindowController: NSObject {
         let accent = AccentChoice(rawValue: p.accent.rawValue) ?? .multicolor
         if model.accent != accent { model.accent = accent }
         if model.profileName != p.accountName { model.profileName = p.accountName }
-        if model.profileEmail != p.accountEmail { model.profileEmail = p.accountEmail }
+        // Google, in 1.0, is a sign-up without an account server: no email to show.
+        let email = p.accountEmail.isEmpty && p.accountProvider == .google ? "Signed in with Google" : p.accountEmail
+        if model.profileEmail != email { model.profileEmail = email }
     }
 
     private func pushPrefs() {

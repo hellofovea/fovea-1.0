@@ -33,7 +33,9 @@ struct CaptureSurface: ViewModifier {
                     .onChanged { value in model.highlightDrag(from: value.startLocation, to: value.location) }
                     .onEnded { value in model.finishHighlight(from: value.startLocation, to: value.location) },
                 including: model.highlighting ? .all : .subviews)
-            .screenCursor(capturing: model.capturing, highlighting: model.highlighting, accent: model.accent)
+            // On the real Mac the controller sets the pointer over every app (ScreenPointer).
+            .screenCursor(capturing: model.live == nil && model.capturing,
+                          highlighting: model.live == nil && model.highlighting, accent: model.accent)
     }
 }
 

@@ -25,6 +25,9 @@ package final class IslandController {
     private var screenObserver: Any?
     private var previewTask: Task<Void, Never>?
     private var lastPrefs: FoveaPrefs
+    /// A choice made in Settings shows at the notch a moment. The first run turns this off: it
+    /// shows its choices itself, for as long as they're being made.
+    package var autoPreview = true
 
     package init(prefs: PrefsStore, captures: CaptureLibrary, dictionary: DictionaryStore) {
         self.prefs = prefs
@@ -56,6 +59,8 @@ package final class IslandController {
         model.pointer.onMove = { [weak self] point in
             self?.pointerMoved(point)
             self?.model.pointerMoved(toScreen: point)
+            ScreenPointer.reassert()
+            if let self, self.model.highlighting { self.model.updateHoverMark(self.live, at: self.live.layerPoint(fromScreen: point)) }
         }
         model.pointer.start()
         model.startLiveSteps()
@@ -147,6 +152,22 @@ package final class IslandController {
         if panel.ignoresMouseEvents == inside { panel.ignoresMouseEvents = !inside }
     }
 
+    /// ⌘'s crosshair and ⌥'s accent arrow, over any app; the app's own pointer otherwise.
+    private var pointerStyle: ScreenPointer.Style = .system
+    private func updatePointer() {
+        let style: ScreenPointer.Style = model.capturing ? .crosshair
+            : model.highlighting ? .custom(AccentArrow.cursor(model.accent)) : .system
+        let changed: Bool
+        switch (style, pointerStyle) {
+        case (.system, .system), (.crosshair, .crosshair): changed = false
+        case (.custom, .custom): changed = !model.highlighting
+        default: changed = true
+        }
+        guard changed else { return }
+        pointerStyle = style
+        ScreenPointer.set(style)
+    }
+
     // MARK: Keys
 
     private func startKeys() {
@@ -190,6 +211,7 @@ package final class IslandController {
         } onChange: { [weak self] in
             Task { @MainActor in
                 self?.updateClickThrough()
+                self?.updatePointer()
                 self?.observeModel()
             }
         }
@@ -213,7 +235,7 @@ package final class IslandController {
         model.v2ReviewBeforeSend = p.reviewFirst
         model.hoverOpens = p.hoverOpens
         model.hoverDwell = p.hoverWait.dwell
-        guard preview, model.notchState == .silent || model.previewing else { return }
+        guard preview, autoPreview, model.notchState == .silent || model.previewing else { return }
         let glowChanged = before.glowPalette != p.glowPalette || before.glowHue != p.glowHue
             || before.glowSpread != p.glowSpread || before.glowDrift != p.glowDrift
         let lookChanged = before.notchAppearance != p.notchAppearance || before.panels != p.panels
@@ -300,5 +322,8 @@ struct IslandLayerView: View {
         .coordinateSpace(name: ScreenSpace.name)
         .environment(\.colorScheme, scheme)
         .ignoresSafeArea()
+        // The panel is never the key window: without this, SwiftUI took a click on it as the one
+        // that brings it forward, and dropped it (⌥ and a click on a file took nothing: Oct 9).
+        .answersActivatingClick()
     }
 }

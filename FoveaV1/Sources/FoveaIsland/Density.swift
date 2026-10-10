@@ -1,9 +1,11 @@
 import Observation
 
-// How much room the notch's open panels take (docs/island/SPACIOUS.md): Compact, as the panels
-// were through Oct 6; Spacious, after the Mac's own baselines and Fovea Captures (13 pt text and
-// up, 28 pt controls, more space between groups than inside one). The resting notch and the voice
-// bar are the same in both.
+// How much room the notch's open panels take (docs/island/SPACIOUS.md). Fovea 1.0, Oct 9: the
+// Workbench drew its Mac at about two thirds of its size, so on the real screen every panel read
+// a size too big (Choose chat's words larger than a coding agent's). Each size moved down a step:
+// Spacious is now what Compact was (14 pt words, 32 pt controls: a coding agent's own), Compact
+// about an eighth smaller again (13 pt, 28 pt: the Mac's menus and buttons). The two keep their
+// own looks (rules, weights, plates). The resting notch and the voice bar are the same in both.
 
 /// The two densities, switched in the Workbench panel or with `--density=compact|spacious`.
 enum PanelDensity: String, CaseIterable, Identifiable {

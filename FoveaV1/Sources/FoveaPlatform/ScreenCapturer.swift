@@ -10,9 +10,17 @@ public enum ScreenCapturer {
     /// Screen Recording is allowed (known only at launch: macOS asks Fovea to quit and reopen).
     public static var allowed: Bool { CGPreflightScreenCaptureAccess() }
 
-    /// Asks once (macOS's own prompt, which opens System Settings).
+    /// Asks once (macOS's own prompt, which opens System Settings). Asking through Quartz alone
+    /// left Fovea out of Screen & System Audio Recording's list on this Mac (Oct 9): ScreenCaptureKit
+    /// is asked too, which is what puts an app in the list on the macOS of today.
     @discardableResult
-    public static func request() -> Bool { CGRequestScreenCaptureAccess() }
+    public static func request() -> Bool {
+        let allowed = CGRequestScreenCaptureAccess()
+        if !allowed {
+            Task { _ = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) }
+        }
+        return allowed
+    }
 
     public enum Failure: Error { case notAllowed, noDisplay, failed }
 

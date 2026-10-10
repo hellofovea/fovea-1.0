@@ -20,15 +20,15 @@ bundle is signed with your Apple Development identity, so the grants survive a r
 ## What you'll see
 
 - **The first time,** the first run:
-  1. Sign in with an email, then "What should we call you?". Hello greets you by name. Clear my screen is offered.
+  1. "What should we call you?", then sign up with an email or Google. Hello greets you by name. Clear my screen is offered.
   2. Make it yours: the accent, the glow, and the notch's Glass, Panels and Size.
-  3. Grant Fovea Access. The real System Settings opens at each list; you drag Fovea from the notch into it. Accessibility is seen live; Screen Recording needs one Quit & Reopen, after which the run picks up where it was.
+  3. Grant Fovea Access. Each list has an Allow button: macOS adds Fovea to it and System Settings opens there, for you to switch Fovea on. Accessibility is seen live; Screen Recording needs one Quit & Reopen, after which the run picks up where it was.
   4. The microphone, then speech recognition (macOS's own prompts), then "Say this out loud".
   5. Your agents.
   6. Two tasks sent to the Claude Code on this Mac, with the practice agent standing in if it can't answer: the weekly update, from a chat and three tabs, then the packing list.
   7. Dictation into two windows.
   8. Bring your words.
-  9. You're set, with "Open Fovea at login".
+  9. You're all set, with "Open Fovea at login".
   10. Home.
 - **After that,** Home ("Hello, Sam") and Settings. Closing the window doesn't quit; the Dock icon
   brings it back.
@@ -63,11 +63,12 @@ bundle is signed with your Apple Development identity, so the grants survive a r
 | `--reset-all` | Everything kept goes too (captures, pictures, words, settings) |
 | `--skip-onboarding` | Mark the first run done |
 | `--home`, `--settings <pane[:id]>` | Open the window there (`--settings notch`) |
-| `--step=<step>` | Start the first run at a step (`signIn` … `home`) |
+| `--step=<step>` | Start the first run at a step (`name` … `home`) |
 | `--practice-agent` | Never call the real Claude Code |
 | `--mute` | No sound |
 | `--demo <state>` | Stage a notch state, with the Workbench's sample sessions and no microphone: `voiceFlow`, `transcribing`, `pasteNotFound`, `error:<name>`, `v2Voice`, `v2Send`, `v2Board`, `v2Chat`, `whole`, `pulled`, `preview:aura`, `preview:panel` |
 | `--data-dir=<path>` | Keep everything there instead of Application Support (a test run of its own) |
+| `--shot <file.png>` | A picture of Fovea's own windows a moment after launch (`--shot-after=<seconds>`), then quit; no Screen Recording needed. In a first run, `<file>.stage.png` too, drawn off screen |
 | `FOVEA_NO_ACTIVATE=1` | Stay in the background |
 
 Each permission prompt can be shown again: run `tccutil reset All app.fovea` (it resets every grant

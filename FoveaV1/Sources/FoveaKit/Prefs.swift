@@ -48,6 +48,11 @@ public enum NotchDensity: String, CaseIterable, Identifiable, Codable, Sendable 
     public var title: String { rawValue.capitalized }
 }
 
+/// How the person signed up in the first run.
+public enum AccountProvider: String, Codable, Sendable {
+    case email, google
+}
+
 /// How long the pointer rests at the notch before the board opens: named, never in milliseconds.
 public enum HoverWait: String, CaseIterable, Identifiable, Codable, Sendable {
     case quick, normal, relaxed
@@ -105,6 +110,9 @@ public struct FoveaPrefs: Codable, Equatable, Sendable {
     // You: the email you signed in with, and what Fovea calls you (the first run asks).
     public var accountEmail = ""
     public var accountName = ""
+    /// How the first run signed up: an email, or Google (1.0 has no account server: both are kept
+    /// on this Mac only).
+    public var accountProvider: AccountProvider = .email
     // Fovea.
     public var language: FoveaLanguage = .english
     /// Languages typed under More…, kept to choose what comes next.
@@ -148,6 +156,7 @@ public struct FoveaPrefs: Codable, Equatable, Sendable {
         reviewFirst = (try? c.decode(Bool.self, forKey: .reviewFirst)) ?? d.reviewFirst
         accountEmail = (try? c.decode(String.self, forKey: .accountEmail)) ?? d.accountEmail
         accountName = (try? c.decode(String.self, forKey: .accountName)) ?? d.accountName
+        accountProvider = (try? c.decode(AccountProvider.self, forKey: .accountProvider)) ?? d.accountProvider
         language = (try? c.decode(FoveaLanguage.self, forKey: .language)) ?? d.language
         requestedLanguages = (try? c.decode([String].self, forKey: .requestedLanguages)) ?? d.requestedLanguages
         openAtLogin = (try? c.decode(Bool.self, forKey: .openAtLogin)) ?? d.openAtLogin

@@ -629,6 +629,9 @@ final class WorkbenchModel {
     var highlightingStorage = false
     var highlightDraft: [CGRect]?
     var highlights: [ScreenHighlight] = []
+    /// ⌥ on, on the real Mac: the file under the pointer, shaded before it's clicked.
+    var hoverMark: CGRect?
+    @ObservationIgnored var hoverMarkAsked: Date?
     var accent: FoveaAccent = .blue {
         didSet {
             DesignStore.shared.accent = accent

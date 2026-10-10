@@ -461,18 +461,20 @@ enum OT {
         static let languageField: CGFloat = 220
         /// The words shown to tick before the rest are counted.
         static let importShown = 12
-        /// The glass bar, and its width with the keyboard at its right.
-        static let stageBarWidth: CGFloat = 640
-        static let barWideWidth: CGFloat = 860
-        static let stageBarRadius: CGFloat = 18
-        static let barGap: CGFloat = 18
-        static let barKeyUnit: CGFloat = 18
-        static let instruction = Font.system(size: 13, weight: .medium)
+        /// The glass bar, and its width with the keyboard at its right. A size smaller on Oct 9,
+        /// evening: on the real screen it read larger than a coding agent's words.
+        static let stageBarWidth: CGFloat = 580
+        static let barWideWidth: CGFloat = 760
+        static let stageBarRadius: CGFloat = 16
+        static let barGap: CGFloat = 14
+        static let barKeyUnit: CGFloat = 15
+        static let barPadding = CGSize(width: 16, height: 12)
+        static let instruction = Font.system(size: 12.5, weight: .medium)
         /// A doing step's one caption, and the line to say, set apart (Oct 9, round two).
-        static let caption = Font.system(size: 13.5, weight: .semibold)
-        static let script = Font.system(size: 15, weight: .medium, design: .serif)
-        /// The end's two parts, spread out.
-        static let closingGap: CGFloat = 22
+        static let caption = Font.system(size: 13, weight: .semibold)
+        static let script = Font.system(size: 14, weight: .medium, design: .serif)
+        /// The end's three parts, each with room around it.
+        static let closingGap: CGFloat = 34
     }
 
     // MARK: Marks and the pointer (round three of Oct 6 #3, #8; WorkbenchTokens.Feedback)

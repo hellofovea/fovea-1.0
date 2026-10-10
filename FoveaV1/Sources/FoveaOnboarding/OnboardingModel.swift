@@ -185,7 +185,7 @@ final class OnboardingModel {
     var screenCleared = false
     /// The permissions Fovea has asked macOS for (its button pressed once).
     var asked: Set<Permission> = []
-    /// Open Fovea at login, as "You're set" offers it.
+    /// Open Fovea at login, as "You're all set" offers it.
     var openAtLogin = true
     /// A word on the board mid-task ("That missed the pull requests."), in place of the instruction
     /// for a moment: the Island keeps the voice bar open meanwhile.
@@ -202,6 +202,17 @@ final class OnboardingModel {
 
     var typedEmail = ""
     var typedName = ""
+
+    /// Google instead of an email (Oct 9). 1.0 has no account server, so nothing leaves this Mac:
+    /// Settings › Account says "Signed in with Google".
+    func signUpWithGoogle() {
+        sound.cue(.tick)
+        flow.email = nil
+        typedEmail = ""
+        host?.prefs.accountEmail = ""
+        host?.prefs.accountProvider = .google
+        beat(.signedIn)
+    }
 
     /// Something@something.something, with no spaces.
     static func isEmail(_ text: String) -> Bool {
@@ -480,6 +491,7 @@ final class OnboardingModel {
             }
             flow.email = typedEmail.trimmingCharacters(in: .whitespaces)
             host?.prefs.accountEmail = flow.email ?? ""
+            host?.prefs.accountProvider = .email
             beat(.signedIn)
         case .name:
             let name = typedName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -574,7 +586,8 @@ final class OnboardingModel {
         case .hello:
             say(copy.caption, hold: false)
         case .makeItYours:
-            showIsland(.auraPreview, OT.Motion.barOpen)
+            // Nothing at the notch until a light or the notch's look is picked (Oct 9, evening).
+            break
         case .permissions:
             // A button for each list (Oct 9: no drag): Fovea asks, then opens the list.
             let pane: Permission = flow.allowed.contains(.accessibility) ? .screenRecording : .accessibility
@@ -664,7 +677,7 @@ final class OnboardingModel {
         }
     }
 
-    /// Done: "You're set" goes, and Home opens (Oct 9: no closing animation). Home stays open to look
+    /// Done: "You're all set" goes, and Home opens (Oct 9: no closing animation). Home stays open to look
     /// around; quit from the menu, as Fovea itself quits only from the menu bar.
     func finish() {
         sound.stopAmbient()
@@ -747,12 +760,14 @@ final class OnboardingModel {
     func showIsland(_ phase: IslandPhase, _ animation: Animation) {
         animate(animation) { island = phase }
         guard let host else { return }
-        // Nothing at the notch before the teaching starts (Oct 9), but Make it yours, where the
-        // notch pulls down to show the light and the look as they're chosen.
-        guard notchTaught || (step == .makeItYours && phase == .auraPreview) else {
+        // Nothing at the notch before the teaching starts (Oct 9), nor on a page to read after it
+        // ("That's everything." didn't help: Oct 9, evening), but Make it yours, where the notch
+        // pulls down to show the light and the look as they're chosen.
+        guard (notchTaught && !step.isReading) || (step == .makeItYours && phase == .auraPreview) else {
             captionShown = false
             host.caption(nil, draggable: false)
             host.previewAura(false)
+            if notchTaught, step.isReading, phase == .rest || phase == .caption { host.islandRest() }
             return
         }
         switch phase {
@@ -794,7 +809,10 @@ final class OnboardingModel {
     /// One line under the notch, typed out. Held lines go back to what the step showed once read.
     func say(_ text: String, hold: Bool) {
         animate(OT.Motion.content) { captionText = text }
-        guard notchTaught else { return }
+        guard notchTaught, !step.isReading else {
+            if notchTaught { showIsland(.rest, OT.Motion.close) }
+            return
+        }
         if step == .permissions {
             showIsland(.dragCaption, OT.Motion.open)
         } else if island == .rest || island == .caption || island == .dragCaption || !captionShown {
@@ -813,7 +831,7 @@ final class OnboardingModel {
     /// A held line goes back to the step's own after a moment.
     private func scheduleCaptionReturn(for text: String) {
         after(holdTime(for: text), "caption") { [weak self] in
-            guard let self, self.captionShown, self.notchTaught else { return }
+            guard let self, self.captionShown, self.notchTaught, !self.step.isReading else { return }
             self.animate(OT.Motion.content) { self.captionText = self.copy.caption }
             self.host?.caption(self.captionText, draggable: self.step == .permissions)
         }
@@ -836,20 +854,32 @@ final class OnboardingModel {
     func setAccent(_ accent: AccentName) {
         animate(OT.Motion.calm) { flow.personal.accent = accent }
         host?.prefs.accent = accent
+        // The accent shows on the notch's board a moment (Send, the chosen chip).
+        host?.previewPanel()
         sound.cue(.tick)
     }
     func setAura(_ aura: AuraPalette) {
         animate(OT.Motion.calm) { flow.personal.aura = aura }
         host?.prefs.glowPalette = aura
+        showAura()
         sound.cue(.tick)
     }
     func setAuraHue(_ hue: Double) {
         flow.personal.auraHue = hue
         host?.prefs.glowHue = hue
+        showAura()
     }
     func setAuraDrift(_ drift: Double) {
         flow.personal.auraDrift = drift
         host?.prefs.glowDrift = drift
+        showAura()
+    }
+
+    /// The light being picked: the notch pulls down and glows, and keeps glowing while it's on
+    /// this page, so the choice can be seen (Oct 9). Not before a light is touched.
+    private func showAura() {
+        guard step == .makeItYours, island != .auraPreview else { return }
+        showIsland(.auraPreview, OT.Motion.barOpen)
     }
     /// The notch's look (Oct 9): the glass light or dark, its panels attached or floating, the
     /// room it takes. The board shows at the notch, so the choice is seen.
