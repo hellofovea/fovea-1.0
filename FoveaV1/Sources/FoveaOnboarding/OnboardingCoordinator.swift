@@ -261,11 +261,17 @@ package final class OnboardingCoordinator: OnboardingHost {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    /// The person's wallpaper over the desktop's icons, only the practice files on it.
+    /// Tahoe Day over the desktop's icons, only the practice files on it.
     private func coverDesktop() {
         guard let screen = Screens.island else { return }
-        let coast = FoveaFiles.url("Photos/coast.jpg").flatMap { NSImage(contentsOf: $0) }
-        DesktopCover.show(on: screen, fallback: coast)
+        DesktopCover.show(on: screen, picture: DesktopCover.tahoeDay())
+    }
+
+    /// Asked for Screen Recording and not yet allowed: macOS's own Quit & Reopen may be what quits
+    /// Fovea now, and the cleared screen should still be cleared when it's back (Oct 9, late: it
+    /// came back with everything showing). Quit from Fovea's menu still brings it all back.
+    package var mayReopenForScreenRecording: Bool {
+        model.step == .permissions && model.asked.contains(.screenRecording) && !model.flow.allowed.contains(.screenRecording)
     }
 
     var screenCleared: Bool { !state.state.hiddenApps.isEmpty }

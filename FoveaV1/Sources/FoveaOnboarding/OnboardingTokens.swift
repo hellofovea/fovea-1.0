@@ -579,11 +579,12 @@ enum OT {
         static let captureVolume: Float = 0.06
         static let captureLength: Double = 0.07
         static let chimeVolume: Float = 0.07
-        static let chimeNotes: [Double] = [659.25, 987.77]
+        /// One note each (Oct 9, late: two notes read as two sounds at once).
+        static let chimeNotes: [Double] = [783.99]
         static let chimeNoteLength: Double = 0.42
         static let chimeGap: Double = 0.11
         static let allowVolume: Float = 0.06
-        static let allowNotes: [Double] = [440.0, 659.25]
+        static let allowNotes: [Double] = [587.33]
     }
 
     // MARK: Practice content

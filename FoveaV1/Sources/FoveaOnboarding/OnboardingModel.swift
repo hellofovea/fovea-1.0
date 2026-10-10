@@ -662,7 +662,8 @@ final class OnboardingModel {
             // Sent: the agent works while the next step shows where to watch it.
             if let next = flow.advance() { enter(next) }
         default:
-            sound.cue(.step)
+            // A page moved on by its own button sounds once, as it goes (continueTapped).
+            if !step.isReading { sound.cue(.step) }
         }
     }
 

@@ -20,7 +20,7 @@ bundle is signed with your Apple Development identity, so the grants survive a r
 ## What you'll see
 
 - **The first time,** the first run:
-  1. "What should we call you?", then sign up with an email or Google. Hello greets you by name. Clear my screen is offered: it hides the other apps and covers the desktop's icons with your wallpaper.
+  1. "What should we call you?", then sign up with an email or Google. Hello greets you by name. Clear my screen is offered: it hides the other apps and covers the desktop's icons with Tahoe Day.
   2. Make it yours: the accent, the glow, and the notch's Glass, Panels and Size.
   3. Grant Fovea Access. Each list has an Allow button: macOS adds Fovea to it and System Settings opens there, for you to switch Fovea on. Accessibility is seen live; Screen Recording needs one Quit & Reopen, after which the run picks up where it was.
   4. The microphone, then speech recognition (macOS's own prompts), then "Say this out loud".

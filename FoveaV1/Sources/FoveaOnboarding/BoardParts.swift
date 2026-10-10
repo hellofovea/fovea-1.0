@@ -75,9 +75,8 @@ struct BoardExtras: View {
             // Clear my screen set apart from the language (Oct 9), its reason read with it.
             VStack(spacing: 0) {
                 LanguagePicker(model: model)
-                Rectangle().fill(ink.hairline).frame(width: 220, height: 1)
-                    .padding(.top, 30).padding(.bottom, 26)
                 ClearScreen(model: model)
+                    .padding(.top, 30)
             }
         case .makeItYours:
             Personalize(model: model)
@@ -845,8 +844,10 @@ struct AccountField: View {
                 .frame(width: 260, height: 30)
                 .background(Capsule().fill(ink.fill))
                 .overlay(Capsule().strokeBorder(model.accentColor.opacity(focused ? 0.8 : 0.3)))
-            Text(kind == .email ? "Either one is kept on this Mac for now." : "Fovea greets you with it.")
-                .font(.system(size: 12)).foregroundStyle(ink.tertiary)
+            if kind == .email {
+                Text("Either one is kept on this Mac for now.")
+                    .font(.system(size: 12)).foregroundStyle(ink.tertiary)
+            }
         }
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { focused = true }
@@ -862,28 +863,42 @@ struct ClearScreen: View {
     @Environment(\.boardInk) private var ink
 
     var body: some View {
+        // Set apart in a card of its own, the accent on its button (Oct 9, late: it went unseen).
+        let accent = model.accentColor
         VStack(spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: model.screenCleared ? "checkmark.circle.fill" : "sparkles")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(accent)
+                Text(model.screenCleared ? "Your screen is clear" : "Start on a clear screen")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(ink.primary)
+            }
             Text(model.screenCleared ? "Your apps and the desktop's icons come back when the tour ends."
                  : "For the tour, Fovea shows you around on a clear screen, so your other apps and the desktop's icons hide for now. They'll come back when the tour ends.")
                 .font(.system(size: 12)).foregroundStyle(ink.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 340)
                 .fixedSize(horizontal: false, vertical: true)
-            Button(action: { model.clearScreen() }) {
-                HStack(spacing: 6) {
-                    Image(systemName: model.screenCleared ? "checkmark" : "rectangle.dashed")
-                        .font(.system(size: 11, weight: .bold))
-                    Text(model.screenCleared ? "Screen cleared" : "Clear my screen")
+            if !model.screenCleared {
+                Button(action: { model.clearScreen() }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "rectangle.dashed").font(.system(size: 11, weight: .bold))
+                        Text("Clear my screen")
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.white)
+                    .padding(.horizontal, 16).frame(height: 30)
+                    .background(Capsule().fill(accent))
+                    .contentShape(Capsule())
                 }
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(ink.primary)
-                .padding(.horizontal, 14).frame(height: 26)
-                .background(Capsule().strokeBorder(ink.hairline))
-                .contentShape(Capsule())
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
-            .disabled(model.screenCleared)
         }
+        .padding(.horizontal, 22).padding(.vertical, 18)
+        .frame(maxWidth: 400)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(accent.opacity(0.12)))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(accent.opacity(0.45), lineWidth: 1))
     }
 }
 

@@ -164,7 +164,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         // However Fovea quits (the Dock, the menu), the apps a first run hid come back; not when
         // it's only reopening for Screen Recording.
-        if !Relauncher.relaunching { firstRun?.restoreApps() }
+        if !Relauncher.relaunching, firstRun?.mayReopenForScreenRecording != true { firstRun?.restoreApps() }
         prefs.flush()
         captures.flush()
         dictionary.flush()

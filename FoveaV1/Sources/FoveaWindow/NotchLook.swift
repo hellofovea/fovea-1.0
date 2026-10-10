@@ -82,12 +82,9 @@ private struct PanelFigure: View {
         let panelHeight = 2 * rowHeight + (spacious ? 8 : 4) + (spacious ? 24 : 16)
         ZStack(alignment: .top) {
             if look.panels == .attached {
-                // One glass shape with the island, hanging from a black band the menu bar's height
-                // (the notch grown wider, as the real notch draws it: Oct 9, evening).
+                // One glass shape with the island, hanging from the top edge with its ears.
                 NotchGlass(shape: IslandShape(topRadius: G.topRadius, bottomRadius: spacious ? 22 : 18), look: look)
-                    .frame(width: width, height: panelHeight)
-                    .padding(.top, G.notch.height)
-                Rectangle().fill(.black).frame(width: width, height: G.notch.height)
+                    .frame(width: width, height: G.notch.height + panelHeight)
                 rows.frame(width: width, alignment: .leading).padding(.top, G.notch.height)
             } else {
                 // A glass panel under the notch, a gap between, as Control Center hangs.
@@ -96,10 +93,17 @@ private struct PanelFigure: View {
                     .padding(.top, G.notch.height + 8)
                 rows.frame(width: width, alignment: .leading).padding(.top, G.notch.height + 8)
             }
-            // The notch itself stays black.
-            UnevenRoundedRectangle(bottomLeadingRadius: 8, bottomTrailingRadius: 8)
-                .fill(.black)
-                .frame(width: G.notch.width, height: G.notch.height)
+            // The notch itself stays black; on the glass it blends in with its ears, as the real
+            // notch does once the island is out.
+            if look.panels == .attached {
+                IslandShape(topRadius: 6, bottomRadius: 10)
+                    .fill(.black)
+                    .frame(width: G.notch.width + 12, height: G.notch.height)
+            } else {
+                UnevenRoundedRectangle(bottomLeadingRadius: 8, bottomTrailingRadius: 8)
+                    .fill(.black)
+                    .frame(width: G.notch.width, height: G.notch.height)
+            }
         }
         .environment(\.colorScheme, look.scheme)
     }
