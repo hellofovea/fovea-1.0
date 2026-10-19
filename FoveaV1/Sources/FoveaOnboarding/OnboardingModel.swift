@@ -52,12 +52,13 @@ struct DesktopFile: Identifiable, Equatable, Hashable {
     let type: String
     var id: String { name }
 
-    /// The packing task's files; the weekly update joins once it's written.
-    static let all = [
+    /// The packing task's files; the weekly update joins once it's written. Named in the primary
+    /// language (Oct 18, Ryan).
+    static var all: [DesktopFile] { [
         DesktopFile(name: PracticeFiles.list, type: "txt"),
         DesktopFile(name: PracticeFiles.map, type: "pdf"),
-    ]
-    static let update = DesktopFile(name: PracticeFiles.update, type: "md")
+    ] }
+    static var update: DesktopFile { DesktopFile(name: PracticeFiles.update, type: "md") }
 
     static var list: DesktopFile { all.first { $0.name == PracticeFiles.list }! }
 
@@ -112,8 +113,9 @@ enum FrontApp: Equatable {
 
     var name: String {
         switch self {
-        case .finder: "Finder"
-        case .systemSettings: "System Settings"
+        // Oct 18, Ryan: as macOS names them in the primary language (Finder is 访达).
+        case .finder: L("Finder")
+        case .systemSettings: L("System Settings")
         case .safari: "Safari"
         case .fovea: "Fovea"
         }
@@ -121,10 +123,10 @@ enum FrontApp: Equatable {
 
     var menus: [String] {
         switch self {
-        case .finder: ["File", "Edit", "View", "Go", "Window", "Help"]
-        case .systemSettings: ["Edit", "View", "Window", "Help"]
-        case .safari: ["File", "Edit", "View", "History", "Bookmarks", "Window", "Help"]
-        case .fovea: ["File", "Edit", "View", "Window", "Help"]
+        case .finder: [L("File"), L("Edit"), L("View"), L("Go"), L("Window"), L("Help")]
+        case .systemSettings: [L("Edit"), L("View"), L("Window"), L("Help")]
+        case .safari: [L("File"), L("Edit"), L("View"), L("History"), L("Bookmarks"), L("Window"), L("Help")]
+        case .fovea: [L("File"), L("Edit"), L("View"), L("Window"), L("Help")]
         }
     }
 }
@@ -195,16 +197,126 @@ final class OnboardingModel {
 
     var typedEmail = ""
     var typedName = ""
+    /// Oct 15 review, FR-03, FR-04, AC-01.1, AC-01.2: where signing up is (SignIn.swift).
+    var signInPhase: SignInPhase = .choosing
+    /// The email's Resend works again after this many seconds.
+    var resendLeft = 0
+    /// A quiet line under the choices or the email ("Sent again.").
+    var signInNote: String?
 
-    /// Google instead of an email (Oct 9). 1.0 has no account server, so nothing leaves this Mac:
-    /// Settings › Account says "Signed in with Google".
-    func signUpWithGoogle() {
+    /// Apple or Google instead of an email (Oct 9; Apple joins on Oct 15, AC-01.1). 1.0 has no
+    /// account server, so the provider's window is simulated: a short wait, then signed in, nothing
+    /// leaving this Mac (Settings › Account says "Signed in with Apple"). Cancel stops it (FR-03).
+    func signUp(with provider: AccountProvider) {
+        guard provider != .email else { return }
         sound.cue(.tick)
-        flow.email = nil
-        typedEmail = ""
-        host?.prefs.accountEmail = ""
-        host?.prefs.accountProvider = .google
+        signInNote = nil
+        cancelWait("emailLink")
+        animate(OT.Motion.content) { signInPhase = .waiting(provider) }
+        after(OT.Timing.signInAnswer, "signIn") { [weak self] in self?.signedIn(provider) }
+    }
+
+    /// Cancel while Apple or Google has the person: the choices again, with a quiet line (FR-03).
+    func cancelSignIn() {
+        guard case .waiting(let provider) = signInPhase else {
+            if case .failed = signInPhase { animate(OT.Motion.content) { signInPhase = .choosing } }
+            return
+        }
+        cancelWait("signIn")
+        sound.cue(.tick)
+        animate(OT.Motion.content) { signInPhase = .canceled(provider) }
+    }
+
+    /// Try Again, after it failed (FR-04).
+    func retrySignIn() {
+        guard case .failed(let provider) = signInPhase else { return }
+        if provider == .email, Self.isEmail(typedEmail) { sendEmailLink() } else { signUp(with: provider) }
+    }
+
+    /// Continue with an email: a link is sent, and the page waits for it to be opened (AC-01.2).
+    /// 1.0 has no account server: the link is taken as opened after a short wait, so the tour goes
+    /// on; the address is kept on this Mac.
+    func sendEmailLink() {
+        let email = typedEmail.trimmingCharacters(in: .whitespaces)
+        guard Self.isEmail(email) else {
+            hint(L("That doesn't look like an email."))
+            return
+        }
+        sound.cue(.tick)
+        signInNote = nil
+        cancelWait("signIn")
+        animate(OT.Motion.content) { signInPhase = .checkEmail(email) }
+        startResendCountdown()
+        after(OT.Timing.emailLinkOpened, "emailLink") { [weak self] in self?.signedIn(.email, email: email) }
+    }
+
+    /// Resend, once the countdown is over: sent again, and the countdown starts over.
+    func resendEmail() {
+        guard case .checkEmail = signInPhase, resendLeft == 0 else { return }
+        sound.cue(.tick)
+        animate(OT.Motion.content) { signInNote = Copy.signInResent }
+        startResendCountdown()
+    }
+
+    func startResendCountdown(from seconds: Int = ResendCountdown.seconds) {
+        resendLeft = seconds
+        tickResend()
+    }
+
+    private func tickResend() {
+        guard resendLeft > 0 else { return }
+        after(OT.Timing.resendTick, "resend") { [weak self] in
+            guard let self, case .checkEmail = self.signInPhase else { return }
+            self.resendLeft = max(0, self.resendLeft - 1)
+            self.tickResend()
+        }
+    }
+
+    /// Use a Different Email: the choices again, the address kept in its box to change.
+    func useDifferentEmail() {
+        cancelWait("emailLink")
+        cancelWait("resend")
+        resendLeft = 0
+        signInNote = nil
+        animate(OT.Motion.content) { signInPhase = .choosing }
+    }
+
+    /// Back on a sign-up page that's done: start it again with another way.
+    func useDifferentAccount() {
+        sound.cue(.tick)
+        flow.account = nil
+        flow.retry()
+        signInNote = nil
+        animate(OT.Motion.content) { signInPhase = .choosing }
+    }
+
+    /// Signed up: kept on this Mac for Settings › Account, then on to hello by itself.
+    func signedIn(_ provider: AccountProvider, email: String? = nil) {
+        cancelWait("emailLink")
+        cancelWait("resend")
+        resendLeft = 0
+        signInNote = nil
+        flow.email = provider == .email ? email : nil
+        flow.account = provider
+        host?.prefs.accountEmail = flow.email ?? ""
+        host?.prefs.accountProvider = provider
+        // Signed up here: signed in, wherever Fovea shows it (a fresh run starts signed out, Oct 18).
+        host?.prefs.signedOut = false
+        animate(OT.Motion.content) { signInPhase = .signedIn(provider) }
         beat(.signedIn)
+    }
+
+    /// A review stage: the sign-up page held in one of its states (OnboardingCoordinator's stages),
+    /// no simulated answer coming until the person acts.
+    func stageSignIn(_ phase: SignInPhase) {
+        cancelWait("signIn")
+        cancelWait("emailLink")
+        signInNote = nil
+        if case .checkEmail(let email) = phase {
+            typedEmail = email
+            startResendCountdown(from: OT.Timing.stagedResendLeft)
+        }
+        animate(OT.Motion.content) { signInPhase = phase }
     }
 
     /// Something@something.something, with no spaces.
@@ -220,7 +332,6 @@ final class OnboardingModel {
     var practiceScreen: PracticeScreen = .empty
     var referents: [TakenReferent] = []
     var screenshotArmed = false
-    var highlighterOn = false
     /// A screenshot's drag in progress, in display points.
     var selection: CGRect?
     /// The highlighter's marks, and the strokes being drawn.
@@ -284,6 +395,45 @@ final class OnboardingModel {
     /// Words as they're heard, before they land.
     var heardSoFar = ""
     var feedbackSent = false
+    /// Oct 17, Ryan: what's taken while dictating (⌥ and a drag, ⌥ twice), pictures of it, until
+    /// the words land; then it lands after them, in the window the words went to.
+    var dictationTaken: [TakenReferent] = []
+    var feedbackTaken: [TakenReferent] = []
+    var replyTaken: [TakenReferent] = []
+    /// Oct 18, Ryan: the reply waits in Messages' box, the person's to change, until it's sent;
+    /// then it's a bubble, with what was taken.
+    var sentReply: String?
+    var sentReplyTaken: [TakenReferent] = []
+
+    /// Oct 18, Ryan: "the text is sent to the place where the user's mouse is hovering at the very
+    /// last moment": the window under the pointer when the words land, or, off both, the one the
+    /// listening started in.
+    var dictationLanding: DictationWindow? { pointerOver ?? dictationTarget }
+
+    var canSendReply: Bool { !replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !replyTaken.isEmpty }
+
+    /// Messages' Return, or its arrow: the reply sent, a bubble.
+    func sendReply() {
+        guard canSendReply else { return }
+        sound.cue(.tick)
+        animate(OT.Motion.content) {
+            sentReply = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if sentReply?.isEmpty == true { sentReply = nil }
+            sentReplyTaken += replyTaken
+            replyText = ""
+            replyTaken = []
+        }
+    }
+
+    /// A picture taken while talking, taken off again (its ✕, or Delete).
+    func removeTaken(_ id: UUID, from window: DictationWindow) {
+        animate(OT.Motion.content) {
+            switch window {
+            case .feedback: feedbackTaken.removeAll { $0.id == id }
+            case .messages: replyTaken.removeAll { $0.id == id }
+            }
+        }
+    }
     var speechNote: String?
 
     // MARK: Bringing your words (Oct 9)
@@ -364,7 +514,11 @@ final class OnboardingModel {
         practice = PracticeFiles(separate: options.harness || options.play)
     }
 
-    var copy: StepCopy { Copy.step(flow.step, keys: keys, agents: connectedAgents, name: flow.name) }
+    var copy: StepCopy {
+        // The sign-up page's words follow where it is (Oct 15 review, AC-01.2: "Check your email").
+        if flow.step == .signIn { return Copy.signIn(signInPhase) }
+        return Copy.step(flow.step, keys: keys, agents: connectedAgents, name: flow.name)
+    }
     var step: Step { flow.step }
     var personal: Personalization { flow.personal }
 
@@ -412,7 +566,11 @@ final class OnboardingModel {
             notchAppearance = prefs.notchAppearance
             notchPanels = prefs.panels
             notchDensity = prefs.density
+            keys = KeyMap(prefs: prefs)
         }
+        // A practice run again starts at its task: the agent's sign-in is checked here, not on the
+        // agents page (Oct 15 review, OB-03.1).
+        if practiceRun != nil { checkAgentSignIn() }
         // No opening moment (Oct 9): the run opens on hello.
         enter(flow.step)
     }
@@ -431,6 +589,11 @@ final class OnboardingModel {
         rig.onFlags = { [weak self] down in self?.keysDown = down }
         rig.onReturn = { [weak self] in self?.returnKey() ?? false }
         rig.onEscape = { [weak self] in self?.escapeKey() ?? false }
+        rig.onBack = { [weak self] in
+            guard let self, self.canGoBack else { return false }
+            self.goBack()
+            return true
+        }
         rig.onSpace = { [weak self] down in self?.spaceKey(down) ?? false }
         return rig
     }
@@ -463,6 +626,13 @@ final class OnboardingModel {
     /// Waits named with this survive a step change (the practice agent's lines and its answer).
     static let agentWait = "agent:"
 
+    /// The agent's work stopped, real or practice (a task started over, Oct 17).
+    func cancelAgentWork() {
+        runner.cancel()
+        for (key, task) in tasks where key.hasPrefix(Self.agentWait) { task.cancel() }
+        tasks = tasks.filter { !$0.key.hasPrefix(Self.agentWait) }
+    }
+
     func animate(_ animation: Animation?, _ body: () -> Void) {
         if options.harness || reduceMotion {
             withAnimation(reduceMotion && !options.harness ? OT.Motion.reduceMotion : nil, body)
@@ -476,29 +646,38 @@ final class OnboardingModel {
     func continueTapped() {
         switch step {
         case .signIn:
-            guard Self.isEmail(typedEmail) else {
-                hint("That doesn't look like an email.")
+            // Oct 15 review, AC-01.2: an email is a link to check for, not signed in at once. Come
+            // back to with Back, signed in already, Continue goes on.
+            switch signInPhase {
+            case .choosing, .canceled:
+                sendEmailLink()
+                return
+            case .signedIn:
+                break
+            default:
                 return
             }
-            flow.email = typedEmail.trimmingCharacters(in: .whitespaces)
-            host?.prefs.accountEmail = flow.email ?? ""
-            host?.prefs.accountProvider = .email
-            beat(.signedIn)
         case .name:
             let name = typedName.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !name.isEmpty else { return }
             flow.name = name
             host?.prefs.accountName = name
             beat(.named)
-        case .agents where !flow.isComplete:
+        case .agents:
+            // Come back to with Back (Oct 15 review, OB-01.7), it's connected already: the agents
+            // as they're switched now, and on.
+            let again = flow.isComplete
             connectAgents()
-            return
+            guard again else { return }
         case .microphone where micPhase == .waiting && alert == nil:
             askMicrophone()
             return
         case .dictionary:
             importChosenWords()
             return
+        case .memory:
+            // Oct 15 review, OB-01.6: read, so Home doesn't show it again.
+            host?.prefs.memoryDisclosureSeen = true
         case .home:
             finish()
             return
@@ -507,7 +686,99 @@ final class OnboardingModel {
         }
         guard flow.isComplete else { return }
         sound.cue(.step)
-        if let next = flow.advance() { enter(next) }
+        moveOn(flow.advance())
+    }
+
+    /// The step the run moved to, entered; or, in a practice run again from Home, past its last
+    /// step, the practice is over and Home opens (Oct 15 review, OB-03.1).
+    func moveOn(_ next: Step?) {
+        if let next {
+            enter(next)
+        } else if flow.finished, practiceRun != nil {
+            endPractice()
+        }
+    }
+
+    // MARK: Back (Oct 15 review, OB-01.7 and FR-05)
+
+    /// Back is offered: a page with Back, and somewhere to go (never in a practice task).
+    var canGoBack: Bool { !finished && flow.canGoBack }
+
+    /// The step before, as it was left: what was entered stays. ⌘[ too. Oct 17, Ryan: on every step
+    /// after the first; a practice task (or dictation) gone back to starts again from its beginning,
+    /// cleanly, as a fresh entry to it would have things.
+    func goBack() {
+        guard canGoBack, let target = flow.backTarget else { return }
+        sound.cue(.tick)
+        // Whatever the notch was doing for this step (the voice bar, the board) closes.
+        if !step.isReading {
+            host?.islandRest()
+            island = .rest
+        }
+        if target.restartsOnBack { startOver(target) }
+        if let step = flow.back() { enter(step) }
+    }
+
+    /// Oct 17, Ryan: a practice task, or dictation, as a fresh entry to it would have things: what
+    /// it and the tasks after it made put back. The agent stops; the sessions leave the board (the
+    /// island has no way to take one session off, so all the first run's go, the weekly update's
+    /// too when the packing list starts over); the files are as they were before it.
+    func startOver(_ step: Step) {
+        switch step.backLanding {
+        case .weeklyUpdate, .packList:
+            cancelAgentWork()
+            host?.clearIslandSessions()
+            island = .rest
+            sessions = []
+            openSessionID = nil
+            agentSession = nil
+            agentNote = nil
+            agentActivity = ""
+            previewFile = nil
+            answered.remove(.packList)
+            answered.remove(.followUp)
+            editedFiles.remove(PracticeFiles.list)
+            filesCleared = false
+            if step == .weeklyUpdate || !practice.exists {
+                // Fresh copies of the files and the pages: the update not written yet.
+                practice.create()
+                for site in sites.values { site.reload() }
+                answered.remove(.weeklyUpdate)
+                editedFiles.remove(PracticeFiles.update)
+                updateWritten = false
+            } else {
+                practice.write(PracticeFiles.list, PracticeFiles.listStart)
+            }
+        case .dictation:
+            feedbackText = ""
+            replyText = ""
+            dictationTaken = []
+            feedbackTaken = []
+            replyTaken = []
+            sentReply = nil
+            sentReplyTaken = []
+            feedbackSent = false
+            dictationTarget = nil
+            pointerOver = nil
+            heardSoFar = ""
+            speechNote = nil
+        default:
+            break
+        }
+    }
+
+    // MARK: Practice again (Oct 15 review, OB-03.1)
+
+    /// One practice run again from Home; nil for the tour.
+    var practiceRun: PracticeAgain?
+
+    /// The practice is over (or put away): the stage goes, and Home opens; nothing about the first
+    /// run changes.
+    func endPractice() {
+        sound.stopAmbient()
+        animate(OT.Motion.slow) { finished = true }
+        rest()
+        host?.finished()
     }
 
     /// The way past a step (Oct 8: every step has a backup). Where there's a better backup than
@@ -533,7 +804,7 @@ final class OnboardingModel {
         default:
             break
         }
-        if let next = flow.skip() { enter(next) }
+        moveOn(flow.skip())
     }
 
     func jump(to step: Step) {
@@ -545,6 +816,9 @@ final class OnboardingModel {
     /// Sets the stage for a step: the Island, the windows, what the practice screen holds.
     func enter(_ step: Step) {
         cancelWaits()
+        // Oct 15 review, ST-03.1: the keys as recorded in Settings › Shortcuts, read again on each
+        // page (they can change while the tour is put away).
+        if let prefs = host?.prefs { keys = KeyMap(prefs: prefs) }
         // The notch pulled down for Make it yours goes back up when it's done.
         if step != .makeItYours { host?.previewAura(false) }
         stopMicTest()
@@ -569,7 +843,13 @@ final class OnboardingModel {
         }
         placePage()
         switch step {
-        case .signIn, .name:
+        case .signIn:
+            // Come back to with Back, it shows as signed in (Oct 15 review, OB-01.7).
+            signInNote = nil
+            resendLeft = 0
+            signInPhase = flow.isComplete ? .signedIn(flow.account ?? .email) : .choosing
+            say(copy.caption, hold: false)
+        case .name:
             say(copy.caption, hold: false)
         case .hello:
             say(copy.caption, hold: false)
@@ -581,7 +861,8 @@ final class OnboardingModel {
             let pane: Permission = flow.allowed.contains(.accessibility) ? .screenRecording : .accessibility
             animate(OT.Motion.calm) { settingsPane = pane }
         case .microphone:
-            micPhase = .waiting
+            // Come back to with Back, heard already: it shows so, and Continue goes on (Oct 17, Ryan).
+            micPhase = flow.isComplete ? .heard : .waiting
             say(copy.caption, hold: false)
         case .agents:
             say(copy.caption, hold: false)
@@ -599,9 +880,9 @@ final class OnboardingModel {
             if let session = sessions.last(where: { $0.task == .packList }) {
                 openSessionID = session.id
             } else {
-                say("Send the packing list first: press \(keys.spoken(.request)).", hold: false)
+                say(L("Send the packing list first: press \(keys.spoken(.request))."), hold: false)
             }
-        case .dictationIntro, .dictation, .dictionary, .home:
+        case .dictationIntro, .dictation, .dictionary, .memory, .home:
             if step == .home { clearPracticeFiles() }
             say(copy.caption, hold: false)
         }
@@ -611,7 +892,6 @@ final class OnboardingModel {
         hintText = nil
         referents = []
         screenshotArmed = false
-        highlighterOn = false
         selection = nil
         marks = []
         markDraft = nil
@@ -639,10 +919,18 @@ final class OnboardingModel {
 
     /// A try went wrong (finished before taking what it needs): say so, and start it over.
     private func missed() {
+        // Oct 17, Ryan: the feedback's words landed before anything was taken. Said, and that
+        // window's try starts over (its words stay where they landed).
+        if step == .dictation {
+            say(Copy.dictationMissed(keys: keys), hold: true)
+            flow.retry()
+            dictationTaken = []
+            return
+        }
         guard isPracticeTry else { flow.retry(); return }
         say(step == .packList
-            ? "Not quite. Take the line and the packing list, then press \(keys.spoken(.request))."
-            : "Not quite. Take the screen and the two parts, then press \(keys.spoken(.request)).", hold: true)
+            ? L("Not quite. Take the line and the packing list, then press \(keys.spoken(.request)).")
+            : L("Not quite. Take the numbers and the pull requests, then press \(keys.spoken(.request))."), hold: true)
         flow.retry()
         referents = []
         marks = []
@@ -652,15 +940,20 @@ final class OnboardingModel {
     /// themselves; the rest wait for Continue, so the result can be read.
     private func completed() {
         switch step {
-        case .permissions, .microphone, .agents:
+        // Oct 17, Ryan (round 2): the permissions and the microphone's test never move on by
+        // themselves: allowed (or heard) is shown, and the person goes on with Continue.
+        case .permissions, .microphone:
+            sound.cue(.allow)
+        // Signed up with Apple, Google or the email's link: on by itself (Oct 15 review, FR-03).
+        case .agents, .signIn:
             sound.cue(.allow)
             after(OT.Timing.autoAdvance, "advance") { [weak self] in
                 guard let self else { return }
-                if let next = self.flow.advance() { self.enter(next) }
+                self.moveOn(self.flow.advance())
             }
         case .weeklyUpdate:
             // Sent: the agent works while the next step shows where to watch it.
-            if let next = flow.advance() { enter(next) }
+            moveOn(flow.advance())
         default:
             // A page moved on by its own button sounds once, as it goes (continueTapped).
             if !step.isReading { sound.cue(.step) }
@@ -688,38 +981,41 @@ final class OnboardingModel {
     var keyboardWanted: Bool { keyboardOn && !finished && step.showsKeyboard }
     var keyboardVisible: Bool { keyboardWanted }
 
-    /// The beat to light keys for: the first owed, in the step's order (the whole screen before
-    /// the parts, the words before the file).
+    /// The beat to light keys for: the first owed, in the step's order (the numbers before the
+    /// other parts, the words before the file).
     var waitingBeat: Beat? {
         guard let group = flow.waitingFor else { return nil }
         if group.count == 1 { return group.first }
         return Beat.allCases.first { group.contains($0) }
     }
 
-    /// The keys to press now, lit on the keyboard, in turn (Oct 9): fn and ⌃ to start, ⌘ twice for
-    /// the whole screen, ⌘ once for each part (once its tab is showing), nothing while you drag or
-    /// click a tab, fn ⌃ to finish, return to send.
+    /// The keys to press now, lit on the keyboard, in turn (Oct 9): fn and ⌃ to start, ⌥ for each
+    /// part (once its tab is showing; Oct 17, Ryan: ⌥, once), nothing while you drag or click a tab,
+    /// fn ⌃ to finish, return to send.
     var keyboardTargets: Set<String> {
         switch step {
         case .dictationIntro:
-            return Set(keys.caps(.dictation))
+            return Set(keys.caps(.dictation).map(Self.keyboardLabel))
         default:
             guard let beat = waitingBeat else { return [] }
             if let tab = beat.tab, tab != currentTab { return [] }
-            // Armed: what's left is a drag or a click. (The whole screen's first ⌘ arms too, but
-            // it takes a second.)
+            // Armed: what's left is a drag.
             if beat.tab != nil, screenshotArmed { return [] }
-            if beat == .file, highlighterOn { return [] }
-            return Set(keys.keys(for: beat))
+            return Set(keys.keys(for: beat).map(Self.keyboardLabel))
         }
     }
 
-    /// A badge on a lit key: "×2" on ⌘ while the whole screen is owed (Oct 9).
+    /// A recorded key's cap as the keyboard labels it ("Space" is its space bar; Oct 15 review,
+    /// ST-03.1). A key it doesn't draw (right ⌥) lights nothing; the words still name it.
+    static func keyboardLabel(_ cap: String) -> String {
+        ["space", "return", "esc"].contains(cap.lowercased()) ? cap.lowercased() : cap
+    }
+
+    /// A badge on a lit key: "×2" on ⌘ where the whole screen is named (Oct 18, Ryan: ⌘ twice
+    /// takes it, in dictation's take).
     var keyboardBadges: [String: String] {
-        guard step == .weeklyUpdate, let beat = waitingBeat else { return [:] }
-        let presses = keys.presses(for: beat)
-        guard presses > 1 else { return [:] }
-        return Dictionary(uniqueKeysWithValues: keys.keys(for: beat).map { ($0, "×\(presses)") })
+        guard let beat = waitingBeat else { return [:] }
+        return keys.badges(for: beat)
     }
 
     /// The tab to click now, lit in the browser.
@@ -737,7 +1033,7 @@ final class OnboardingModel {
            flow.waitingFor?.contains(.feedbackLanded) == true || flow.waitingFor?.contains(.replyLanded) == true {
             return note
         }
-        let armed = (waitingBeat?.tab != nil && screenshotArmed) || (waitingBeat == .file && highlighterOn)
+        let armed = waitingBeat?.tab != nil && screenshotArmed
         return Copy.instruction(waitingBeat, step: step, armed: armed, tab: currentTab, keys: keys,
                                 agent: connectedAgents.first?.name)
     }
@@ -815,13 +1111,7 @@ final class OnboardingModel {
     }
 
     /// How far the run is, 0 to 1, for the progress line: the steps done, and the part of this one.
-    var progress: Double {
-        let all = Step.allCases
-        guard let i = all.firstIndex(of: step), all.count > 1 else { return 0 }
-        let beats = step.beats.count
-        let within = beats == 0 ? 0 : Double(flow.done.count) / Double(beats)
-        return min(1, (Double(i) + min(within, 0.99)) / Double(all.count - 1))
-    }
+    var progress: Double { flow.fraction }
 
     // MARK: Make it yours
 
@@ -881,18 +1171,51 @@ final class OnboardingModel {
     var accentColor: Color { AccentPalette.color(personal.accent) }
 
     var auraLook: VoiceGlowLook {
-        (GlowChoice(rawValue: personal.aura.rawValue) ?? .colorful).look(hue: personal.auraHue, spread: 120, driftAmount: personal.auraDrift)
+        // Oct 18, Ryan: a palette is drawn at its own colors; only Customize at the person's hue and drift.
+        (GlowChoice(rawValue: personal.aura.rawValue) ?? .colorful).look(hue: personal.drawnHue, spread: host?.prefs.drawnGlowSpread ?? 120,
+                                                                         driftAmount: personal.drawnDrift)
     }
 
     // MARK: Hello
 
-    func chooseLanguage(_ language: Language) {
+    /// Oct 18, Ryan: "Choose your languages": English and Chinese on or off, and, with both, the
+    /// primary. Kept in the prefs (`languages`, `language`); the primary is the interface's
+    /// language, so the stage switches to it at once.
+    var languageChoice = LanguageChoice(on: [.english], primary: .english)
+
+    func toggleLanguage(_ language: Language) {
+        var next = languageChoice
+        next.toggle(language)
+        guard next != languageChoice else { return }
+        applyLanguages(next)
+    }
+
+    func choosePrimaryLanguage(_ language: Language) {
+        var next = languageChoice
+        next.setPrimary(language)
+        guard next != languageChoice else { return }
+        applyLanguages(next)
+    }
+
+    private func applyLanguages(_ next: LanguageChoice) {
         animate(OT.Motion.calm) {
-            flow.language = language
-            languageMoreOpen = false
+            languageChoice = next
+            flow.language = next.primary
         }
-        host?.prefs.language = language
+        host?.prefs.languages = next.on
+        host?.prefs.language = next.primary
         sound.cue(.tick)
+        showLanguage(next.primary)
+    }
+
+    /// The interface in the primary language, now: the stage's words, and the practice's pages and
+    /// files written again in it (only on the hello page, before anything's made of them).
+    func showLanguage(_ language: Language) {
+        guard FoveaLocale.shared.language != language else { return }
+        FoveaLocale.shared.language = language
+        practice.create()
+        for site in sites.values { site.reload() }
+        host?.languageChanged()
     }
 
     /// A permission's button: macOS is asked (it adds Fovea to the list, and may show its own
@@ -923,10 +1246,25 @@ final class OnboardingModel {
         animate(OT.Motion.calm) { languageMoreOpen = true }
     }
 
-    func requestLanguage(_ text: String) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        flow.languageRequest = trimmed.isEmpty ? nil : trimmed
-        if !trimmed.isEmpty, host?.prefs.requestedLanguages.contains(trimmed) == false { host?.prefs.requestedLanguages.append(trimmed) }
+    // Oct 17, Ryan (FR-06): more than one language under More…. Return adds the one typed as a
+    // chip, the box clears for another; a chip's ✕ takes it off. Kept in the prefs Settings ›
+    // Language reads. (Before, every keystroke was kept as a request of its own.)
+
+    /// A language typed and Return pressed. Returns whether it was added (not empty, not twice).
+    @discardableResult
+    func addLanguageRequest(_ text: String) -> Bool {
+        var next = flow
+        guard next.requestLanguage(text) else { return false }
+        animate(OT.Motion.content) { flow = next }
+        host?.prefs.requestedLanguages = flow.languageRequests
+        sound.cue(.tick)
+        return true
+    }
+
+    func removeLanguageRequest(_ language: String) {
+        animate(OT.Motion.content) { flow.dropLanguageRequest(language) }
+        host?.prefs.requestedLanguages = flow.languageRequests
+        sound.cue(.tick)
     }
 }
 
@@ -961,11 +1299,9 @@ enum AgentDetector {
                "\(home)/.npm-global/bin", "\(home)/bin"]
     }
 
+    /// The ones Fovea connects to (Oct 13: Cursor left the list; it's among what comes next).
     static func detect() -> [Agent] {
-        Agent.allCases.filter { agent in
-            if agent == .cursor, FileManager.default.fileExists(atPath: "/Applications/Cursor.app") { return true }
-            return executable(agent) != nil
-        }
+        Agent.supported.filter { executable($0) != nil }
     }
 
     /// Asks the agent's own tool whether it's signed in, without spending a request (Claude Code:

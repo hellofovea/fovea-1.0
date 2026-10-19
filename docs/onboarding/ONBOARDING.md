@@ -1,5 +1,10 @@
 # Fovea's first run: the onboarding
 
+> **Oct 17 (Ryan), in Fovea 1.0:** screenshots are taken with ⌥ (once: part of the screen; twice: the
+> whole screen) instead of ⌘, and words and files need no key while Fovea listens (select the words,
+> click the file). The tour teaches it so, and dictation now has a beat where something is taken
+> while speaking and lands after the words. Details: docs/v1/REVIEW_2026-10-15.md.
+
 Fovea's onboarding as an interactive prototype: `Prototypes/FoveaOnboarding`, over the pure step machine in `Prototypes/OnboardingCore`. What a real Mac allows, and the flow that follows from it, is in [REAL_MAC.md](REAL_MAC.md).
 
 **Run it:**

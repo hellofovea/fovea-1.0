@@ -16,6 +16,19 @@ cp "$BIN/FoveaApp" "$APP/Contents/MacOS/Fovea"
 for bundle in "$BIN"/*.bundle; do
   cp -R "$bundle" "$APP/Contents/Resources/"
 done
+# The languages (Oct 18, Localization/README.md): English as written, and Simplified Chinese
+# gathered from Localization/zh-Hans/*.strings into one table.
+mkdir -p "$APP/Contents/Resources/en.lproj" "$APP/Contents/Resources/zh-Hans.lproj"
+: > "$APP/Contents/Resources/en.lproj/Localizable.strings"
+cat "$V1"/Localization/zh-Hans/*.strings > "$APP/Contents/Resources/zh-Hans.lproj/Localizable.strings" 2>/dev/null || true
+plutil -lint "$APP/Contents/Resources/zh-Hans.lproj/Localizable.strings" >/dev/null || { echo "zh-Hans strings don't parse"; exit 1; }
+# macOS's own permission prompts, in Chinese for a Mac that reads Chinese.
+cat > "$APP/Contents/Resources/zh-Hans.lproj/InfoPlist.strings" <<'ZH'
+"NSMicrophoneUsageDescription" = "Fovea 会在你两次按下 fn（或 fn ⌃）之间聆听，并把你说的话转换为文字。";
+"NSSpeechRecognitionUsageDescription" = "Fovea 在这台 Mac 上把你说的话转换为文字。";
+"NSScreenCaptureUsageDescription" = "Fovea 只截取你指定的内容：你拖动选择的区域，或你按两下 ⌘ 时的全屏。";
+"NSAccessibilityUsageDescription" = "Fovea 需要此权限，以便在任何 App 中响应快捷键、把文字输入到你所在的位置，并读取你选中的文字。";
+ZH
 # The icon: the layered icon (AppIcon.icon, solid white field) compiled by actool into Assets.car,
 # which macOS 26 and later draw with the system's edge and in its dark, clear and tinted styles,
 # plus an .icns for earlier systems. Without actool, the iconset becomes the .icns.
@@ -45,6 +58,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleVersion</key><string>$BUILD_NUMBER</string>
   <key>CFBundleShortVersionString</key><string>1.0</string>
   <key>CFBundleExecutable</key><string>Fovea</string>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleLocalizations</key><array><string>en</string><string>zh-Hans</string></array>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   $ICON_NAME_KEY

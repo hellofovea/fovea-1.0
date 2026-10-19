@@ -60,12 +60,8 @@ extension WorkbenchModel {
     /// The director's agent, at work: one line of what it does.
     func updateDirectorSession(_ id: String, activity: String) {
         guard let i = agentTasks.firstIndex(where: { $0.id == id }) else { return }
-        let lower = activity.lowercased()
-        let work: AgentWork = lower.hasPrefix("editing") || lower.hasPrefix("writing") ? .editing
-            : lower.hasPrefix("looking") || lower.hasPrefix("reading") ? .reading : .thinking
+        let (work, object) = Self.directorStep(activity)
         // Kept as a step, for the fold under the answer: what it did, on what.
-        let object = ["looking at ", "editing ", "writing ", "reading "].first { lower.hasPrefix($0) }
-            .map { String(activity.dropFirst($0.count)) }
         let kind: StepKind = work == .editing ? .edit : work == .reading ? (object == nil ? .list : .read) : .think
         if directorSteps[id]?.last?.object != object || directorSteps[id]?.last?.kind != kind {
             directorSteps[id, default: []].append(AgentLiveStep(kind: kind, object: object))
@@ -75,13 +71,34 @@ extension WorkbenchModel {
         }
     }
 
+    /// What a line of the director's agent says it does, and on what. Oct 18, Ryan: the first run
+    /// sends its lines in the primary language, so they're read in either: English as before
+    /// ("Looking at …", "Editing …", "Writing …", "Reading …"), or the Chinese it sends
+    /// ("正在查看 …", "正在编辑 …", "正在写入 …", "正在读取 …").
+    static func directorStep(_ activity: String) -> (work: AgentWork, object: String?) {
+        let lower = activity.lowercased()
+        if lower.hasPrefix("editing") || lower.hasPrefix("writing") || lower.hasPrefix("looking") || lower.hasPrefix("reading") {
+            let work: AgentWork = lower.hasPrefix("editing") || lower.hasPrefix("writing") ? .editing : .reading
+            let object = ["looking at ", "editing ", "writing ", "reading "].first { lower.hasPrefix($0) }
+                .map { String(activity.dropFirst($0.count)) }
+            return (work, object)
+        }
+        let chinese: [(String, AgentWork)] = [("正在编辑", .editing), ("正在写入", .editing), ("正在整理", .editing),
+                                              ("正在写", .editing), ("正在查看", .reading), ("正在读取", .reading),
+                                              ("正在阅读", .reading), ("正在读", .reading), ("正在看", .reading)]
+        guard let (prefix, work) = chinese.first(where: { activity.hasPrefix($0.0) }) else { return (.thinking, nil) }
+        let rest = activity.dropFirst(prefix.count).trimmingCharacters(in: .whitespaces)
+        let object = rest.trimmingCharacters(in: CharacterSet(charactersIn: "。…．.")).isEmpty ? nil : rest
+        return (work, object)
+    }
+
     /// The director's agent answered, with the files it changed.
     func finishDirectorSession(_ id: String, answer: String, files: [String] = [], failed: Bool = false) {
         guard let i = agentTasks.firstIndex(where: { $0.id == id }) else { return }
         directorAnswers[id] = answer
         directorFiles[id] = files
         withAnimation(WorkbenchTokens.Panel.change) {
-            apply(AgentBeat(activity: failed ? "Didn't finish" : "Done", work: failed ? .failed : .done,
+            apply(AgentBeat(activity: failed ? L("Didn't finish") : L("island.done", english: "Done"), work: failed ? .failed : .done,
                             state: failed ? .failed : .complete,
                             result: AgentResult(outcome: answer)), to: i)
             agentTasks[i].answer = answer
@@ -132,7 +149,7 @@ extension IslandController {
     /// The chats Choose chat offers (the first run's practice chat); nil, the request's own.
     package func setChats(_ chats: [IslandChat]?) {
         model.directorSuggestions = chats?.map {
-            V2Suggestion(agent: $0.agent, chat: $0.chat, project: $0.project, reason: "Your first run")
+            V2Suggestion(agent: $0.agent, chat: $0.chat, project: $0.project, reason: L("Your first run"))
         }
     }
 

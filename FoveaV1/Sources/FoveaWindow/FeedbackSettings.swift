@@ -15,106 +15,101 @@ import FoveaKit
 
 typealias AppLanguage = FoveaLanguage
 
-enum NotchLanguage: String, CaseIterable, Hashable {
-    case sameAsApp, english, chinese
-    var title: String {
-        switch self {
-        case .sameAsApp: return "Same as Fovea"
-        case .english: return "English"
-        case .chinese: return "简体中文"
-        }
-    }
-}
-
 enum UpdateState: Equatable, Hashable {
     case upToDate, checking, failed, available(String)
+    /// Oct 15 review, ST-10.2: Install and Relaunch, downloading the version, 0…1.
+    case installing(String, Double)
     var title: String {
         switch self {
         case .upToDate: return "Up to Date"
         case .checking: return "Checking"
         case .failed: return "Check Failed"
         case .available: return "Update Available"
+        case .installing: return "Installing"
         }
     }
 }
 
 enum PlanAlert: String, CaseIterable, Hashable {
     case almostOut, usedUp, paymentProcessing
+    // Oct 15 review, AC-02.1, AC-02.2 and MW-04d: the trial, its end, a subscription ending or
+    // expired, a payment that failed, and the billing page that wouldn't open (all simulated).
+    case trial, trialEnded, subscriptionEnding, expired, paymentFailed, billingUnavailable
     var title: String {
         switch self {
         case .almostOut: return "Almost Out (93%)"
         case .usedUp: return "Used Up"
         case .paymentProcessing: return "Payment Processing"
+        case .trial: return "Pro Trial"
+        case .trialEnded: return "Trial Ended"
+        case .subscriptionEnding: return "Subscription Ending"
+        case .expired: return "Subscription Expired"
+        case .paymentFailed: return "Payment Failed"
+        case .billingUnavailable: return "Billing Page Didn't Open"
         }
     }
 }
 
-/// The three ways the window can't open its data (row 13, 1–3): the Mac app's words.
+/// When the window can't open its data (row 13, 1–3). Oct 15 review, MW-02b: the four kinds the
+/// dev team found, each saying what it means; Open Diagnostics and Relaunch Fovea are real, and
+/// Try Again is offered where trying again can help (`LocalDataErrorView`, HomeStates.swift).
 enum WindowError: String, CaseIterable, Hashable {
-    case storage, diskFull, preparing
+    case uncleanQuit, slowClose, migration, diskFull
     var menuTitle: String {
         switch self {
-        case .storage: return "Storage Error"
+        case .uncleanQuit: return "Didn't Quit Properly"
+        case .slowClose: return "Took Too Long to Close"
+        case .migration: return "Couldn't Update Data"
         case .diskFull: return "Disk Full"
-        case .preparing: return "Couldn't Prepare Data"
         }
     }
+    /// Oct 18, Ryan: the window's error page, in the primary language.
     var title: String {
         switch self {
-        case .storage: return "Fovea hit a local storage error"
-        case .diskFull: return "Local storage is full"
-        case .preparing: return "Fovea couldn't finish preparing local data"
+        case .uncleanQuit: return L("Fovea didn't quit properly last time")
+        case .slowClose: return L("Fovea took too long to close")
+        case .migration: return L("Couldn't update your data")
+        case .diskFull: return L("Your Mac's disk is full")
         }
     }
     var message: String {
         switch self {
-        case .storage: return "Relaunch Fovea. If you keep seeing this, check that there's free disk space and that Fovea can write to its folder."
-        case .diskFull: return "Free up some disk space, then relaunch Fovea. Nothing has been lost."
-        case .preparing: return "Relaunch Fovea. If it keeps happening, keep your old history folder and write to us: Report a Problem in the Help menu."
+        case .uncleanQuit:
+            return L("It stopped before it could finish saving. Your captures up to then are safe. Relaunch Fovea to check them and carry on.")
+        case .slowClose:
+            return L("macOS stopped it while it was still saving, so the last few seconds before you quit may be missing. Relaunch Fovea to open your captures.")
+        case .migration:
+            return L("This version keeps your captures in a new way, and moving them over stopped part way. Your old history hasn't been touched.")
+        case .diskFull:
+            return L("Fovea needs a little free space to open your captures. Free up some space, then try again. Nothing has been lost.")
+        }
+    }
+    /// Trying again can help: the move can run again, and space may have been freed.
+    var canRetry: Bool { self == .migration || self == .diskFull }
+    /// The SF Symbol over the title.
+    var symbol: String {
+        switch self {
+        case .uncleanQuit, .slowClose: return "exclamationmark.triangle.fill"
+        case .migration: return "arrow.triangle.2.circlepath"
+        case .diskFull: return "internaldrive.fill"
         }
     }
 }
 
 enum LoadState: String, CaseIterable, Hashable { case loaded, loading, failed }
 
-enum MemoryFilter: String, CaseIterable, Hashable {
-    case all, hidden, deleted
-    var title: String {
-        switch self {
-        case .all: return "All"
-        case .hidden: return "Hidden from Agents"
-        case .deleted: return "Recently Deleted"
-        }
-    }
-}
-
 enum Effort: String, CaseIterable, Hashable {
     case auto, low, medium, high, max
-    var title: String { self == .auto ? "Auto" : rawValue.capitalized }
-}
-
-/// One place Fovea takes nothing from: an app, a website, or any text with certain words in it.
-struct PrivacyRule: Identifiable, Hashable {
-    enum Kind: String, CaseIterable, Hashable { case app, website, words }
-    var id: String
-    var kind: Kind
-    var value: String
-    var on = true
-
-    var label: String {
-        switch kind {
-        case .app: return value
-        case .website: return "Websites with “\(value)”"
-        case .words: return "Anything with “\(value)”"
+    /// Oct 18, Ryan: in the primary language. "Max" is also a plan's name, so its own key here.
+    var title: String {
+        switch self {
+        case .auto: return L("Auto")
+        case .low: return L("Low")
+        case .medium: return L("Medium")
+        case .high: return L("High")
+        case .max: return L("Max (thinking)", english: "Max")
         }
     }
-
-    static let defaults: [PrivacyRule] = [
-        PrivacyRule(id: "r-1password", kind: .app, value: "1Password"),
-        PrivacyRule(id: "r-keychain", kind: .app, value: "Keychain Access"),
-        PrivacyRule(id: "r-bank", kind: .website, value: "bank"),
-        PrivacyRule(id: "r-code", kind: .words, value: "验证码"),
-    ]
 }
 
 /// The models a question can go to, for each agent (row 21): Auto first.
@@ -134,7 +129,7 @@ extension CapturesModel {
     /// Your photo (row 8): JPG, PNG, GIF or WebP, up to 2 MB, as the Mac app takes it.
     func choosePhoto() {
         let panel = NSOpenPanel()
-        panel.title = "Choose a Profile Photo"
+        panel.title = L("Choose a Profile Photo")
         panel.allowedContentTypes = [.jpeg, .png, .gif, .webP]
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -143,7 +138,7 @@ extension CapturesModel {
             showPhotoTooLarge()
         } else if let image = NSImage(contentsOf: url) {
             animate(.swap) { profilePhoto = image; photoTooLarge = false }
-            say("Photo changed")
+            say(L("Photo changed"))
         }
     }
 
@@ -155,11 +150,13 @@ extension CapturesModel {
         }
     }
 
-    /// Check for Updates (row 13, 8–9): checking, then up to date.
+    /// Check for Updates (row 13, 8–9; Oct 15 review, ST-10.1): checking, then up to date.
+    /// Simulated: 1.0 has no update server, so it's always the newest; a review stage shows an
+    /// update to install, and a check that failed.
     func checkForUpdates() {
         animate(.swap) { update = .checking }
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(1.4))
+            try? await Task.sleep(for: .seconds(self.motion.seconds(T.Simulated.updateCheck)))
             if self.update == .checking { self.animate(.swap) { self.update = .upToDate } }
         }
     }
@@ -173,7 +170,8 @@ extension CapturesModel {
             memorySelection = []
         }
         lastDeletedMemories = Array(ids)
-        say("Deleted \(ids.count == 1 ? "a memory" : "\(ids.count) memories")", undo: true)
+        // Oct 18, Ryan: in the primary language, one sentence for one and for several.
+        say(ids.count == 1 ? L("Deleted a memory") : L("Deleted \(ids.count) memories"), undo: true)
     }
 
     func restoreMemories(_ ids: Set<String>) {
@@ -181,14 +179,14 @@ extension CapturesModel {
             for i in library.memories.indices where ids.contains(library.memories[i].id) { library.memories[i].deleted = nil }
             memorySelection = []
         }
-        say("Restored \(ids.count == 1 ? "a memory" : "\(ids.count) memories")")
+        say(ids.count == 1 ? L("Restored a memory") : L("Restored \(ids.count) memories"))
     }
 
     func setHidden(_ ids: Set<String>, _ hidden: Bool) {
         animate(.swap) {
             for i in library.memories.indices where ids.contains(library.memories[i].id) { library.memories[i].hidden = hidden }
         }
-        say(hidden ? "Hidden from agents" : "Agents can see it again")
+        say(hidden ? L("Hidden from agents") : L("Agents can see it again"))
     }
 
     func undoMemoryDelete() {
@@ -203,13 +201,13 @@ extension CapturesModel {
     func forgetArea(_ id: String) {
         guard let area = library.areas.first(where: { $0.id == id }) else { return }
         animate(.swap) { library.areas.removeAll { $0.id == id } }
-        say("Forgot “\(area.title)”. What it came from stays in your memories.")
+        say(L("Forgot “\(area.title)”. What it came from stays in your memories."))
     }
 
     func updateArea(_ id: String, summary: String) {
         guard let i = library.areas.firstIndex(where: { $0.id == id }) else { return }
         animate(.swap) { library.areas[i].summary = summary; library.areas[i].updated = now }
-        say("Saved. Fovea writes from your version now.")
+        say(L("Saved. Fovea writes from your version now."))
     }
 
     /// Opens the capture a memory came from.
@@ -238,36 +236,147 @@ extension CapturesModel {
     var sheetUp: Bool { browsingMemories || accessLogShown || reporting }
 }
 
-// MARK: - Language (row 6)
+// MARK: - Language (row 6; Oct 18)
 
-/// Fovea's words and the notch's, each its own; and the language you speak, which Fovea hears on
-/// its own (moved here from Voice & Capture, so all of language is in one place).
+/// Oct 18, Ryan: "Choose your languages", as the first run asks it: English and Chinese, each on or
+/// off (one at least), and any other asked for; with both on, the primary one. The primary is the
+/// language of Fovea's menus, Settings, Home and the notch, and the one speech recognition starts
+/// in ("If they choose Chinese as primary, the entire interface will be in Chinese"). One choice,
+/// so the separate pickers for Fovea's words, the notch's and the speech are gone.
 struct LanguagePane: View {
     @Environment(CapturesModel.self) private var model
     @Environment(\.palette) private var palette
 
     var body: some View {
-        @Bindable var model = model
-        SettingsSection(nil) {
+        let chosen = model.prefs.languages
+        SettingsSection("Your languages", note: "Fovea listens in the languages you choose.") {
             SettingsCard {
-                SettingsRow("Fovea", detail: "Its menus, Settings and this window.") {
-                    InlinePicker(options: AppLanguage.allCases, selection: $model.prefs.appLanguage, label: \.nativeName)
+                ForEach(Array(FoveaLanguage.featured.enumerated()), id: \.element) { i, language in
+                    if i > 0 { RowDivider() }
+                    // A language in its own name, always (English stays English in Chinese).
+                    SettingsRow(verbatim: language.nativeName, detail: Self.otherName(language)) {
+                        InkToggle(title: language.nativeName, isOn: Binding(get: { chosen.contains(language) },
+                                                                             set: { model.setLanguage(language, on: $0) }))
+                            // One language at least: the last one on can't be turned off.
+                            .disabled(chosen == [language])
+                    }
                 }
                 RowDivider()
-                SettingsRow("The notch", detail: "What the notch says while you work: Listening, the chats, the answers.") {
-                    InlinePicker(options: NotchLanguage.allCases, selection: $model.prefs.notchLanguage, label: \.title)
-                }
-            } footer: {
-                Text("The first time, Fovea follows your Mac's language. This prototype stays in English.")
+                RequestedLanguagesRow()
             }
         }
-        SettingsSection("Speech") {
-            SettingsCard {
-                SettingsRow("The language you speak", detail: "Fovea hears it on its own, even two in one sentence.") {
-                    InlinePicker(options: ["Automatic", "English", "中文"], selection: $model.prefs.speechLanguage, label: { $0 })
+        .id("language-chosen")
+
+        if chosen.count > 1 {
+            SettingsSection("Primary language") {
+                SettingsCard {
+                    SettingsRow("Primary language",
+                                detail: "Fovea's menus, Settings and the notch use it, and speech recognition starts in it.") {
+                        SettingsSegments(segments: chosen.map { ($0, $0.nativeName) }, selection: model.prefs.appLanguage) { language in
+                            model.setPrimaryLanguage(language)
+                        }
+                    }
                 }
             }
+            .id("language-primary")
+            .transition(.opacity)
         }
+    }
+
+    /// A language's name in the interface's own language, under its own: "Chinese" under 简体中文
+    /// in English, “英语” under English in Chinese; nothing when they're the same.
+    static func otherName(_ language: FoveaLanguage) -> String? {
+        switch (language, FoveaLocale.shared.language) {
+        case (.english, .chinese): return L("English (the language)")
+        case (.chinese, .english): return L("Simplified Chinese")
+        default: return nil
+        }
+    }
+}
+
+extension CapturesModel {
+    /// A language on or off (Oct 18): one stays on at least; the primary moves to the one that's
+    /// left when it's turned off.
+    func setLanguage(_ language: FoveaLanguage, on: Bool) {
+        var chosen = prefs.languages
+        if on, !chosen.contains(language) { chosen.append(language) }
+        if !on { chosen.removeAll { $0 == language } }
+        guard !chosen.isEmpty else { return }
+        let order = FoveaLanguage.featured
+        chosen.sort { (order.firstIndex(of: $0) ?? 9) < (order.firstIndex(of: $1) ?? 9) }
+        animate(.swap) {
+            prefs.languages = chosen
+            if !chosen.contains(prefs.appLanguage) { prefs.appLanguage = chosen[0] }
+        }
+    }
+
+    /// The primary language: the interface follows it at once (the App sets FoveaLocale from it).
+    func setPrimaryLanguage(_ language: FoveaLanguage) {
+        guard prefs.languages.contains(language) else { return }
+        prefs.appLanguage = language
+    }
+}
+
+/// Oct 17, Ryan (FR-06): the languages asked for, as the first run's More… keeps them
+/// (FoveaPrefs.requestedLanguages): more than one. Return adds the language typed as a chip and
+/// clears the box for another; a chip's ✕ takes it off; empty, repeated ones and the two Fovea
+/// listens in already are passed over (OnboardingCore's LanguageRequests, which this module can't
+/// see, keeps the same rule).
+private struct RequestedLanguagesRow: View {
+    @Environment(CapturesModel.self) private var model
+    @Environment(\.palette) private var palette
+    @Environment(\.settingsNative) private var native
+    @State private var draft = ""
+
+    var body: some View {
+        let requested = model.prefs.requestedLanguages
+        VStack(alignment: .leading, spacing: 0) {
+            SettingsRow("Other languages", detail: "We'll add it soon. Fovea listens in English or Chinese for now.") {
+                TextField("Type a language, then press Return", text: $draft)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 240)
+                    .onSubmit(add)
+            }
+            if !requested.isEmpty {
+                FlowLayout(spacing: 6) {
+                    ForEach(requested, id: \.self) { language in chip(language) }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, native ? T.Native.rowInset : 16)
+                .padding(.bottom, 12)
+                .transition(.opacity)
+            }
+        }
+    }
+
+    private func add() {
+        let name = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        draft = ""
+        let lower = name.lowercased()
+        let offered = FoveaLanguage.featured.flatMap { [$0.title.lowercased(), $0.nativeName.lowercased()] }
+        guard !name.isEmpty, !offered.contains(lower),
+              !model.prefs.requestedLanguages.contains(where: { $0.lowercased() == lower }) else { return }
+        model.animate(.swap) { model.prefs.requestedLanguages.append(name) }
+    }
+
+    private func chip(_ language: String) -> some View {
+        HStack(spacing: 5) {
+            Text(language).font(.system(size: 12.5)).foregroundStyle(palette.text)
+            Button {
+                model.animate(.swap) { model.prefs.requestedLanguages.removeAll { $0 == language } }
+            } label: {
+                Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).foregroundStyle(palette.secondary)
+                    .frame(width: 14, height: 14)
+                    .background(Circle().fill(palette.fill))
+            }
+            .buttonStyle(.plain)
+            .help("Remove \(language)")
+            .accessibilityLabel("Remove \(language)")
+        }
+        .padding(.leading, 10).padding(.trailing, 5)
+        .frame(height: 24)
+        .background(Capsule().fill(palette.ink(T.Shade.fill)))
+        .overlay(Capsule().strokeBorder(palette.ink(T.Shade.line), lineWidth: 0.5))
     }
 }
 
@@ -296,10 +405,12 @@ struct ProfileImage: View {
 }
 
 /// Your photo and name, yours to change (row 8); the email, from how you signed in. Sign Out
-/// stays in the header, where it was.
+/// stays in the header, where it was. Oct 15 review, AC-01.4: signed out, Sign In… takes its
+/// place; ST-02.4: a name that couldn't be saved says so under it, with Try Again.
 struct ProfileSection: View {
     @Environment(CapturesModel.self) private var model
     @Environment(\.palette) private var palette
+    @Environment(\.settingsNative) private var native
     @State private var confirmSignOut = false
     @State private var hoverPhoto = false
 
@@ -307,52 +418,101 @@ struct ProfileSection: View {
         @Bindable var model = model
         SettingsSection("Profile") {
             SettingsCard {
-                HStack(spacing: 14) {
-                    // Click your photo to change it; Edit shows under the pointer, as on System
-                    // Settings' account picture.
-                    Button { model.choosePhoto() } label: {
-                        ProfileImage(size: 56)
-                            .overlay {
-                                Text("Edit").font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
-                                    .frame(width: 56, height: 22)
-                                    .background(Color.black.opacity(0.55))
-                                    .frame(width: 56, height: 56, alignment: .bottom)
-                                    .clipShape(Circle())
-                                    .opacity(hoverPhoto ? 1 : 0)
-                            }
+                if model.signedOut {
+                    HStack(spacing: 14) {
+                        Image(systemName: "person.crop.circle")
+                            .font(.system(size: 46, weight: .ultraLight)).foregroundStyle(palette.tertiary)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Not signed in").font(.system(size: 15, weight: .semibold)).foregroundStyle(palette.text)
+                            Text("Your captures stay on this Mac. Sign in to dispatch, and to keep your plan.")
+                                .font(.system(size: 12)).foregroundStyle(palette.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer()
+                        Button("Sign In…") { model.startSignIn() }
+                            .buttonStyle(.borderedProminent)
                     }
-                    .buttonStyle(.plain)
-                    .onHover { hoverPhoto = $0 }
-                    .help("Change Photo")
-                    .accessibilityLabel("Change photo")
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(model.profileName.isEmpty ? "Your name" : model.profileName)
-                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(palette.text)
-                        Text(verbatim: model.profileEmail.isEmpty ? "Not signed in" : model.profileEmail).font(.system(size: 12)).foregroundStyle(palette.secondary)
-                            .textSelection(.enabled)
+                    .cardPadding()
+                } else {
+                    HStack(spacing: 14) {
+                        // Click your photo to change it; Edit shows under the pointer, as on System
+                        // Settings' account picture.
+                        Button { model.choosePhoto() } label: {
+                            ProfileImage(size: 56)
+                                .overlay {
+                                    Text("Edit").font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
+                                        .frame(width: 56, height: 22)
+                                        .background(Color.black.opacity(0.55))
+                                        .frame(width: 56, height: 56, alignment: .bottom)
+                                        .clipShape(Circle())
+                                        .opacity(hoverPhoto ? 1 : 0)
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .onHover { hoverPhoto = $0 }
+                        .help("Change Photo")
+                        .accessibilityLabel("Change photo")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(model.profileName.isEmpty ? L("Your name") : model.profileName)
+                                .font(.system(size: 15, weight: .semibold)).foregroundStyle(palette.text)
+                            Text(verbatim: model.profileEmail.isEmpty ? L("Signed in on this Mac") : model.profileEmail).font(.system(size: 12)).foregroundStyle(palette.secondary)
+                                .textSelection(.enabled)
+                        }
+                        Spacer()
+                        TextButton("Sign Out", role: .destructive) { confirmSignOut = true }
                     }
-                    Spacer()
-                    TextButton("Sign Out", role: .destructive) { confirmSignOut = true }
+                    .cardPadding()
+                    RowDivider()
+                    SettingsRow("Name", detail: "How Fovea and your agents greet you.") {
+                        TextField("Name", text: $model.profileName)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 200)
+                    }
+                    if model.nameSaveFailed {
+                        // Oct 15 review, ST-02.4: inline, where the name is, until it's saved.
+                        HStack(spacing: 8) {
+                            Circle().fill(palette.danger).frame(width: 6, height: 6)
+                            Text("Couldn't save your name.").font(.system(size: 11.5)).foregroundStyle(palette.danger)
+                            Spacer()
+                            TextButton("Try Again") { model.retrySaveName() }
+                        }
+                        .padding(.horizontal, native ? T.Native.rowInset : 16)
+                        .padding(.bottom, 10)
+                        .transition(.opacity)
+                    }
+                    RowDivider()
+                    PhotoRow()
                 }
-                .cardPadding()
-                RowDivider()
-                SettingsRow("Name", detail: "How Fovea and your agents greet you.") {
-                    TextField("Name", text: $model.profileName)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 200)
-                }
-                RowDivider()
-                PhotoRow()
             } footer: {
-                Text("Your email comes from how you signed in, so it can't be changed here.")
+                if !model.signedOut {
+                    Text("Your email comes from how you signed in, so it can't be changed here.")
+                }
             }
         }
         .confirmationDialog("Sign out of Fovea?", isPresented: $confirmSignOut) {
-            Button("Sign Out") { model.say("Would sign out (simulated)") }
+            Button("Sign Out", role: .destructive) { model.signOut() }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Your captures stay on this Mac. You'll sign in again to dispatch.")
         }
+    }
+}
+
+extension CapturesModel {
+    /// Signed out: kept in the prefs (FoveaPrefs.signedOut), the email stays on this Mac for
+    /// signing in again; Account shows Sign In… until you do.
+    func signOut() {
+        animate(.swap) { signedOut = true }
+        onSignedOut?()
+        say(L("Signed out. Your captures stay on this Mac."))
+    }
+
+    /// ST-02.4: the name written again.
+    func retrySaveName() {
+        animate(.swap) { nameSaveFailed = false }
+        onPrefsEdited?()
+        say(L("Saved your name"))
     }
 }
 
@@ -385,68 +545,8 @@ private struct PhotoRow: View {
     }
 }
 
-/// Report a Problem (row 9): one button; diagnostics go with it if you agree.
-struct SupportSection: View {
-    @Environment(CapturesModel.self) private var model
-
-    var body: some View {
-        SettingsSection("Help") {
-            SettingsCard {
-                SettingsRow("Something not working?", detail: "Tell us what went wrong. Diagnostics can go with it, if you agree.") {
-                    Button("Report a Problem…") { model.reporting = true }
-                }
-            }
-        }
-    }
-}
-
-/// The version and its updates (row 13, 8–9), beta updates, and the links (row 10).
-struct UpdateRow: View {
-    @Environment(CapturesModel.self) private var model
-    @Environment(\.palette) private var palette
-
-    var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0")").font(.system(size: 13)).foregroundStyle(palette.text)
-                switch model.update {
-                case .upToDate:
-                    Text("Fovea is up to date.").font(.system(size: 11.5)).foregroundStyle(palette.secondary)
-                case .checking:
-                    Text("Checking…").font(.system(size: 11.5)).foregroundStyle(palette.secondary)
-                case .failed:
-                    Text("Couldn't check for updates. Check your connection, then try again.")
-                        .font(.system(size: 11.5)).foregroundStyle(palette.danger)
-                case .available(let version):
-                    Text("Version \(version) is available.").font(.system(size: 11.5)).foregroundStyle(palette.text)
-                }
-            }
-            Spacer()
-            switch model.update {
-            case .upToDate: Button("Check for Updates") { model.checkForUpdates() }
-            case .checking: ProgressView().controlSize(.small)
-            case .failed: Button("Try Again") { model.checkForUpdates() }
-            case .available(let version):
-                Button("Update…") { model.say("Would download and install \(version) (simulated)") }
-                    .buttonStyle(.borderedProminent)
-            }
-        }
-        .cardPadding()
-    }
-}
-
-/// Website · Privacy Policy · Terms of Service, as the Mac app links them.
-struct LegalLinks: View {
-    var body: some View {
-        HStack(spacing: 6) {
-            Link("Website", destination: URL(string: "https://www.hellofovea.com/")!)
-            Text("·")
-            Link("Privacy Policy", destination: URL(string: "https://www.hellofovea.com/privacy")!)
-            Text("·")
-            Link("Terms of Service", destination: URL(string: "https://www.hellofovea.com/terms")!)
-        }
-    }
-}
+// Oct 15 review, MW-04c and ST-10: Help, the version and its updates, beta updates and the links
+// moved to Settings › About (AboutPane.swift).
 
 /// Report a Problem, as a Mac sheet: what happened, and whether diagnostics go with it. Sending
 /// them asks first, listing what goes and what never does (the Mac app's consent, kept).
@@ -458,18 +558,20 @@ struct ReportProblemSheet: View {
     @State private var showIncluded = false
     @State private var confirm = false
     @State private var stage: Stage = .writing
-    enum Stage: Equatable { case writing, sending, sent(String) }
+    /// Oct 15 review, MW-04c: sending can fail; the report can then be saved to send later.
+    enum Stage: Equatable { case writing, sending, sent(String), failed }
 
-    static let included = [
-        "App logs from the last 3 days (up to 8 MB, events only)",
-        "Your Mac's model, macOS version and Fovea's permissions",
-        "Fovea's version and an anonymous account ID",
-    ]
-    static let never = [
-        "No recordings, transcripts or requests",
-        "No clipboard, files or selected text",
-        "Never your email, tokens or user name",
-    ]
+    // Oct 18, Ryan: in the primary language (read each time, so they follow a change of it).
+    static var included: [String] { [
+        L("App logs from the last 3 days (up to 8 MB, events only)"),
+        L("Your Mac's model, macOS version and Fovea's permissions"),
+        L("Fovea's version and an anonymous account ID"),
+    ] }
+    static var never: [String] { [
+        L("No recordings, transcripts or requests"),
+        L("No clipboard, files or selected text"),
+        L("Never your email, tokens or user name"),
+    ] }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -506,6 +608,25 @@ struct ReportProblemSheet: View {
                         .keyboardShortcut(.defaultAction)
                         .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || stage == .sending)
                 }
+            case .failed:
+                // Oct 15 review, MW-04c: nothing is lost; it can go again, or be saved as a file.
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 24)).foregroundStyle(palette.warning)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Couldn't send your report").font(.system(size: 15, weight: .semibold))
+                        Text("Check your connection and try again. Or save it, and send it later from hellofovea.com/feedback.")
+                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                HStack {
+                    Button("Save Report…") { saveReport() }
+                    Spacer()
+                    Button("Cancel") { model.reporting = false }
+                        .keyboardShortcut(.cancelAction)
+                    Button("Try Again") { model.reportFails = false; send() }
+                        .keyboardShortcut(.defaultAction)
+                }
             case .sent(let id):
                 HStack(alignment: .top, spacing: 12) {
                     Image(systemName: "checkmark.circle.fill").font(.system(size: 26)).foregroundStyle(.green)
@@ -529,11 +650,14 @@ struct ReportProblemSheet: View {
         }
         .padding(20)
         .frame(width: 460)
+        .onAppear {
+            if model.reportFails, text.isEmpty { text = Self.sample; stage = .failed }
+        }
         .alert("Send diagnostic information?", isPresented: $confirm) {
             Button("Agree & Send") { send() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("It helps us find what went wrong on your Mac. It includes:\n"
+            Text(L("It helps us find what went wrong on your Mac. It includes:") + "\n"
                  + Self.included.map { "✓ \($0)" }.joined(separator: "\n") + "\n\n"
                  + Self.never.map { "✗ \($0)" }.joined(separator: "\n"))
         }
@@ -542,10 +666,37 @@ struct ReportProblemSheet: View {
     private func send() {
         stage = .sending
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(diagnostics ? 1.6 : 0.8))
-            stage = .sent("FV-8C2D41A9")
+            try? await Task.sleep(for: .seconds(model.motion.seconds(diagnostics ? T.Simulated.report : T.Simulated.report / 2)))
+            // Simulated: 1.0 has no server; a review stage makes the send fail.
+            stage = model.reportFails ? .failed : .sent("FV-8C2D41A9")
         }
     }
+
+    /// Oct 15 review, MW-04c: the report as a text file, where the person chooses, with the
+    /// diagnostics when they agreed to include them.
+    private func saveReport() {
+        let panel = NSSavePanel()
+        panel.title = L("Save Report")
+        panel.allowedContentTypes = [.plainText]
+        panel.nameFieldStringValue = L("Fovea Problem Report") + ".txt"
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        var report = "Fovea problem report\n\nWhat happened:\n\(text.trimmingCharacters(in: .whitespacesAndNewlines))\n"
+        if diagnostics {
+            report += "\n" + Diagnostics.text(problem: nil, captures: model.library.captures.count, data: model.dataFolder)
+        }
+        do {
+            try report.write(to: url, atomically: true, encoding: .utf8)
+            model.reporting = false
+            model.say(L("Saved the report to \(url.deletingLastPathComponent().lastPathComponent)"))
+        } catch {
+            model.reporting = false
+            model.saveFailure = SaveFailure(title: L("Couldn't Save the Report"), message: error.localizedDescription)
+        }
+    }
+
+    /// A report already written, for the review stage that shows a send failing.
+    static let sample = "I pressed fn ⌃ in Xcode and the notch didn't open. It worked again after I clicked the menu bar."
 }
 
 // MARK: - Plan (row 13, 4–6)
@@ -584,7 +735,9 @@ struct PlanUsageCard: View {
                     Text("Your payment is processing. Pro unlocks on its own.")
                         .font(.system(size: 12.5)).foregroundStyle(palette.text)
                     Spacer()
-                    Button("Refresh") { model.say("Still processing (simulated)") }
+                    // Oct 15 review, MW-04d: Refresh asks again (simulated: it went through).
+                    Button(model.refreshingPayment ? "Checking…" : "Refresh") { model.refreshPayment() }
+                        .disabled(model.refreshingPayment)
                 }
                 .cardPadding()
             }
@@ -622,7 +775,7 @@ struct CreditsLevel: NSViewRepresentable {
         level.isEditable = false
         level.minValue = 0
         level.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        level.setAccessibilityLabel("Credits used")
+        level.setAccessibilityLabel(L("Credits used"))
         return level
     }
 
@@ -632,7 +785,7 @@ struct CreditsLevel: NSViewRepresentable {
         level.warningValue = max * 0.7
         level.criticalValue = max * 0.9
         level.doubleValue = Double(Swift.min(used, total))
-        level.setAccessibilityValueDescription("\(used.formatted()) of \(total.formatted()) credits used")
+        level.setAccessibilityValueDescription(L("\(used.formatted()) of \(total.formatted()) credits used"))
     }
 
     /// As wide as it's given, as tall as the Mac makes it.
@@ -641,664 +794,8 @@ struct CreditsLevel: NSViewRepresentable {
     }
 }
 
-// MARK: - Voice & Capture (row 25)
-
-/// Places Fovea takes nothing from (row 25): apps and websites (nothing taken, nothing heard while
-/// they're in front) and words (anything containing them stays out of your history and memory).
-/// Each can be paused; the Mac app's private sources, by app, site and content.
-struct PrivacyRulesCard: View {
-    @Environment(CapturesModel.self) private var model
-    @Environment(\.palette) private var palette
-    @State private var adding: PrivacyRule.Kind?
-    @State private var text = ""
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        @Bindable var model = model
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Never capture in").font(.system(size: 13, weight: .medium)).foregroundStyle(palette.text)
-            Text("Fovea takes nothing, and doesn't listen, while one of these is in front. Anything with one of these words stays out of your history and memory.")
-                .font(.system(size: 11.5)).foregroundStyle(palette.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            VStack(spacing: 0) {
-                // By id, not by index: a rule can be removed while its switch is on screen.
-                ForEach(model.prefs.privacyRules) { rule in
-                    HStack(spacing: 10) {
-                        icon(rule)
-                        Text(rule.label).font(.system(size: 12.5)).foregroundStyle(rule.on ? palette.text : palette.tertiary)
-                        Spacer()
-                        Toggle(rule.label, isOn: isOn(rule.id)).toggleStyle(.switch).controlSize(.mini).labelsHidden()
-                        Button {
-                            model.animate(.swap) { model.prefs.privacyRules.removeAll { $0.id == rule.id } }
-                        } label: {
-                            Image(systemName: "minus.circle").foregroundStyle(palette.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .help("Remove")
-                        .accessibilityLabel("Remove \(rule.label)")
-                    }
-                    .padding(.vertical, 6)
-                }
-                if let kind = adding {
-                    HStack(spacing: 8) {
-                        TextField(kind == .app ? "App name" : kind == .website ? "Part of a web address, e.g. bank" : "Words, e.g. 验证码",
-                                  text: $text)
-                            .textFieldStyle(.roundedBorder)
-                            .focused($focused)
-                            .onSubmit { commit(kind) }
-                            .onAppear { focused = true }
-                        Button("Add") { commit(kind) }.disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
-                        Button("Cancel") { adding = nil; text = "" }
-                    }
-                    .padding(.vertical, 6)
-                }
-            }
-            Menu("Add") {
-                Button("App…") { adding = .app }
-                Button("Website…") { adding = .website }
-                Button("Words…") { adding = .words }
-            }
-            .fixedSize()
-        }
-        .cardPadding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    @ViewBuilder private func icon(_ rule: PrivacyRule) -> some View {
-        switch rule.kind {
-        case .app:
-            Image(nsImage: VoicePane.icon(rule.value) ?? NSWorkspace.shared.icon(for: .application))
-                .resizable().frame(width: 18, height: 18)
-        case .website:
-            Image(systemName: "globe").frame(width: 18).foregroundStyle(palette.secondary)
-        case .words:
-            Image(systemName: "text.quote").frame(width: 18).foregroundStyle(palette.secondary)
-        }
-    }
-
-    private func isOn(_ id: String) -> Binding<Bool> {
-        Binding(get: { model.prefs.privacyRules.first { $0.id == id }?.on ?? false },
-                set: { on in
-                    if let i = model.prefs.privacyRules.firstIndex(where: { $0.id == id }) { model.prefs.privacyRules[i].on = on }
-                })
-    }
-
-    private func commit(_ kind: PrivacyRule.Kind) {
-        let value = text.trimmingCharacters(in: .whitespaces)
-        guard !value.isEmpty else { return }
-        model.animate(.swap) {
-            model.prefs.privacyRules.append(PrivacyRule(id: "r-\(UUID().uuidString.prefix(6))", kind: kind, value: value))
-        }
-        adding = nil
-        text = ""
-    }
-}
-
-// MARK: - Dictionary (rows 13·15, 18, 19)
-
-/// The words Fovea writes your way, at their real number (row 18): searched, filtered, A to Z in a
-/// list that scrolls in place, the learned ones marked ✦ with what Fovea heard first (row 19).
-struct DictionarySection: View {
-    @Environment(CapturesModel.self) private var model
-    @Environment(\.palette) private var palette
-    @Environment(\.settingsNative) private var native
-    @State private var search = ""
-    @State private var newWord = ""
-
-    var body: some View {
-        let all = model.library.dictionary
-        let tab = model.dictionaryTab
-        let tokens = search.lowercased().split(separator: " ").map(String.init)
-        let words = all.filter { w in
-            (tab == .all || (tab == .learned ? w.source == .learned : w.source == .added))
-                && tokens.allSatisfy { t in w.word.lowercased().contains(t) || (w.heardAs?.lowercased().contains(t) ?? false) }
-        }
-        .sorted { $0.word.localizedCaseInsensitiveCompare($1.word) == .orderedAscending }
-        let groups = Dictionary(grouping: words) { Self.letter($0.word) }
-        let letters = groups.keys.sorted { a, b in a == "#" ? false : (b == "#" ? true : a < b) }
-
-        SettingsSection("Dictionary") {
-            if !model.signedOut && !all.isEmpty {
-                SettingsSegments(segments: DictionaryTab.allCases.map { t in
-                    let n = t == .all ? all.count : all.filter { $0.source == (t == .learned ? .learned : .added) }.count
-                    return (t, "\(t == .added ? "Added" : t.title) \(n)")
-                }, selection: tab, inset: 3, padding: 8) { t in
-                    model.animate(.swap) { model.dictionaryTab = t }
-                }
-            }
-        } content: {
-            SettingsCard {
-                if model.signedOut {
-                    VStack(spacing: 8) {
-                        Image(systemName: "lock").font(.system(size: 20)).foregroundStyle(palette.tertiary)
-                        Text("Sign in to use your dictionary.").font(.system(size: 13)).foregroundStyle(palette.secondary)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 140)
-                } else {
-                    HStack(spacing: 8) {
-                        if !all.isEmpty {
-                            HStack(spacing: 6) {
-                                Image(systemName: "magnifyingglass").foregroundStyle(palette.tertiary)
-                                TextField("Search \(all.count) words", text: $search).textFieldStyle(.plain)
-                                if !search.isEmpty {
-                                    Button { search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(palette.tertiary) }
-                                        .buttonStyle(.plain)
-                                        .accessibilityLabel("Clear search")
-                                }
-                            }
-                            .font(.system(size: 12.5))
-                            .padding(.horizontal, 8)
-                            .frame(height: 26)
-                            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(palette.fill))
-                        }
-                        TextField(all.isEmpty ? "Add a name, a term or an acronym" : "Add a word", text: $newWord)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(maxWidth: all.isEmpty ? .infinity : 150)
-                            .onSubmit { add() }
-                        Button("Add") { add() }.disabled(newWord.trimmingCharacters(in: .whitespaces).isEmpty)
-                    }
-                    .cardPadding()
-                    RowDivider()
-                    if all.isEmpty {
-                        Text("No words yet. Add one above, and Fovea writes it your way.")
-                            .font(.system(size: 12.5)).foregroundStyle(palette.secondary)
-                            .frame(maxWidth: .infinity, minHeight: 120)
-                    } else if words.isEmpty {
-                        Text("No matching words.").font(.system(size: 12.5)).foregroundStyle(palette.secondary)
-                            .frame(maxWidth: .infinity, minHeight: 120)
-                    } else {
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                                ForEach(letters, id: \.self) { letter in
-                                    Section {
-                                        ForEach(groups[letter] ?? []) { w in WordRow(word: w) }
-                                    } header: {
-                                        Text(letter)
-                                            .font(.system(size: 11, weight: .semibold)).foregroundStyle(palette.secondary)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 3)
-                                            .background(native ? palette.nativeGroup : palette.card)
-                                    }
-                                }
-                            }
-                        }
-                        .frame(height: 300)
-                    }
-                }
-            } footer: {
-                if !model.signedOut {
-                    Text("✦ Learned: Fovea adds a word when you correct what it typed. The rest you added.")
-                }
-            }
-        }
-    }
-
-    /// The section a word sorts under: its first letter, or # for the rest (numbers, 中文).
-    static func letter(_ word: String) -> String {
-        guard let c = word.first, c.isLetter, c.isASCII else { return "#" }
-        return String(c).uppercased()
-    }
-
-    private func add() {
-        model.addWord(newWord)
-        newWord = ""
-    }
-}
-
-/// One word: as Fovea writes it; for a learned one, what it heard first and where; when; ✕ on hover.
-private struct WordRow: View {
-    @Environment(CapturesModel.self) private var model
-    @Environment(\.palette) private var palette
-    let word: DictionaryWord
-    @State private var hover = false
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Text(word.source == .learned ? "✦" : " ")
-                .font(.system(size: 10)).foregroundStyle(palette.accent).frame(width: 12)
-            Text(word.word).font(.system(size: 13)).foregroundStyle(palette.text)
-            if let heard = word.heardAs {
-                Text("heard as “\(heard)”\(word.learnedIn.map { " in \($0)" } ?? "")")
-                    .font(.system(size: 11.5)).foregroundStyle(palette.tertiary).lineLimit(1)
-            }
-            Spacer(minLength: 8)
-            Text(Lines.day(word.date)).font(.system(size: 11)).foregroundStyle(palette.tertiary).monospacedDigit()
-            Button {
-                model.removeWord(word.id)
-                model.say("Removed “\(word.word)”")
-            } label: {
-                Image(systemName: "xmark.circle.fill").foregroundStyle(palette.tertiary)
-            }
-            .buttonStyle(.plain)
-            .opacity(hover ? 1 : 0)
-            .help("Remove")
-            .accessibilityLabel("Remove \(word.word)")
-        }
-        .padding(.horizontal, 12)
-        .frame(height: 30)
-        .background(hover ? palette.ink(0.04) : .clear)
-        .contentShape(Rectangle())
-        .onHover { hover = $0 }
-    }
-}
-
-// MARK: - Memory (rows 13·12–14, 24, 25)
-
-/// Memory, as people think of it (row 24, after Claude's memory topics): the areas of your life
-/// Fovea has come to know, each a short summary in its words, read from the tags that keep coming
-/// up; under them, every memory, raw, with the words and the capture each came from, one button
-/// away and searchable. Then what it may remember.
-struct MemorySection: View {
-    @Environment(CapturesModel.self) private var model
-    @Environment(\.palette) private var palette
-
-    var body: some View {
-        @Bindable var model = model
-        let active = model.library.memories.filter { $0.deleted == nil }
-        Group {
-            switch model.memoryState {
-            case .loading:
-                SettingsSection("About you") {
-                    SettingsCard {
-                        HStack(spacing: 10) {
-                            ProgressView().controlSize(.small)
-                            Text("Loading your memories…").font(.system(size: 12.5)).foregroundStyle(palette.secondary)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 120)
-                    }
-                }
-                .id("memory-about")
-            case .failed:
-                SettingsSection("About you") {
-                    SettingsCard {
-                        VStack(spacing: 8) {
-                            Image(systemName: "exclamationmark.triangle").font(.system(size: 18)).foregroundStyle(palette.warning)
-                            Text("Couldn't load your memories: the memory file is in use.")
-                                .font(.system(size: 12.5)).foregroundStyle(palette.text)
-                            Button("Try Again") { model.animate(.swap) { model.memoryState = .loaded } }
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 140)
-                    }
-                }
-                .id("memory-about")
-            case .loaded where active.isEmpty && model.library.areas.isEmpty:
-                SettingsSection("About you") {
-                    SettingsCard {
-                        VStack(spacing: 6) {
-                            Image(systemName: "brain.head.profile").font(.system(size: 20)).foregroundStyle(palette.tertiary)
-                            Text("No memories yet").font(.system(size: 13, weight: .medium)).foregroundStyle(palette.secondary)
-                            Text("Send something to an agent, or say “remember that …”, and it shows up here.")
-                                .font(.system(size: 12)).foregroundStyle(palette.tertiary)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 140)
-                    }
-                }
-                .id("memory-about")
-            case .loaded:
-                SettingsSection("About you", note: "What Fovea has come to know from what you send your agents, in its own words. Correct it, or forget a part.") {
-                    if !model.prefs.memoryLink {
-                        HStack(spacing: 8) {
-                            Image(systemName: "pause.circle").foregroundStyle(palette.secondary)
-                            Text("Memory Link is off: what you send now isn't remembered.")
-                                .font(.system(size: 12)).foregroundStyle(palette.text)
-                            Spacer()
-                            Button("Turn On") { model.animate(.swap) { model.prefs.memoryLink = true } }
-                        }
-                        .padding(10)
-                        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(palette.fill))
-                    }
-                    VStack(spacing: 10) {
-                        ForEach(model.library.areas) { area in AreaCard(area: area) }
-                    }
-                }
-                .id("memory-about")
-                SettingsSection("All memories") {
-                    SettingsCard {
-                        SettingsRow("\(active.count.formatted()) memories",
-                                    detail: "Everything the summaries come from: each with the words it came from, and its capture.") {
-                            Button("Search Memories…") { model.browsingMemories = true }
-                        }
-                    }
-                }
-            }
-        }
-        SettingsSection("Remembering") {
-            SettingsCard {
-                SettingsRow("Memory Link", detail: "Remember what you send your agents, not only what you ask Fovea to remember. Off pauses it.") {
-                    InkToggle(title: "Memory Link", isOn: $model.prefs.memoryLink)
-                }
-                RowDivider()
-                SettingsRow("Remember things when you ask", detail: "Press fn and say “remember that …”.") {
-                    InkToggle(title: "Remember things when you ask", isOn: $model.prefs.remember)
-                }
-                RowDivider()
-                SettingsRow("Show when Fovea remembers something") {
-                    InkToggle(title: "Show when Fovea remembers something", isOn: $model.prefs.rememberNotice)
-                }
-                RowDivider()
-                SettingsRow("Agents' reading", detail: "Which agents read your memory, and when.") {
-                    Button("Access Log…") { model.accessLogShown = true }
-                }
-            }
-        }
-        .id("memory-remembering")
-    }
-}
-
-/// One area of your life: its summary (yours to correct), the tags it reads from with how often
-/// each came up (each shows its captures), and when it last changed. Forget it from its menu.
-private struct AreaCard: View {
-    @Environment(CapturesModel.self) private var model
-    @Environment(\.palette) private var palette
-    let area: MemoryArea
-    @State private var editing = false
-    @State private var draft = ""
-    @State private var confirmForget = false
-
-    var body: some View {
-        let counts = Dictionary(uniqueKeysWithValues: CaptureSearch.tags(in: model.library.captures).map { ($0.tag, $0.count) })
-        SettingsCard {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Image(systemName: area.symbol)
-                        .font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
-                        .frame(width: 22, height: 22)
-                        .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(palette.accent))
-                    Text(area.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(palette.text)
-                    Spacer()
-                    Text("Updated \(Lines.relative(area.updated, now: model.now))")
-                        .font(.system(size: 11)).foregroundStyle(palette.tertiary)
-                    Menu {
-                        Button("Edit Summary…") { draft = area.summary; editing = true }
-                        Divider()
-                        Button("Forget “\(area.title)”…", role: .destructive) { confirmForget = true }
-                    } label: {
-                        Image(systemName: "ellipsis.circle").foregroundStyle(palette.secondary)
-                    }
-                    .menuStyle(.button)
-                    .buttonStyle(.plain)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
-                    .help("Edit or forget")
-                }
-                if editing {
-                    TextEditor(text: $draft)
-                        .font(.system(size: 13))
-                        .frame(height: 96)
-                        .padding(4)
-                        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(palette.accent, lineWidth: 1))
-                    HStack {
-                        Spacer()
-                        Button("Cancel") { editing = false }
-                        Button("Save") { model.updateArea(area.id, summary: draft); editing = false }
-                            .keyboardShortcut(.defaultAction)
-                    }
-                } else {
-                    Text(area.summary)
-                        .font(.system(size: 13)).foregroundStyle(palette.text)
-                        .lineSpacing(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                FlowLayout(spacing: 6) {
-                    ForEach(area.tags.filter { counts[$0] != nil }, id: \.self) { tag in
-                        Button { model.show(tag: tag) } label: {
-                            HStack(spacing: 4) {
-                                Text(tag).foregroundStyle(palette.text)
-                                Text("\(counts[tag] ?? 0)").foregroundStyle(palette.tertiary).monospacedDigit()
-                            }
-                            .font(.system(size: 11.5))
-                            .padding(.horizontal, 9)
-                            .frame(height: 22)
-                            .background(Capsule().fill(palette.fill))
-                        }
-                        .buttonStyle(.plain)
-                        .help("Show the \(counts[tag] ?? 0) captures tagged “\(tag)”")
-                    }
-                }
-            }
-            .cardPadding()
-        }
-        .confirmationDialog("Forget “\(area.title)”?", isPresented: $confirmForget) {
-            Button("Forget", role: .destructive) { model.forgetArea(area.id) }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Fovea stops using this summary. The memories it came from stay, searchable, until you delete them.")
-        }
-    }
-}
-
-/// Every memory, raw (row 24): search them, see only those hidden from agents or recently
-/// deleted, select several (⌘ and ⇧ as any Mac list), delete with Undo, hide from agents,
-/// restore; the one selected shows its words, where it came from, and its capture.
-struct MemoryBrowser: View {
-    @Environment(CapturesModel.self) private var model
-    @Environment(\.palette) private var palette
-    @State private var search = ""
-
-    var body: some View {
-        @Bindable var model = model
-        let tokens = search.lowercased().split(separator: " ").map(String.init)
-        let shown = model.library.memories.filter { m in
-            switch model.memoryFilter {
-            case .all: guard m.deleted == nil else { return false }
-            case .hidden: guard m.deleted == nil, m.hidden else { return false }
-            case .deleted: guard m.deleted != nil else { return false }
-            }
-            let hay = ([m.text, m.quote] + m.tags).joined(separator: " ").lowercased()
-            return tokens.allSatisfy { hay.contains($0) }
-        }
-        .sorted { $0.date > $1.date }
-        let selected = model.memorySelection
-        let one = selected.count == 1 ? model.library.memories.first { selected.contains($0.id) } : nil
-
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Text("Memories").font(.system(size: 15, weight: .semibold))
-                Spacer()
-                Picker("Show", selection: $model.memoryFilter) {
-                    ForEach(MemoryFilter.allCases, id: \.self) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 14)
-            .padding(.bottom, 10)
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                TextField("Search by words or tags", text: $search)
-                    .textFieldStyle(.plain)
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 28)
-            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.secondary.opacity(0.12)))
-            .padding(.horizontal, 16)
-            .padding(.bottom, 10)
-            Divider()
-            HStack(spacing: 0) {
-                if shown.isEmpty {
-                    Text(model.memoryFilter == .deleted ? "No recently deleted memories." :
-                            model.memoryFilter == .hidden ? "No memories hidden from agents." : "No matching memories.")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    List(selection: $model.memorySelection) {
-                        ForEach(shown) { m in MemoryListRow(memory: m).tag(m.id) }
-                    }
-                    .listStyle(.inset)
-                    .onDeleteCommand { delete(selected) }
-                    .frame(minWidth: 380)
-                }
-                Divider()
-                MemoryDetail(memory: one, count: selected.count)
-                    .frame(width: 280)
-            }
-            Divider()
-            HStack(spacing: 8) {
-                if let message = model.toast {
-                    // The window's toast, here, where it can be clicked while the sheet is up.
-                    Text(message).font(.system(size: 12, weight: .medium))
-                    if !model.lastDeletedMemories.isEmpty {
-                        Button("Undo") { model.undoMemoryDelete() }
-                            .keyboardShortcut("z", modifiers: .command)
-                    }
-                } else {
-                    Text(selected.isEmpty ? "\(shown.count.formatted()) \(shown.count == 1 ? "memory" : "memories")" : "\(selected.count) selected")
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
-                    Text(model.memoryFilter == .deleted ? "Gone for good 30 days after they're deleted."
-                                                        : "⇧- or ⌘-click selects several, ⌘A all · ⌘⌫ deletes")
-                        .font(.system(size: 11)).foregroundStyle(.tertiary)
-                }
-                Spacer()
-                if model.memoryFilter == .deleted {
-                    Button("Restore") { model.restoreMemories(selected) }.disabled(selected.isEmpty)
-                } else {
-                    let allHidden = !selected.isEmpty && model.library.memories.filter { selected.contains($0.id) }.allSatisfy(\.hidden)
-                    Button(allHidden ? "Show to Agents" : "Hide from Agents") { model.setHidden(selected, !allHidden) }
-                        .disabled(selected.isEmpty)
-                    Button("Delete", role: .destructive) { delete(selected) }
-                        .keyboardShortcut(.delete, modifiers: .command)
-                        .disabled(selected.isEmpty)
-                }
-                Button("Done") { model.browsingMemories = false }
-                    .keyboardShortcut(.defaultAction)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-        }
-        .frame(width: 760, height: 540)
-        .onChange(of: model.memoryFilter) { model.memorySelection = [] }
-    }
-
-    private func delete(_ ids: Set<String>) {
-        guard model.memoryFilter != .deleted else { return }
-        model.deleteMemories(ids)
-    }
-}
-
-/// A memory in the list: its words, then when, its area and tags; marked when hidden from agents,
-/// and, deleted, how long until it's gone for good.
-private struct MemoryListRow: View {
-    @Environment(CapturesModel.self) private var model
-    let memory: Memory
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 5) {
-                if memory.hidden { Image(systemName: "eye.slash").font(.system(size: 10)).foregroundStyle(.secondary) }
-                Text(memory.text).font(.system(size: 13)).lineLimit(1)
-            }
-            Text(line).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-        }
-        .padding(.vertical, 2)
-    }
-
-    private var line: String {
-        var parts = [Lines.day(memory.date)]
-        if let a = memory.area, let area = model.library.areas.first(where: { $0.id == a }) { parts.append(area.title) }
-        if !memory.tags.isEmpty { parts.append(memory.tags.joined(separator: ", ")) }
-        if let d = memory.deleted {
-            let left = max(0, 30 - (Lines.calendar.dateComponents([.day], from: d, to: model.now).day ?? 0))
-            parts.append(left == 0 ? "Gone soon" : "Gone for good in \(left) days")
-        }
-        return parts.joined(separator: " · ")
-    }
-}
-
-/// The memory selected: its words, the words it came from, where, its tags, and its capture.
-private struct MemoryDetail: View {
-    @Environment(CapturesModel.self) private var model
-    let memory: Memory?
-    let count: Int
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                if let m = memory {
-                    Text(m.text).font(.system(size: 14, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(m.stated ? "You asked Fovea to remember" : "From what you said").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
-                        Text("“\(m.quote)”").font(.system(size: 12.5)).fixedSize(horizontal: false, vertical: true)
-                    }
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("When").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
-                        Text("\(Lines.day(m.date))\(m.scope.map { " · \($0)" } ?? "")").font(.system(size: 12.5))
-                    }
-                    if !m.tags.isEmpty {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Tags").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
-                            FlowLayout(spacing: 5) {
-                                ForEach(m.tags, id: \.self) { t in
-                                    Text(t).font(.system(size: 11.5)).padding(.horizontal, 8).frame(height: 20)
-                                        .background(Capsule().fill(Color.secondary.opacity(0.14)))
-                                }
-                            }
-                        }
-                    }
-                    if m.hidden {
-                        Label("Hidden from agents: Fovea still uses it.", systemImage: "eye.slash")
-                            .font(.system(size: 11.5)).foregroundStyle(.secondary)
-                    }
-                    if let id = m.captureID, model.library.captures.contains(where: { $0.id == id }) {
-                        Button("Show Capture") { model.openCapture(id) }
-                    }
-                } else {
-                    Text(count > 1 ? "\(count) memories selected" : "Select a memory to see where it came from.")
-                        .font(.system(size: 12.5)).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.top, 40)
-                }
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-}
-
-/// When agents read your memory, which, and what they asked (the Mac app's external AI access
-/// log): read-only.
-struct AccessLogSheet: View {
-    @Environment(CapturesModel.self) private var model
-    @State private var filter = "All"
-    static let events: [(agent: String, kind: String, what: String, results: Int, when: String)] = [
-        ("Claude Code", "Search", "“ears”", 2, "Today, 13:38"),
-        ("Claude Code", "Recall", "recent memories", 5, "Today, 11:02"),
-        ("Codex", "Search", "“第二屏”", 1, "Yesterday, 16:40"),
-        ("Claude Code", "List", "work", 12, "Sep 24, 10:15"),
-        ("Codex", "Search", "“rate limits”", 3, "Sep 23, 09:51"),
-    ]
-
-    var body: some View {
-        let kinds = ["All", "Search", "Recall", "List"]
-        let shown = Self.events.filter { filter == "All" || $0.kind == filter }
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Agents' reading").font(.system(size: 15, weight: .semibold))
-                Spacer()
-                Picker("Show", selection: $filter) { ForEach(kinds, id: \.self) { Text($0).tag($0) } }
-                    .pickerStyle(.segmented).labelsHidden().fixedSize()
-            }
-            Text("When an agent read your memory through Fovea, and what it asked. Read-only.")
-                .font(.system(size: 12)).foregroundStyle(.secondary)
-            List(shown, id: \.when) { e in
-                HStack {
-                    Image(nsImage: Art.agentIcon(e.agent)).resizable().frame(width: 20, height: 20)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("\(e.agent) · \(e.kind) \(e.what)").font(.system(size: 12.5))
-                        Text("\(e.results) \(e.results == 1 ? "result" : "results") · \(e.when)").font(.system(size: 11)).foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .listStyle(.inset)
-            .frame(height: 220)
-            HStack { Spacer(); Button("Done") { model.accessLogShown = false }.keyboardShortcut(.defaultAction) }
-        }
-        .padding(20)
-        .frame(width: 480)
-    }
-}
+// Oct 15 review: the privacy rules (VoiceCaptureSettings.swift), the dictionary (DictionaryPane.swift),
+// Memory, its browser and the access log (MemoryBrowser.swift) are in their own files now.
 
 // MARK: - Connectors (rows 21, 22)
 
@@ -1364,35 +861,7 @@ struct QuestionsSections: View {
 
 // MARK: - The window's errors (row 13, 1–3)
 
-/// When the window can't open its data: what happened, what to do, Open Diagnostics and Relaunch
-/// Fovea, in the middle of the window and nothing else (the Mac app's, kept).
-struct WindowErrorView: View {
-    @Environment(CapturesModel.self) private var model
-    @Environment(\.palette) private var palette
-    let error: WindowError
-
-    var body: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 30)).foregroundStyle(palette.warning)
-            Text(error.title).font(.system(size: 17, weight: .semibold)).foregroundStyle(palette.text)
-            Text(error.message)
-                .font(.system(size: 13)).foregroundStyle(palette.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 380)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 10) {
-                Button("Open Diagnostics") { model.say("Would open the diagnostics folder (simulated)") }
-                Button("Relaunch Fovea") { model.say("Would relaunch Fovea (simulated)") }
-                    .keyboardShortcut(.defaultAction)
-            }
-            .padding(.top, 8)
-        }
-        .padding(32)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(palette.background)
-    }
-}
+// Oct 15 review, MW-02b: drawn by `LocalDataErrorView` (HomeStates.swift), with the four kinds.
 
 // MARK: - The States menu (row 13)
 
@@ -1523,7 +992,8 @@ extension CapturesModel {
     func setUpdate(_ state: UpdateState) {
         windowError = nil
         animate(.swap) { update = state }
-        openSettings(.account)
+        // Oct 15 review, ST-10: updates live in About now.
+        openSettings(.about)
     }
 
     func setWindowError(_ error: WindowError?) {

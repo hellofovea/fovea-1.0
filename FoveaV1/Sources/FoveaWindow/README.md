@@ -291,7 +291,7 @@ Rebuilt from the settings study (Raycast, Linear, Vercel's Geist, Bartender, Str
   - Words only, it's 600 pt with 40 pt around them.
   - Close, and the actions' capsule, are glass, 12 pt in from the top and the sides.
 - **Settings:** the form column is 560 pt, so a label stays near its switch, and the notes under each section are left-aligned with its rows.
-- **The window has one size, 1112 × 784 pt** (`T.Layout.window`), as Wispr Flow's and Typeless's do: it can't be resized or made full screen. That's the size it had on Ryan's 13-inch Air, and four columns of cards fit in it.
+- **The window has one size, 1024 × 720 pt** (`T.Layout.window`), as Wispr Flow's and Typeless's do: it can't be resized or made full screen. It was 1112 × 784, the size it had on Ryan's 13-inch Air, until Oct 13 ("a little bit smaller"): the same shape at 92 %.
 
 **Corners:** see "Aside's shading, corners and buttons" below.
 

@@ -1,4 +1,5 @@
 import Foundation
+import FoveaKit
 
 /// What one press of the hotkey made. Two kinds (the App UI review, Oct 6, row 30): what you said
 /// went into the app in front of you, or to an agent. Taking things off the screen while you speak
@@ -13,15 +14,16 @@ public enum CaptureKind: String, Codable, CaseIterable, Hashable, Sendable {
 
     public var title: String {
         switch self {
-        case .dictation: return "Dictation"
-        case .dispatch: return "Dispatch"
+        // Oct 18, Ryan: in the primary language.
+        case .dictation: return L("Dictation")
+        case .dispatch: return L("Dispatch")
         }
     }
 
     public var plural: String {
         switch self {
-        case .dictation: return "Dictations"
-        case .dispatch: return "Dispatches"
+        case .dictation: return L("Dictations")
+        case .dispatch: return L("Dispatches")
         }
     }
 }
@@ -101,8 +103,8 @@ public struct Capture: Identifiable, Codable, Hashable, Sendable {
     public var destination: Destination?
     /// Three or four words naming what it's about, for the header option that shows one.
     public var theme: String
-    /// Seconds of speech: the recording's length. Every capture keeps its recording (row 28), until
-    /// the history setting lets it go, so it can be played, saved, and transcribed again.
+    /// Seconds of speech. Oct 15 review (VF11, QA19): no recording is kept to play or save; one is
+    /// kept only while its words haven't come back, for Fovea to transcribe it again on its own.
     public var seconds: Double
     /// In a browser: the website you were on, by its domain ("chatgpt.com"), so words said into
     /// ChatGPT in Chrome are told from Chrome (row 38).
@@ -110,20 +112,27 @@ public struct Capture: Identifiable, Codable, Hashable, Sendable {
     /// What it's about, a word or two each, given by Fovea and yours to change. The filter picks
     /// by them, and Memory's areas read from them (row 25).
     public var tags: [String]
-    /// Set when your words never came back (the network dropped, the service didn't answer). The
-    /// recording is kept, so it can be transcribed again; `text` is empty until it is.
+    /// Set when your words never came back (the network dropped, the service didn't answer). Fovea
+    /// keeps the recording, out of sight, and transcribes it again on its own (Oct 15 review,
+    /// VF13); `text` is empty until it does.
     public var failure: String?
+    /// Oct 15 review, QA25: a dispatch that couldn't reach its agent, and why. Its words are kept;
+    /// Send Again tries it again. Nil for every capture that went (and for any written before).
+    public var sendFailure: String?
 
     public init(id: String, kind: CaptureKind, time: Date, app: AppRef, text: String,
                 attachments: [Attachment] = [], destination: Destination? = nil, theme: String, seconds: Double,
-                site: String? = nil, tags: [String] = [], failure: String? = nil) {
+                site: String? = nil, tags: [String] = [], failure: String? = nil, sendFailure: String? = nil) {
         self.id = id; self.kind = kind; self.time = time; self.app = app; self.text = text
         self.attachments = attachments; self.destination = destination; self.theme = theme; self.seconds = seconds
-        self.site = site; self.tags = tags; self.failure = failure
+        self.site = site; self.tags = tags; self.failure = failure; self.sendFailure = sendFailure
     }
 
-    /// The words never came back; the recording waits to be transcribed again.
+    /// The words never came back; Fovea is transcribing them again.
     public var failed: Bool { failure != nil }
+
+    /// Oct 15 review, QA25: a dispatch that didn't reach its agent.
+    public var notSent: Bool { kind == .dispatch && sendFailure != nil }
 
     /// The text cut at its attachments: text runs, each followed by the attachments taken at its
     /// end. The card and the expanded view both draw from this, so a chip always sits where it

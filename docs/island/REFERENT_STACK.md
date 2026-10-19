@@ -68,6 +68,20 @@ where a screenshot's chrome is.
 
 ### What the workbench does with it
 
+- **Oct 15 (the dev team's review, VF04/VF05/QA02, decided by Ryan).** Collapsed, the stack shows a
+  small "+N" once more than three are taken. Opened, the captures sit in **one row**, numbered 1, 2,
+  3… in the order taken (the index "the second one" binds to); when the row is wider than the
+  island it swipes or scrolls sideways, with a thin thumb under it. A click opens the close look as
+  before, its caption led by the number. Choose chat's pile does the same. Capture mode also covers
+  the other displays: a referent taken there carries a display glyph and "From your other display".
+  This supersedes the wrapping rows below.
+- **Oct 17 (Ryan), Fovea 1.0.** ⌥ takes regions (twice, the whole screen) where ⌘ did; words selected
+  and files clicked while Fovea listens join the stack with no key, marked where they were. A
+  dictation pastes the words first, then each referent in the order taken: taken words in quotes on
+  lines of their own, screenshots as pictures, files as files.
+- **Oct 17, round 2 (Ryan).** No whole screen on ⌥ twice (the Claude app's). Files join by being
+  dragged onto the notch, the bar lit as a well ("Drop to take it"); taken words stay highlighted in
+  the accent for the session.
 - **To the right, never sideways.** The reference fans its cards left and right from the middle.
   Here every movement goes right from the first capture: at rest the pile peeks right; hovered,
   it fans further right (5 → 11 pt apart, tilts +8° and −6°) without moving the front card or the

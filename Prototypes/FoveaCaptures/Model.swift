@@ -466,12 +466,14 @@ enum TitleDesign: String, CaseIterable {
 
 /// The app icon in the Dock, from the variants `scripts/fovea-icon.swift` draws.
 enum IconVariant: String, CaseIterable {
-    /// Ryan's serif f, its hook curling into the o (Oct 6): the app's icon. The geometric fo it
-    /// replaced stays below, to compare.
-    case serif, serifDark, balanced, asDrawn, looking, round, dark
+    /// The pressed loop (Oct 13): the app's icon. The flat yellow loop (Oct 10), Ryan's serif f
+    /// (Oct 6) and the geometric fo before it stay below, to compare.
+    case pressed, loop, serif, serifDark, balanced, asDrawn, looking, round, dark
     var title: String {
         switch self {
-        case .serif: return "Serif f (the app's icon)"
+        case .pressed: return "Pressed loop (the app's icon)"
+        case .loop: return "Highlighter loop, yellow"
+        case .serif: return "Serif f"
         case .serifDark: return "Serif f, dark"
         case .balanced: return "Geometric fo"
         case .asDrawn: return "Geometric fo, as drawn"
@@ -482,6 +484,8 @@ enum IconVariant: String, CaseIterable {
     }
     var file: String {
         switch self {
+        case .pressed: return "Brand/Variants/icon-pressed-light.png"
+        case .loop: return "Brand/Variants/icon-loop-light.png"
         case .serif: return "Brand/Variants/icon-serif-light.png"
         case .serifDark: return "Brand/Variants/icon-serif-dark.png"
         case .balanced: return "Brand/Variants/icon-balanced-light.png"
@@ -743,7 +747,7 @@ final class CapturesModel {
     var focusMark: FocusMark = .ring
     var avatarStyle: AvatarStyle = .circle
     var titleDesign: TitleDesign = .standard
-    var iconVariant: IconVariant = .serif
+    var iconVariant: IconVariant = .pressed
     var historyStyle: HistoryStyle = .yearGraphTop
     var archiveStyle: ArchiveStyle = .page
     var layout: LayoutStyle = .cards

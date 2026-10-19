@@ -84,12 +84,19 @@ extension OnboardingModel {
     /// Esc is the island's (it steps out one level there).
     func escapeKey() -> Bool { false }
 
-    /// Whether the board shows its main button now (the tasks wait for their beats; the
-    /// permissions and sign-in move on by themselves).
+    /// Whether the board shows its main button now (the tasks wait for their beats; sign-in moves
+    /// on by itself).
     var guideButtonShown: Bool {
         switch step {
-        case .permissions, .weeklyUpdate: false
-        case .microphone: micPhase == .waiting && alert == nil
+        // Oct 17, Ryan (round 2): the permissions page always has Continue, dim until both lists
+        // are allowed; it never moves on by itself.
+        case .permissions: true
+        // Signing up: Continue with the choices (an email typed), or on a page come back to.
+        case .signIn:
+            signInPhase.showsChoices || (flow.revisited && signInPhase.isSignedIn)
+        case .weeklyUpdate: false
+        // Heard (Oct 17, Ryan, round 2: it waits for Continue), or come back to with Back.
+        case .microphone: (micPhase == .waiting && alert == nil) || micPhase == .heard
         case .packList, .hover, .followUp, .dictation: flow.isComplete
         default: true
         }

@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import FoveaCore
 import FoveaKit
+import FoveaLook
 
 // The Oct 6 feedback's Voiceflow views (Feedback.swift has the flow): the errors' notice (#2),
 // picking text and files with ⌘ (#3), the last minute's countdown (#4), Split View (#6) and the
@@ -18,8 +19,14 @@ enum VoiceErrorLayout {
         let notch = NotchGeometry.notchRect(metrics: metrics, spec: spec)
         let message = error.message == nil ? 0 : F.noticeMessageGap + F.noticeMessageHeight
         let height = notch.height + F.noticePaddingTop + F.noticeRow + message + F.noticePaddingBottom
-        return StackLayout.Outline(size: CGSize(width: F.noticeWidth, height: height),
+        return StackLayout.Outline(size: CGSize(width: width(error), height: height),
                                    topRadius: spec.expandedTopRadius, bottomRadius: F.noticeBottomRadius)
+    }
+
+    /// Oct 15 review, NH-04: Paste not found's width, a little wider for a long action's label.
+    static func width(_ error: VoiceError) -> CGFloat {
+        let F = WorkbenchTokens.Feedback.self
+        return F.noticeWidth + (error.action?.isLong == true ? F.noticeWideExtra : 0)
     }
 
     /// The listening bar holding a notice: its own height and corners, wider.
@@ -30,8 +37,8 @@ enum VoiceErrorLayout {
                                    topRadius: frames.topRadius, bottomRadius: frames.bottomRadius)
     }
 
-    static var bodyWidth: CGFloat {
-        WorkbenchTokens.Feedback.noticeWidth - 2 * WorkbenchTokens.Island.spec.expandedTopRadius
+    static func bodyWidth(_ error: VoiceError) -> CGFloat {
+        width(error) - 2 * WorkbenchTokens.Island.spec.expandedTopRadius
     }
 }
 
@@ -66,7 +73,8 @@ struct VoiceErrorContent: View {
                     .lineLimit(1)
                 Spacer(minLength: F.noticeSpacing)
                 if let action = error.action {
-                    NoticeActionButton(title: action.rawValue) { model.performErrorAction(error) }
+                    NoticeActionButton(title: action.label) { model.performErrorAction(error) }
+                        // Oct 15 review, NH-04: the fixes in Settings have their button.
                 }
                 ErrorCloseButton(model: model)
             }
@@ -83,7 +91,7 @@ struct VoiceErrorContent: View {
         }
         .padding(.horizontal, F.noticePaddingH)
         .padding(.top, F.noticePaddingTop)
-        .frame(width: VoiceErrorLayout.bodyWidth, alignment: .topLeading)
+        .frame(width: VoiceErrorLayout.bodyWidth(error), alignment: .topLeading)
         .contentShape(Rectangle())
         .onHover { model.setErrorHover($0) }
         .panelScheme()
@@ -162,7 +170,7 @@ struct BarNoticeBand: View {
                 .lineLimit(1)
             Spacer(minLength: F.barNoticeTrailing)
             if let action = error.action {
-                NoticeActionButton(title: action.rawValue, inBar: true) { model.performErrorAction(error) }
+                NoticeActionButton(title: action.label, inBar: true) { model.performErrorAction(error) }
             }
         }
         .padding(.horizontal, F.barNoticePaddingH)
@@ -190,9 +198,14 @@ struct HighlightMarks: View {
                 neutral(hover, radius: F.fileMarkRadius, fill: F.liveHoverFill, outline: true)
                     .transition(.opacity)
             }
-            ForEach(model.highlights) { mark in
+            // Oct 18, Ryan: marks over another app's window are drawn over that window, not here.
+            ForEach(model.highlights.filter { $0.window == nil }) { mark in
                 ForEach(Array(mark.rects.enumerated()), id: \.offset) { _, rect in
-                    if live {
+                    if live, mark.taken {
+                        // Oct 17, Ryan: words taken are seen to be taken: the old highlighter's
+                        // accent over their lines (over the Oct 9 light gray, for these only).
+                        taken(rect, ink: ink)
+                    } else if live {
                         neutral(rect, radius: mark.file ? F.fileMarkRadius : F.markRadius, fill: F.liveMarkFill, outline: mark.file)
                     } else if mark.file {
                         RoundedRectangle(cornerRadius: F.fileMarkRadius, style: .continuous)
@@ -209,7 +222,8 @@ struct HighlightMarks: View {
             .transition(.opacity)
             if let draft = model.highlightDraft {
                 ForEach(Array(draft.enumerated()), id: \.offset) { _, rect in
-                    if live { neutral(rect, radius: F.markRadius, fill: F.liveMarkFill, outline: false) } else { stroke(rect, ink: ink) }
+                    // Oct 18, Ryan: words being selected show as they'll be taken, as the cursor moves.
+                    if live { taken(rect, ink: ink) } else { stroke(rect, ink: ink) }
                 }
             }
         }
@@ -226,6 +240,15 @@ struct HighlightMarks: View {
             .offset(x: rect.minX, y: rect.minY)
     }
 
+    /// Oct 17, Ryan: a taken line, as a highlighter marks it: the accent, translucent, over the words.
+    private func taken(_ rect: CGRect, ink: Color) -> some View {
+        let F = WorkbenchTokens.Feedback.self
+        return RoundedRectangle(cornerRadius: F.markRadius, style: .continuous)
+            .fill(ink.opacity(F.takenMarkOpacity))
+            .frame(width: rect.width + 2 * F.takenMarkOutset, height: rect.height + 2 * F.takenMarkOutset)
+            .offset(x: rect.minX - F.takenMarkOutset, y: rect.minY - F.takenMarkOutset)
+    }
+
     /// The real Mac's mark: light gray, a thin outline where it rings a thing.
     private func neutral(_ rect: CGRect, radius: CGFloat, fill: Color, outline: Bool) -> some View {
         let F = WorkbenchTokens.Feedback.self
@@ -234,6 +257,30 @@ struct HighlightMarks: View {
             .overlay(shape.strokeBorder(outline ? F.liveMarkStroke : .clear, lineWidth: F.liveMarkStrokeWidth))
             .frame(width: rect.width, height: rect.height)
             .offset(x: rect.minX, y: rect.minY)
+    }
+}
+
+/// Oct 17, Ryan: a file dragged over the notch: the bar (or Choose chat) lights as a well in the
+/// accent, and says what letting go does. Drawn only; the drop target is its own window.
+struct FileDropWell: View {
+    let model: WorkbenchModel
+
+    var body: some View {
+        let F = WorkbenchTokens.Feedback.self
+        let ink = model.accent.color
+        let shape = RoundedRectangle(cornerRadius: F.dropWellRadius, style: .continuous)
+        shape.fill(ink.opacity(F.dropWellFill))
+            .overlay(shape.strokeBorder(ink, lineWidth: F.dropWellStroke))
+            .overlay {
+                HStack(spacing: F.barNoticeSpacing) {
+                    Image(systemName: "doc.badge.plus").font(F.barNoticeGlyph)
+                    Text("Drop to take it").font(F.barNoticeTitle).lineLimit(1)
+                }
+                .foregroundStyle(F.noticeTitleColor)
+            }
+            .panelScheme()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Drop to take it")
     }
 }
 

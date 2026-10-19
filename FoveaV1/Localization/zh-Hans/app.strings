@@ -1,0 +1,90 @@
+/* Fovea — app: menus, the menu bar, alerts, shared names (FoveaApp, FoveaKit, FoveaPlatform). Simplified Chinese. Keys: Localization/README.md. */
+
+/* Shortcuts (FoveaKeys) */
+"Voice Flow" = "听写";
+"Speak, and Fovea types it into the app in front of you." = "开口说话，Fovea 会把文字输入到当前 App 中。";
+"Dispatch" = "派发";
+"Send what you say, and what you point at, to Claude Code or Codex." = "把你说的话和你指向的内容一起发给 Claude Code 或 Codex。";
+"Take part of the screen" = "截取部分屏幕";
+"Press ⌥, then drag over what to take. Hold ⌥ to take more than one." = "按下 ⌥，然后拖动选择要截取的区域。按住 ⌥ 可连续截取多处。";
+"Take the whole screen" = "截取全屏";
+"Press ⌘ twice." = "按两下 ⌘。";
+"Take words or a file" = "选取文字或文件";
+"While Fovea listens, select words, or drag a file onto the notch. No key needed." = "Fovea 聆听时，直接选中文字，或把文件拖到灵动岛上，无需按键。";
+"Every chat" = "所有会话";
+"In Choose chat, press left ⌃ by itself for every chat by agent." = "在“选择会话”中单独按下左侧 ⌃，可按 Agent 查看所有会话。";
+"Step back or cancel" = "返回或取消";
+"Closes what's open, or cancels while Fovea listens." = "关闭当前打开的内容；Fovea 聆听时按下则取消。";
+"Undo a cancel" = "撤销刚才的取消";
+"For a moment after you cancel." = "取消后短时间内可用。";
+
+/* Names of choices (Prefs) */
+"Multicolor" = "多色";
+"Blue" = "蓝色";
+"Purple" = "紫色";
+"Pink" = "粉色";
+"Red" = "红色";
+"Orange" = "橙色";
+"Yellow" = "黄色";
+"Green" = "绿色";
+"Graphite" = "石墨色";
+"Colorful" = "缤纷";
+"Mono" = "单色";
+"Ocean" = "海洋";
+"Sunset" = "日落";
+"Forest" = "森林";
+"Candy" = "糖果";
+"Ice" = "冰川";
+"Gold" = "金色";
+"Custom" = "自定义";
+"Customize" = "自定义";
+"Light" = "浅色";
+"Dark" = "深色";
+"Attached" = "贴合";
+"Floating" = "悬浮";
+"Compact" = "紧凑";
+"Spacious" = "宽松";
+"Quick" = "较快";
+"Normal" = "正常";
+"Relaxed" = "较慢";
+"Match the Mac" = "跟随系统";
+"Reduce" = "减弱";
+"Full" = "完整";
+"English" = "英语";
+"Chinese" = "中文";
+
+/* Permissions (macOS's own names) */
+"Device Control and Data Access" = "设备控制与数据访问";
+"Screen & System Audio Recording" = "录屏与系统录音";
+"Microphone" = "麦克风";
+"Speech Recognition" = "语音识别";
+"Input Monitoring" = "输入监控";
+
+/* The menu bar */
+"Fovea is listening" = "Fovea 正在聆听";
+"Fovea · an agent is working" = "Fovea · Agent 正在工作";
+"Fovea · an agent needs you" = "Fovea · Agent 需要你";
+"Can't reach Fovea. Check your connection." = "无法连接到 Fovea。请检查网络连接。";
+"Listening" = "正在聆听";
+"An agent needs you" = "有 Agent 需要你";
+"An agent is working" = "有 Agent 正在工作";
+"Fovea is ready" = "Fovea 已就绪";
+"Off" = "未设置";
+"Open Fovea" = "打开 Fovea";
+"Settings…" = "设置…";
+"Check for Updates…" = "检查更新…";
+"Quit Fovea" = "退出 Fovea";
+
+/* Move to Applications */
+"Move Fovea to your Applications folder?" = "要将 Fovea 移到“应用程序”文件夹吗？";
+"Downloads" = "下载";
+"From Applications, Fovea can update itself and open when you log in. It's running from %@ now." = "放在“应用程序”文件夹中，Fovea 才能自动更新并在登录时打开。它目前在“%@”中运行。";
+"Move to Applications" = "移到“应用程序”";
+"Not Now" = "以后再说";
+"Don't ask again" = "不再询问";
+"Fovea couldn't move itself" = "无法移动 Fovea";
+"Drag Fovea into your Applications folder in Finder, then open it from there." = "请在访达中把 Fovea 拖到“应用程序”文件夹，然后从那里打开。";
+"OK" = "好";
+
+/* AppDelegate */
+"Resume the Tour" = "继续导览";

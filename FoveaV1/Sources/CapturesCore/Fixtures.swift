@@ -181,9 +181,9 @@ public enum Fixtures {
                        destination: destination, theme: theme, seconds: seconds, site: site, tags: tags)
     }
 
-    /// A recording whose words never came back.
-    static func failed(_ id: String, _ time: Date, _ app: AppRef, because reason: String, seconds: Double) -> Capture {
-        Capture(id: id, kind: .dictation, time: time, app: app, text: "", theme: "Not transcribed", seconds: seconds, failure: reason)
+    /// A recording whose words never came back (Oct 15 review, VF13: Fovea is trying again).
+    public static func failed(_ id: String, _ time: Date, _ app: AppRef, because reason: String, seconds: Double) -> Capture {
+        Capture(id: id, kind: .dictation, time: time, app: app, text: "", theme: "Not transcribed yet", seconds: seconds, failure: reason)
     }
 
     /// What each capture is about: the tags Fovea gave it. The filter picks by them; Memory's

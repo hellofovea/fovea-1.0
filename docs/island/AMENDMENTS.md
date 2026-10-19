@@ -100,8 +100,9 @@ it ships, it overrides nothing above; these lines say which rules it changes.
   slower work waits on the board. Any session opens to its expanded chat (the request, the
   response, its screen); a grab bar pulls a chat out of the notch into a window that can go
   anywhere or tuck into a side of the screen. A pulled-out chat has a box to ask more in that
-  session, whenever (it need not wait for the session to finish), and only ✕ in its corner: it closes the window, stopping the session if it is still
-  at work.
+  session, whenever (it need not wait for the session to finish), and only ✕ in its corner: it closes the window. ~~Stopping the session if it is still
+  at work.~~ Oct 15 (the dev team's review, QA21/QA23): closing never stops; a working session goes
+  back on the board and keeps working, and only Stop stops it.
 - **The hover.** The pointer near the notch (on it, or a little beside or below it) opens the
   control board; leaving it closes it, and closes a session opened from it. This widens "a
   dwell on the notch itself".

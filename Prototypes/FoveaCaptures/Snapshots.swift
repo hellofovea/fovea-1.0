@@ -260,7 +260,7 @@ enum Snapshots {
         model.cardAttachments = .inlineAndPreview; model.detailStyle = .quickLook; model.attachmentMotion = .fly
         model.detailIcon = false; model.hitStyle = .highlight; model.settingsLayout = .sidebarPanes; model.prefs = Prefs(); model.accent = .multicolor
         model.settingsCategory = .account; model.settingsScroll = nil
-        model.focusMark = .ring; model.avatarStyle = .circle; model.titleDesign = .standard; model.iconVariant = .serif
+        model.focusMark = .ring; model.avatarStyle = .circle; model.titleDesign = .standard; model.iconVariant = .pressed
         model.historyStyle = .yearGraphTop; model.archiveStyle = .page; model.archiveDay = nil
         model.hoverKey = nil; model.usageShown = false; model.dictionaryTab = .all; model.lastForgotten = nil
         model.toast = nil; model.copiedID = nil; model.selectedID = nil

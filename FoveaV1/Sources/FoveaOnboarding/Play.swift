@@ -28,6 +28,8 @@ enum PlayTarget: Hashable {
     /// Exit tour, bottom right, and the sound, bottom left (Oct 10).
     case corner
     case mute
+    /// Back, beside the progress line (Oct 15 review, OB-01.7).
+    case back
 }
 
 extension View {
@@ -56,6 +58,7 @@ extension OnboardingModel {
         fresh.language = flow.language
         fresh.email = flow.email
         fresh.name = flow.name
+        fresh.account = flow.account
         if step != .name { fresh.jump(to: step) }
         flow = fresh
         inList = []

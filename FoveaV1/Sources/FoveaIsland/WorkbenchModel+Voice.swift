@@ -29,7 +29,8 @@ extension WorkbenchModel {
             transcribeTask = Task { [weak self] in
                 try? await Task.sleep(for: P.emptyTranscribe)
                 guard let self, !Task.isCancelled, self.notchState == .transcribing else { return }
-                self.showNoSpeech()
+                // On the real Mac a press too short to say anything is said so (feedback #2, Oct 11).
+                if self.live != nil, !self.demoSamples { self.showVoiceError(.tooShort) } else { self.showNoSpeech() }
             }
             return
         }

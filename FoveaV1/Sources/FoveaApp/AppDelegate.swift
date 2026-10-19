@@ -5,6 +5,7 @@ import FoveaStore
 import FoveaWindow
 import FoveaIsland
 import FoveaOnboarding
+import OnboardingCore
 import FoveaPlatform
 import FoveaCore
 
@@ -54,8 +55,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private(set) var home: HomeWindowController!
     private(set) var island: IslandController!
     private var firstRun: OnboardingCoordinator?
+    /// The menu bar's icon (Oct 15 review, NH-01/02) and the review's own menu.
+    private var statusItem: StatusItem?
+    private let reviewMenu = ReviewMenu()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Every lookup of Fovea's words answers in the primary language (Oct 18).
+        FoveaLanguageBundle.install()
         if options.resetAll { location.eraseAll() } else { location.prepare() }
 
         // The first run's glass follows the Mac's own appearance until the person picks.
@@ -64,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         initial.notchAppearance = dark ? .dark : .light
         initial.language = FoveaLanguage.preferred(Locale.preferredLanguages)
         prefs = PrefsStore(location: location, initial: initial)
+        FoveaLocale.shared.language = prefs.prefs.language
         captures = CaptureLibrary(location: location)
         dictionary = DictionaryStore(location: location)
         onboarding = OnboardingStateStore(location: location)
@@ -76,13 +83,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             NSApp.applicationIconImage = icon
         }
 
+        if let i = CommandLine.arguments.firstIndex(of: "--design-shots"), i + 2 < CommandLine.arguments.count {
+            designShots(CommandLine.arguments[i + 1], to: URL(fileURLWithPath: (CommandLine.arguments[i + 2] as NSString).expandingTildeInPath))
+            return
+        }
+
         // The notch lives for the whole process, whatever the window does.
         island = IslandController(prefs: prefs, captures: captures, dictionary: dictionary)
         if CommandLine.arguments.contains("--smoke-first-run") {
-            island.start(smoke: true)
+            island.start(smoke: true, visible: true)
             onboarding.reset()
             let run = OnboardingCoordinator(prefs: prefs, island: island, dictionary: dictionary, state: onboarding) {}
             run.smoke = true
+            run.stageShown = true
             firstRun = run
             run.start()
             Task { @MainActor in
@@ -124,6 +137,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSApp.mainMenu = home.mainMenu(quit: #selector(quit(_:)), quitTarget: self)
         addResumeTourItem()
         home.onResumeTour = { [weak self] in self?.resumeTour(nil) }
+        installReview()
+        observeLanguage()
 
         // The first run, until it's done (and resumed where it was after Screen Recording's Quit &
         // Reopen); then Home, unless Fovea opened at login. Put away with Exit tour, it waits for
@@ -135,6 +150,165 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             if !options.noActivate { NSApp.activate(ignoringOtherApps: true) }
             if !LoginItem.launchedAtLogin || options.openHome { home.show() }
             observeLoginItem()
+        }
+    }
+
+    // MARK: Oct 15 review (docs/v1/REVIEW_2026-10-15.md)
+
+    /// The menu bar's icon, Show in Dock, the review's menu and stages, and the offer to move to
+    /// Applications.
+    private func installReview() {
+        let status = StatusItem(prefs: prefs)
+        status.openHome = { [weak self] in
+            guard let self, self.firstRun == nil else { return }
+            NSApp.activate(ignoringOtherApps: true)
+            self.home.show()
+        }
+        status.openSettings = { [weak self] section in
+            guard let self else { return }
+            NSApp.activate(ignoringOtherApps: true)
+            self.home.openSettings(section ?? "account")
+        }
+        status.checkForUpdates = { [weak self] in
+            NSApp.activate(ignoringOtherApps: true)
+            self?.home.checkForUpdates()
+        }
+        status.quit = { [weak self] in self?.quit(nil) }
+        statusItem = status
+        // The notch's notices whose fix is in Settings (NH-04): Choose Microphone…, Sign In.
+        island.onOpenSettings = { [weak self] page in
+            NSApp.activate(ignoringOtherApps: true)
+            self?.home.openSettings(page)
+        }
+        // Home's Open in Notch (HI-01.3, QA25) and Send Again (a Dispatch that wasn't sent: the
+        // session opens in the notch to go again; simulated sending in 1.0).
+        home.onOpenInNotch = { [weak self] id in self?.reopenInNotch(id) }
+        home.onSendAgain = { [weak self] id in
+            self?.captures.update(id) { $0.sendFailure = nil }
+            self?.reopenInNotch(id)
+        }
+        // The notch's "Remembered" (NH-03) opens that memory in Settings › Memory.
+        island.onOpenMemory = { [weak self] id in
+            NSApp.activate(ignoringOtherApps: true)
+            self?.home.openMemory(id)
+        }
+        observeMemoryNotice()
+        Review.stage("Reset", "Notch: back to rest", area: .notch) { [weak self] in self?.island.backToRest() }
+        island.observeActivity { [weak status] in status?.show($0) }
+        observeDock()
+        if let main = NSApp.mainMenu { reviewMenu.install(in: main) }
+        OnboardingCoordinator.registerReviewStages { [weak self] kind in self?.startRun(kind) }
+        // Settings › Getting Started (OB-03.1): the tour again, or one practice again.
+        home.onReplayTour = { [weak self] in self?.startRun(.replay) }
+        home.onPractice = { [weak self] step in
+            let practice: PracticeAgain? = step == "packList" ? .packingList : PracticeAgain(rawValue: step)
+            if let practice { self?.startRun(.practice(practice)) }
+        }
+        Review.stage("NH-06", "Move to Applications (nothing is moved)", area: .menuBar) {
+            MoveToApplications.ask(from: Bundle.main.bundleURL, simulated: true)
+        }
+        if !options.noActivate { MoveToApplications.offerIfNeeded() }
+    }
+
+    private func reopenInNotch(_ id: String) {
+        guard let capture = captures.captures.first(where: { $0.id == id }) else { return }
+        island.reopen(captureID: id, title: capture.text, agent: capture.destination?.agent ?? "claude-code")
+    }
+
+    /// "Tell me when a memory updates" reaches the notch, never during the first run.
+    private func observeMemoryNotice() {
+        island.tellsMemoryUpdates = prefs.prefs.memoryNotice && firstRun == nil
+        withObservationTracking { _ = prefs.prefs.memoryNotice } onChange: { [weak self] in
+            Task { @MainActor in self?.observeMemoryNotice() }
+        }
+    }
+
+    /// A run of the first run from Home (OB-03.1): the whole tour again, or one practice again
+    /// (Getting Started), the rest of the first run left as it was; Home again at the end.
+    func startRun(_ kind: RunKind) {
+        guard firstRun == nil else { return }
+        if kind == .tour { startTour(); return }
+        home.window.orderOut(nil)
+        let run = OnboardingCoordinator(prefs: prefs, island: island, dictionary: dictionary, state: onboarding, kind: kind) { [weak self] in
+            guard let self else { return }
+            self.firstRun = nil
+            self.home.tourUnfinished = !self.onboarding.state.complete
+            self.home.show()
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        firstRun = run
+        run.start()
+    }
+
+    /// The primary language (Oct 18, Ryan): Fovea's words follow it everywhere, the moment it
+    /// changes (FoveaKit/Localization.swift); the menus, which AppKit doesn't redraw, are built
+    /// again in it.
+    private func observeLanguage() {
+        let language = prefs.prefs.language
+        if FoveaLocale.shared.language != language {
+            FoveaLocale.shared.language = language
+            rebuildMenus()
+        }
+        withObservationTracking { _ = prefs.prefs.language } onChange: { [weak self] in
+            Task { @MainActor in self?.observeLanguage() }
+        }
+    }
+
+    private func rebuildMenus() {
+        guard home != nil else { return }
+        NSApp.mainMenu = home.mainMenu(quit: #selector(quit(_:)), quitTarget: self)
+        addResumeTourItem()
+        if let main = NSApp.mainMenu { reviewMenu.reinstall(in: main) }
+    }
+
+    /// Account › Show in Dock (ST-02.5): off, Fovea leaves the Dock and the app switcher and lives
+    /// in the menu bar; the window keeps working.
+    private func observeDock() {
+        let show = prefs.prefs.showInDock
+        let policy: NSApplication.ActivationPolicy = show ? .regular : .accessory
+        if NSApp.activationPolicy() != policy {
+            NSApp.setActivationPolicy(policy)
+            if !show, home.window.isVisible { NSApp.activate(ignoringOtherApps: true) }
+        }
+        withObservationTracking { _ = prefs.prefs.showInDock } onChange: { [weak self] in
+            Task { @MainActor in self?.observeDock() }
+        }
+    }
+
+    /// `--design-shots notch|first-run|window <dir>`: pictures of 1.0's designs on this Mac, then
+    /// quit. The notch's every state staged on the real island (`--only`); the first run walked
+    /// with the practice agent; both pictured from the real screen (Screen Recording) over a clean
+    /// desktop. Home and Settings from what that run left in the same `--data-dir`.
+    private func designShots(_ part: String, to dir: URL) {
+        let args = CommandLine.arguments
+        switch part {
+        case "notch":
+            let only = args.firstIndex(of: "--only").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }
+            island = IslandController(prefs: prefs, captures: captures, dictionary: dictionary)
+            island.start(smoke: true, visible: true)
+            Task { @MainActor in
+                await IslandDesignShots.run(self.island, prefs: self.prefs, to: dir, only: only)
+                NSApp.terminate(nil)
+            }
+        case "first-run":
+            island = IslandController(prefs: prefs, captures: captures, dictionary: dictionary)
+            island.start(smoke: true, visible: true)
+            onboarding.reset()
+            let run = OnboardingCoordinator(prefs: prefs, island: island, dictionary: dictionary, state: onboarding) {}
+            run.smoke = true
+            run.stageShown = true
+            firstRun = run
+            run.start()
+            Task { @MainActor in
+                await OnboardingShots.run(run, to: dir)
+                NSApp.terminate(nil)
+            }
+        default:
+            home = HomeWindowController(stores: WindowStores(prefs: prefs, captures: captures, dictionary: dictionary))
+            Task { @MainActor in
+                await self.home.designShots(to: dir)
+                NSApp.terminate(nil)
+            }
         }
     }
 
@@ -170,7 +344,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Fovea › Resume the Tour, under About, while the tour is put away.
     private func addResumeTourItem() {
         guard let menu = NSApp.mainMenu?.items.first?.submenu else { return }
-        let item = NSMenuItem(title: "Resume the Tour", action: #selector(resumeTour(_:)), keyEquivalent: "")
+        let item = NSMenuItem(title: L("Resume the Tour"), action: #selector(resumeTour(_:)), keyEquivalent: "")
         item.target = self
         menu.insertItem(item, at: 1)
     }

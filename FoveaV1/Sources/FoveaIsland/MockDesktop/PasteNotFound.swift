@@ -1,5 +1,6 @@
 import SwiftUI
 import FoveaCore
+import FoveaLook
 
 // Paste not found, drawn in the island under the notch: the transcript's first lines (cut at
 // the tail), then ✕ at the left in the countdown's ring, the chevron in the middle, Copy at the
@@ -79,6 +80,9 @@ struct PasteNotFoundContent: View {
         .padding(.top, P.paddingTop)
         .padding(.bottom, P.paddingBottom)
         .frame(width: layout.bodyWidth, alignment: .top)
+        // Oct 15 review, VF09: the pointer on the held words holds the close; leaving starts it again.
+        .contentShape(Rectangle())
+        .onHover { model.setPasteHover($0) }
         // White on black, whatever the display's appearance: the scroller included.
         .panelScheme()
         .accessibilityElement(children: .contain)
@@ -145,7 +149,8 @@ struct RevealHeight: ViewModifier, Animatable {
     }
 }
 
-/// ✕ at the left, the chevron centered under the words, Copy at the right.
+/// ✕ at the left, the chevron centered under the words, Paste and Copy at the right (Copy keeps
+/// its place at the edge).
 struct PasteControls: View {
     let model: WorkbenchModel
     let truncated: Bool
@@ -155,6 +160,9 @@ struct PasteControls: View {
             HStack(spacing: 0) {
                 PasteCloseButton(model: model)
                 Spacer(minLength: 8)
+                // Oct 15 review, VF10: Paste beside Copy, into the field focused now.
+                PastePasteButton(model: model)
+                    .padding(.trailing, WorkbenchTokens.Paste.buttonGap)
                 PasteCopyButton(copied: model.pasteCopied) { model.copyTranscript() }
             }
             if truncated {
@@ -279,6 +287,57 @@ struct PasteCopyButton: View {
         .animation(P.copiedSwap, value: copied)
         .help("Copy the transcript")
         .accessibilityLabel(copied ? "Copied" : "Copy")
+    }
+}
+
+/// Oct 15 review, VF10: Paste, beside Copy: the held words into the field that's focused now, by
+/// the path dictation takes, and the notch rests. Quieter than Copy, which keeps its place and its
+/// fill; "No field" a moment when nothing takes a paste (the words stay).
+struct PastePasteButton: View {
+    let model: WorkbenchModel
+    @State private var hovering = false
+    @State private var missed = false
+
+    var body: some View {
+        let P = WorkbenchTokens.Paste.self
+        Button {
+            if !model.pasteHeldWords() { showMissed() }
+        } label: {
+            Text(missed ? "No field" : "Paste")
+                .contentTransition(.interpolate)
+                .font(P.copyFont)
+                .foregroundStyle(P.pasteText)
+                .padding(.horizontal, P.copyPaddingH)
+                .frame(height: P.copyHeight)
+        }
+        .buttonStyle(PasteQuietStyle(hovering: hovering))
+        .onHover { hovering = $0 }
+        .animation(P.hover, value: hovering)
+        .animation(P.copiedSwap, value: missed)
+        .disabled(model.pasteCopied)
+        .help(missed ? "Click into a field, then Paste." : "Paste into the field you're typing in")
+        .accessibilityLabel(missed ? "No field to paste into" : "Paste")
+    }
+
+    private func showMissed() {
+        missed = true
+        Task { @MainActor in
+            try? await Task.sleep(for: WorkbenchTokens.Paste.missedHold)
+            missed = false
+        }
+    }
+}
+
+/// Paste's quieter capsule: the ink's own fill, lighter under the pointer, darker while pressed.
+struct PasteQuietStyle: ButtonStyle {
+    let hovering: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        let P = WorkbenchTokens.Paste.self
+        configuration.label
+            .background(Capsule(style: .continuous)
+                .fill(configuration.isPressed ? P.pasteFillPressed : (hovering ? P.pasteFillHover : P.pasteFill)))
+            .contentShape(Capsule(style: .continuous))
     }
 }
 

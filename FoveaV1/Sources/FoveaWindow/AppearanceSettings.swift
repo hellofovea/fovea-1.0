@@ -2,11 +2,14 @@ import AppKit
 import SwiftUI
 import CapturesCore
 import FoveaKit
+import FoveaLook
 
 /// Settings › Appearance, laid out as System Settings' Appearance pane is, and only what Ryan
 /// asked to keep: Light, Dark or Auto as pictures of a window, and the accent from the Mac's own
 /// set (Multicolor follows the Mac's). Every choice is a preset: there's no color well. (The
-/// themes and the card size, offered here for a day, are gone again.)
+/// themes and the card size, offered here for a day, are gone again.) Oct 15 review, IS02: Motion,
+/// as the Mac's Reduce Motion says, or always reduced, or always full; the window follows it now,
+/// and the notch reads the same pref.
 struct AppearancePane: View {
     @Environment(CapturesModel.self) private var model
     @Environment(\.palette) private var palette
@@ -37,7 +40,25 @@ struct AppearancePane: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .cardPadding()
+                RowDivider()
+                SettingsRow("Motion", detail: motionLine) {
+                    SettingsSegments(segments: MotionPreference.allCases.map { ($0, $0.title) }, selection: model.prefs.motion) { m in
+                        model.animate(.swap) { model.prefs.motion = m }
+                    }
+                }
             }
+        }
+    }
+
+    /// What each choice does, and for Match the Mac, how the Mac is set now.
+    private var motionLine: String {
+        switch model.prefs.motion {
+        case .system:
+            let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            return reduced ? L("As your Mac's Reduce Motion is set: on, so things fade instead of moving.")
+                           : L("As your Mac's Reduce Motion is set: off, so things move.")
+        case .reduce: return L("Fades instead of movement, in this window and the notch.")
+        case .full: return L("Every movement, whatever your Mac is set to.")
         }
     }
 }
@@ -136,12 +157,12 @@ private struct AccentDots: View {
                         .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
-                    .help(choice.title)
-                    .accessibilityLabel(choice.title)
+                    .help(L(key: choice.title))
+                    .accessibilityLabel(L(key: choice.title))
                     .accessibilityAddTraits(on ? [.isSelected] : [])
                 }
             }
-            Text(selection == .multicolor ? "Multicolor: follows your Mac" : selection.title)
+            Text(selection == .multicolor ? L("Multicolor: follows your Mac") : L(key: selection.title))
                 .font(.system(size: 11)).foregroundStyle(palette.secondary)
         }
     }

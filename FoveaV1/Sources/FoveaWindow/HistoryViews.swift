@@ -42,15 +42,18 @@ struct HomeFeed: View {
         }
     }
 
+    /// Oct 18, Ryan: in the primary language, a whole sentence for each period.
     private var emptyNote: String {
-        let when: String
-        switch model.scope {
-        case .today: when = "today"
-        case .threeDays: when = "in the last 3 days"
-        case .week: when = "this week"
-        case .month: when = "this month"
+        switch (model.scope, model.filtering) {
+        case (.today, true): return L("No matches today. The calendar marks the days with older ones.")
+        case (.threeDays, true): return L("No matches in the last 3 days. The calendar marks the days with older ones.")
+        case (.week, true): return L("No matches this week. The calendar marks the days with older ones.")
+        case (.month, true): return L("No matches this month. The calendar marks the days with older ones.")
+        case (.today, false): return L("Nothing today.")
+        case (.threeDays, false): return L("Nothing in the last 3 days.")
+        case (.week, false): return L("Nothing this week.")
+        case (.month, false): return L("Nothing this month.")
         }
-        return model.filtering ? "No matches \(when). The calendar marks the days with older ones." : "Nothing \(when)."
     }
 }
 
@@ -68,7 +71,7 @@ struct CalendarSection<Content: View>: View {
         VStack(alignment: .leading, spacing: model.cardSpacing.metrics.dayLabelGap + 2) {
             HStack(alignment: .center) {
                 if model.years.count > 1 {
-                    SlidingSegments(segments: model.years.map { .init(value: $0, title: String($0), help: "Show \($0)") },
+                    SlidingSegments(segments: model.years.map { .init(value: $0, title: String($0), help: L("Show \(String($0))")) },
                                     selection: year, height: 22, fontSize: 11.5, padding: 10) { y in
                         model.animate(.swap) { model.calendarYear = y }
                     }
@@ -77,8 +80,7 @@ struct CalendarSection<Content: View>: View {
                     DayTitle(title: String(year), count: nil)
                 }
                 Spacer()
-                Text(model.filtering ? "\(total.formatted()) \(total == 1 ? "match" : "matches") in \(String(year))"
-                                     : "\(total.formatted()) captures in \(String(year))")
+                Text(Self.yearTotal(total, String(year), matches: model.filtering))
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(palette.tertiary)
                     .contentTransition(.numericText())
@@ -87,6 +89,44 @@ struct CalendarSection<Content: View>: View {
                 .id(year)
                 .transition(.blockSwap)
         }
+    }
+
+    /// "128 captures in 2026". Oct 18, Ryan: in the primary language, a sentence for each count.
+    static func yearTotal(_ n: Int, _ year: String, matches: Bool) -> String {
+        switch (matches, n == 1) {
+        case (true, true): return L("1 match in \(year)")
+        case (true, false): return L("\(n.formatted()) matches in \(year)")
+        case (false, true): return L("1 capture in \(year)")
+        case (false, false): return L("\(n.formatted()) captures in \(year)")
+        }
+    }
+}
+
+/// Oct 18, Ryan: the calendar's month and weekday names in the primary language. `Lines.calendar`
+/// writes English (en_US_POSIX), which stays exactly as it was; Chinese takes the system's own
+/// names for zh-Hans ("10月", "周一", "一").
+enum CalendarWords {
+    static var chinese: Bool { FoveaLocale.shared.language == .chinese }
+
+    /// A month's name: the English format as written, or the Chinese template's.
+    static func formatter(_ english: String, chinese template: String) -> DateFormatter {
+        let cal = Lines.calendar
+        let f = DateFormatter(); f.calendar = cal; f.timeZone = cal.timeZone
+        if chinese {
+            f.locale = FoveaLocale.shared.locale
+            f.setLocalizedDateFormatFromTemplate(template)
+        } else {
+            f.locale = cal.locale
+            f.dateFormat = english
+        }
+        return f
+    }
+
+    /// The calendar whose weekday names to show (its layout stays `Lines.calendar`'s).
+    static var names: Calendar {
+        var c = Lines.calendar
+        if chinese { c.locale = FoveaLocale.shared.locale }
+        return c
     }
 }
 
@@ -159,7 +199,7 @@ struct YearGraph: View {
                 }
             }
             HStack {
-                Text(hovered.map { caption($0) } ?? "Click a day to see what you said.")
+                Text(hovered.map { caption($0) } ?? L("Click a day to see what you said."))
                     .font(.system(size: 12))
                     .foregroundStyle(hovered == nil ? palette.tertiary : palette.secondary)
                 Spacer()
@@ -189,8 +229,9 @@ struct YearGraph: View {
     private func caption(_ day: Date) -> String {
         let n = model.dayCounts[day] ?? 0
         let when = Lines.longDay(day, now: model.now)
-        let what = model.filtering ? (n == 1 ? "match" : "matches") : ""
-        return n == 0 ? "Nothing on \(when)" : "\(n)\(what.isEmpty ? "" : " " + what) on \(when)"
+        if n == 0 { return L("Nothing on \(when)") }
+        guard model.filtering else { return L("\(n) on \(when)") }
+        return n == 1 ? L("1 match on \(when)") : L("\(n) matches on \(when)")
     }
 }
 
@@ -202,10 +243,7 @@ private struct MonthLabels: View {
 
     var body: some View {
         let cal = Lines.calendar
-        let f: DateFormatter = {
-            let f = DateFormatter(); f.calendar = cal; f.timeZone = cal.timeZone; f.locale = cal.locale
-            f.dateFormat = "MMM"; return f
-        }()
+        let f = CalendarWords.formatter("MMM", chinese: "MMM")
         var marks: [(Int, String)] = []
         var lastMonth = -1
         for (i, week) in weeks.enumerated() {
@@ -236,7 +274,7 @@ private struct WeekdayLabels: View {
 
     var body: some View {
         let cal = Lines.calendar
-        let symbols = cal.shortWeekdaySymbols
+        let symbols = CalendarWords.names.shortWeekdaySymbols
         VStack(alignment: .leading, spacing: gap) {
             ForEach(0..<7, id: \.self) { row in
                 let weekday = (cal.firstWeekday - 1 + row) % 7
@@ -297,7 +335,7 @@ private struct DayCell: View {
 
     static func tooltip(_ n: Int, _ day: Date, now: Date) -> String {
         let when = Lines.longDay(day, now: now)
-        return n == 0 ? "Nothing on \(when)" : "\(n) on \(when)"
+        return n == 0 ? L("Nothing on \(when)") : L("\(n) on \(when)")
     }
 }
 
@@ -366,7 +404,7 @@ private struct MonthView: View {
             VStack(spacing: 3) {
                 HStack(spacing: 3) {
                     ForEach(0..<7, id: \.self) { i in
-                        Text(cal.veryShortWeekdaySymbols[(cal.firstWeekday - 1 + i) % 7])
+                        Text(CalendarWords.names.veryShortWeekdaySymbols[(cal.firstWeekday - 1 + i) % 7])
                             .font(.system(size: 9.5, weight: .medium))
                             .foregroundStyle(palette.tertiary)
                             .frame(width: cell)
@@ -403,9 +441,8 @@ private struct MonthView: View {
 
     static func title(_ first: Date, now: Date) -> String {
         let cal = Lines.calendar
-        let f = DateFormatter(); f.calendar = cal; f.timeZone = cal.timeZone; f.locale = cal.locale
-        f.dateFormat = cal.component(.year, from: first) == cal.component(.year, from: now) ? "MMMM" : "MMMM yyyy"
-        return f.string(from: first)
+        let sameYear = cal.component(.year, from: first) == cal.component(.year, from: now)
+        return CalendarWords.formatter(sameYear ? "MMMM" : "MMMM yyyy", chinese: sameYear ? "MMM" : "yyyyMMM").string(from: first)
     }
 
     /// The day at a point of the month's grid (gaps count as the day before them); none to come.
@@ -472,13 +509,10 @@ struct TimelineStrip: View {
         let maxCount = max(1, model.dayCounts.values.max() ?? 1)
         let barWidth: CGFloat = 5, spacing: CGFloat = 2, height: CGFloat = 40
         let recentStart = History.recentStart(now: model.now, calendar: cal)
-        let monthFormatter: DateFormatter = {
-            let f = DateFormatter(); f.calendar = cal; f.timeZone = cal.timeZone; f.locale = cal.locale
-            f.dateFormat = "MMM"; return f
-        }()
+        let monthFormatter = CalendarWords.formatter("MMM", chinese: "MMM")
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {
-                Text(hovered.map { DayCell.tooltip(model.dayCounts[$0] ?? 0, $0, now: model.now) } ?? "Every day, back a year. Click one to see it.")
+                Text(hovered.map { DayCell.tooltip(model.dayCounts[$0] ?? 0, $0, now: model.now) } ?? L("Every day, back a year. Click one to see it."))
                     .font(.system(size: 12))
                     .foregroundStyle(hovered == nil ? palette.tertiary : palette.secondary)
                 Spacer()
@@ -553,7 +587,7 @@ struct DayHeader: View {
                             if n > 0 {
                                 HStack(spacing: 6) {
                                     KindMark(kind: kind)
-                                    Text("\(n) \(n == 1 ? kind.title.lowercased() : kind.plural.lowercased())")
+                                    Text(Lines.count(n, of: kind))
                                 }
                             }
                         }

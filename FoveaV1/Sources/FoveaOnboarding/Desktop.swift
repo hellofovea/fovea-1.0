@@ -32,12 +32,13 @@ struct MenuBarView: View {
     /// Solid, for a picture of the screen (a material has nothing behind it to blur off screen).
     var solid = false
     private let status = ["wifi", "battery.100percent", "magnifyingglass", "switch.2"]
-    private static let clock: String = {
+    /// The clock as the Mac writes it in the primary language (Oct 18, Ryan).
+    private static var clock: String {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "EEE MMM d  h:mm a"
+        formatter.locale = FoveaLocale.shared.locale
+        formatter.setLocalizedDateFormatFromTemplate("EEE MMM d h:mm a")
         return formatter.string(from: Date())
-    }()
+    }
 
     var body: some View {
         HStack(spacing: OT.Layout.menuBarItemSpacing) {
@@ -139,9 +140,13 @@ struct DesktopFilesView: View {
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    guard !model.highlighterOn, !model.screenshotArmed, file.type == "txt" || file.type == "md" else { return }
+                    // Oct 17, Ryan (round 2): a click opens it, always (a file is taken by dragging
+                    // it onto the notch, not by a click).
+                    guard !model.screenshotArmed, file.type == "txt" || file.type == "md" else { return }
                     model.previewFile == file.name ? model.hidePreview() : model.showPreview(file.name)
                 }
+                // Oct 17, Ryan (round 2): the real file, to drag onto the notch, which takes it.
+                .onDrag { NSItemProvider(contentsOf: model.practice.url(file.name)) ?? NSItemProvider() }
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(ScreenSpace.name)) } action: { frame in
                     model.fileFrames[file.name] = frame
                 }

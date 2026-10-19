@@ -1,4 +1,5 @@
 import Foundation
+import FoveaKit
 
 // The Agent panel's tasks: the sessions Fovea sent requests to, grouped by the project they
 // work in (several agents can work on one project), each with its state and one line of what
@@ -52,13 +53,13 @@ enum ApprovalVerb {
         let sub = words.dropFirst().first ?? ""
         // `npm run test`, `pnpm run build`: the script is the action.
         let action = sub == "run" ? (words.dropFirst(2).first ?? "") : sub
-        if tool == "rm" || (tool == "git" && sub == "clean") { return ("Delete", "Delete") }
-        if tool == "pytest" || action == "test" || tool == "xcodebuild" && words.contains("test") { return ("Run Tests", "Run") }
-        if action == "build" || tool == "make" || tool == "xcodebuild" { return ("Build", "Build") }
-        if tool == "git" && sub == "push" { return ("Push", "Push") }
-        if tool == "git" && sub == "commit" { return ("Commit", "Commit") }
-        if action == "install" || (action == "add" && ["npm", "pnpm", "yarn", "brew"].contains(tool)) { return ("Install", "Install") }
-        return ("Run", "Run")
+        if tool == "rm" || (tool == "git" && sub == "clean") { return (L("Delete"), L("Delete")) }
+        if tool == "pytest" || action == "test" || tool == "xcodebuild" && words.contains("test") { return (L("Run Tests"), L("Run")) }
+        if action == "build" || tool == "make" || tool == "xcodebuild" { return (L("Build"), L("Build")) }
+        if tool == "git" && sub == "push" { return (L("Push"), L("Push")) }
+        if tool == "git" && sub == "commit" { return (L("Commit"), L("Commit")) }
+        if action == "install" || (action == "add" && ["npm", "pnpm", "yarn", "brew"].contains(tool)) { return (L("Install"), L("Install")) }
+        return (L("Run"), L("Run"))
     }
 }
 
@@ -322,7 +323,8 @@ enum AgentBoard {
     static func duration(_ seconds: Double) -> String? {
         let minutes = Int(seconds / 60)
         if minutes < 1 { return nil }
-        return minutes < 60 ? "\(minutes)m" : "\(minutes / 60)h"
+        // Oct 18, Ryan: in the primary language ("5m", "5 分钟").
+        return minutes < 60 ? L("\(minutes)m") : L("\(minutes / 60)h")
     }
 
     /// A project's order: state first, then the latest to reach it (so rows don't swap places

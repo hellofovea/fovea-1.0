@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import OnboardingCore
+import FoveaIsland
 
 // What makes the first run real: the microphone test listens for the line, the tasks go to the
 // agent on this Mac (Claude Code) with the practice site and files, the blog reloads with its edit,
@@ -116,8 +117,8 @@ extension OnboardingModel {
                 lines.append("\(n). A picture of my whole screen: \"\(path)\". Maya's request is in the team chat; this week's analytics are in the browser.")
             case .region:
                 switch referent.tab {
+                case .analytics: lines.append("\(n). A picture from the Analytics tab: \"\(path)\". This week's signups, activation and churn.")
                 case .github: lines.append("\(n). A picture from the GitHub tab: \"\(path)\". The pull requests merged this week.")
-                case .support: lines.append("\(n). A picture from the Support tab: \"\(path)\". Our open support tickets.")
                 default: lines.append("\(n). A picture of part of my screen: \"\(path)\".")
                 }
             case .passage(let i):
@@ -129,22 +130,30 @@ extension OnboardingModel {
         lines.append("")
         switch request.step {
         case .weeklyUpdate:
-            lines += ["Look at the pictures. Write the update to \"\(practice.url(PracticeFiles.update).path)\": a title, then three short parts (Growth, Shipped, Support), a line or two each, with the numbers from the pictures."]
+            // Oct 18, Ryan: two parts taken, so two parts written.
+            lines += ["Maya asked in the team chat for this week's update: signups and what shipped."]
+            lines += ["Look at the pictures. Write the update to \"\(practice.url(PracticeFiles.update).path)\": a title, then two short parts (Growth, Shipped), a line or two each, with the numbers from the pictures."]
         default:
             lines += ["Keep the packing list as it is laid out: a title, then one \"- item\" per line."]
         }
+        // Oct 18, Ryan: the agent answers, and writes, in the person's primary language.
+        if let language = Self.answerLanguage { lines += ["Write the file and your reply in \(language)."] }
         lines += ["This is someone's first try of Fovea, which hands you what they point at and what they say.",
                   "Work only in \"\(folder)\". When you're done, reply in two or three short sentences: what you did, and anything worth checking."]
         return lines.joined(separator: "\n")
     }
 
+    /// The language the agent's answer should be in, when it isn't English (Oct 18, Ryan).
+    static var answerLanguage: String? { FoveaLocale.shared.language == .chinese ? "Simplified Chinese" : nil }
+
     /// Sends a request: to Claude Code for real, or to the practice agent.
     func dispatch(_ request: PracticeRequest, session id: UUID, turn: Int) {
         agentNote = nil
-        agentActivity = "Starting"
+        agentActivity = L("Starting")
         if sendsToRealAgent, let executable = agentExecutable {
             let text = turn == 0 ? prompt(for: request)
                 : "\(request.words) Keep the same layout, with a heading for each group. Reply in a sentence or two."
+                    + (Self.answerLanguage.map { " Write it in \($0)." } ?? "")
             runner.run(executable: executable, prompt: text, folder: practice.folder,
                        resume: turn == 0 ? nil : agentSession) { [weak self] event in
                 self?.agentEvent(event, session: id, turn: turn, task: request.step)
@@ -163,14 +172,14 @@ extension OnboardingModel {
             // Signed out, the tool still "answers": with a sign-in line. That's a failure here.
             if reply.localizedCaseInsensitiveContains("not logged in") || reply.contains("/login") {
                 agentSignedIn = false
-                agentNote = "Claude Code isn't signed in on this Mac, so the practice agent answered. Run claude in Terminal once to sign in."
+                agentNote = L("Claude Code isn't signed in on this Mac, so the practice agent answered. Run claude in Terminal once to sign in.")
                 practiceAgent(session: id, turn: turn, task: task)
                 return
             }
             agentSession = session ?? agentSession
             answered(session: id, turn: turn, task: task, reply: Self.trimmed(reply))
         case .failed(let why):
-            agentNote = "Claude Code didn't finish (\(why)) The practice agent answered instead."
+            agentNote = L("Claude Code didn't finish (\(why)) The practice agent answered instead.")
             practiceAgent(session: id, turn: turn, task: task)
         }
     }
@@ -180,11 +189,12 @@ extension OnboardingModel {
         let steps: [String]
         switch task {
         case .weeklyUpdate:
-            steps = ["Looking at screen-1.png", "Looking at part-2.png", "Looking at part-3.png", "Writing \(PracticeFiles.update)"]
+            // Oct 18, Ryan: the agent's lines in the primary language.
+            steps = [L("Looking at \("part-1.png")"), L("Looking at \("part-2.png")"), L("Writing \(PracticeFiles.update)")]
         case .followUp:
-            steps = ["Looking at \(PracticeFiles.list)", "Editing \(PracticeFiles.list)"]
+            steps = [L("Looking at \(PracticeFiles.list)"), L("Editing \(PracticeFiles.list)")]
         default:
-            steps = ["Reading your words", "Looking at \(PracticeFiles.list)", "Editing \(PracticeFiles.list)"]
+            steps = [L("Reading your words"), L("Looking at \(PracticeFiles.list)"), L("Editing \(PracticeFiles.list)")]
         }
         let wait = Self.agentWait + id.uuidString
         for (index, line) in steps.enumerated() {
@@ -213,7 +223,7 @@ extension OnboardingModel {
     func usePracticeAnswer() {
         runner.cancel()
         guard let index = sessions.lastIndex(where: { $0.running }) else { return }
-        agentNote = "The practice agent answered this one."
+        agentNote = L("The practice agent answered this one.")
         let session = sessions[index]
         let task = session.turns.count > 1 ? Step.followUp : session.task
         practiceAgent(session: session.id, turn: session.turns.count - 1, task: task)
@@ -241,7 +251,7 @@ extension OnboardingModel {
             // As in real use (Oct 9, evening): a slow answer waits on the board, Done; a quick one
             // opens by itself. Nothing is opened for the person.
             if step == .hover {
-                if !flow.done.contains(.hoverNotch) { say("Done. Move your pointer to the notch to see it.", hold: false) }
+                if !flow.done.contains(.hoverNotch) { say(L("Done. Move your pointer to the notch to see it."), hold: false) }
                 beat(.answer)
             }
         case .followUp:
@@ -305,19 +315,43 @@ extension OnboardingModel {
     // MARK: Dictation (Oct 9): two windows, your own words
 
     func land(_ words: String, in target: DictationWindow) {
+        // Oct 17, Ryan: what was taken while talking lands after the words, in the same window.
+        let taken = dictationTaken
+        dictationTaken = []
         animate(OT.Motion.content) {
             switch target {
-            case .feedback: feedbackText = feedbackText.isEmpty ? words : feedbackText + " " + words
-            case .messages: replyText = words
+            case .feedback:
+                feedbackText = feedbackText.isEmpty ? words : feedbackText + " " + words
+                feedbackTaken += taken
+            case .messages:
+                // Into the box, after what's there (Oct 18, Ryan: the person's to change).
+                replyText = replyText.isEmpty ? words : replyText + " " + words
+                replyTaken += taken
             }
         }
-        flow.add(PracticeRecord(kind: .dictation, words: words, theme: target == .feedback ? "Feedback on the first run" : "Moving the call",
+        flow.add(PracticeRecord(kind: .dictation, words: words, theme: target == .feedback ? L("Feedback on the first run") : L("Moving the call"),
                                 secondsBeforeEnd: target == .feedback ? 90 : 60))
         dictationTarget = nil
         heardSoFar = ""
         let owed = flow.waitingFor
-        if target == .feedback, owed?.contains(.feedbackLanded) == true { beat(.feedbackLanded) }
+        // In the feedback, landed while still owing what's taken, it's missed (said, tried again).
+        if target == .feedback, flow.done.contains(.feedbackKey), flow.remaining.contains(where: { $0.contains(.feedbackLanded) }) {
+            beat(.feedbackLanded)
+        }
         if target == .messages, owed?.contains(.replyLanded) == true { beat(.replyLanded) }
+    }
+
+    /// Something taken while dictating (Oct 17, Ryan): a picture of it, drawn from Fovea's own
+    /// windows as the island's own picture is without Screen Recording, to land after the words.
+    /// Taken into the feedback, it's the beat the step waits for.
+    func takenWhileDictating(_ kind: IslandEvent.TakenKind, rect: CGRect) {
+        let shot = kind == .wholeScreen ? ScreenCapture.whole(model: self, name: nil)
+                                        : ScreenCapture.region(rect, model: self, name: nil)
+        var referent = TakenReferent(kind: kind == .wholeScreen ? .wholeScreen : .region(rect))
+        referent.image = shot?.image
+        dictationTaken.append(referent)
+        sound.cue(.capture)
+        if (dictationTarget ?? pointerOver) == .feedback { beat(.feedbackTaken) }
     }
 
     /// Light clean-up, as Voiceflow does: no ums, a capital, a full stop.
@@ -336,7 +370,10 @@ extension OnboardingModel {
     func sendFeedback() {
         let text = feedbackText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !feedbackSent else { return }
-        if !options.harness { FeedbackStore.append(text) }
+        // What was taken with it is said in the entry (the shipping app would post the pictures).
+        let pictures = feedbackTaken.count
+        let entry = pictures == 0 ? text : text + "\n[\(pictures) picture\(pictures == 1 ? "" : "s") of the screen]"
+        if !options.harness { FeedbackStore.append(entry) }
         sound.cue(.allow)
         animate(OT.Motion.content) { feedbackSent = true }
     }
@@ -347,13 +384,13 @@ extension OnboardingModel {
     func importFile(_ url: URL) {
         guard let data = try? Data(contentsOf: url) else { return }
         guard let words = DictionaryImport.parse(data, filename: url.lastPathComponent) else {
-            animate(OT.Motion.content) { importMessage = "Fovea reads .csv, .txt, .json and .plist files." }
+            animate(OT.Motion.content) { importMessage = L("Fovea reads .csv, .txt, .json and .plist files.") }
             return
         }
         offer(words, from: url.lastPathComponent)
     }
 
-    /// Connect: the words straight from the app's own store on this Mac (Wispr Flow, VoiceOS), read
+    /// Connect: the words straight from the app's own store on this Mac (Wispr Flow), read
     /// now and not before. The smoke run and the snapshots read a stand-in, never yours.
     func connect(_ app: DictationApp) {
         let rows: [(word: String, replacement: String?)]?
@@ -371,7 +408,7 @@ extension OnboardingModel {
 
     /// Words pasted from another app (most have no export).
     func importPasted(_ text: String) {
-        offer(DictionaryImport.parse(pasted: text), from: "what you pasted")
+        offer(DictionaryImport.parse(pasted: text), from: L("what you pasted"))
     }
 
     private func offer(_ words: [ImportedWord], from source: String) {
@@ -380,7 +417,7 @@ extension OnboardingModel {
             let fresh = words.filter { !known.contains($0.word.lowercased()) }
             importCandidates += fresh
             importChosen.formUnion(fresh.map(\.word))
-            importMessage = words.isEmpty ? Copy.importNone : "\(words.count) from \(source)"
+            importMessage = words.isEmpty ? Copy.importNone : L("\(words.count) from \(source)")
         }
         sound.cue(.tick)
     }
@@ -393,11 +430,14 @@ extension OnboardingModel {
     func importChosenWords() {
         let chosen = importCandidates.filter { importChosen.contains($0.word) }
         guard !chosen.isEmpty else { return }
-        importedWords += chosen
-        flow.importWords(chosen.count)
+        // Come back to with Back (Oct 15 review, OB-01.7), the words already added aren't added twice.
+        let added = Set(importedWords.map { $0.word.lowercased() })
+        let fresh = chosen.filter { !added.contains($0.word.lowercased()) }
+        importedWords += fresh
+        flow.importWords(fresh.count)
         sound.cue(.allow)
-        say("\(chosen.count) word\(chosen.count == 1 ? "" : "s") added.", hold: false)
-        if let next = flow.advance() { enter(next) }
+        say(chosen.count == 1 ? L("1 word added.") : L("\(chosen.count) words added."), hold: false)
+        moveOn(flow.advance())
     }
 
     // MARK: The end

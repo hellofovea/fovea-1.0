@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import CapturesCore
 import FoveaKit
+import FoveaLook
 
 /// The window, in one of two layouts (the panel's Window › Layout). The library, Aside's: the
 /// captures listed in the window's own material, an opaque page inset beside them
@@ -116,9 +117,17 @@ struct MainView: View {
                         .transition(.opacity)
                         .zIndex(2.5)
                 }
-                // The window can't open its data (row 13, 1–3): that, and nothing else.
+                // Oct 15 review, MW-02a: while the session is restored (or couldn't be), that and
+                // nothing else: never another account's captures, never "No Captures Yet".
+                if model.session != .ready {
+                    SessionView()
+                        .transition(.opacity)
+                        .zIndex(2.7)
+                }
+                // The window can't open its data (row 13, 1–3; Oct 15 review, MW-02b): that, and
+                // nothing else.
                 if let error = model.windowError {
-                    WindowErrorView(error: error)
+                    LocalDataErrorView(error: error)
                         .transition(.opacity)
                         .zIndex(2.8)
                 }
@@ -148,6 +157,23 @@ struct WindowSheets: ViewModifier {
             .background {
                 Color.clear.sheet(isPresented: $model.accessLogShown) { themed(AccessLogSheet()) }
             }
+            // Oct 15 review, AC-01.5: signing in; OB-02: what Fovea remembers, once.
+            .background {
+                Color.clear.sheet(isPresented: Binding(get: { model.signIn != nil }, set: { if !$0 { model.signIn = nil } })) {
+                    themed(SignInSheet())
+                }
+            }
+            .background {
+                Color.clear.sheet(isPresented: $model.memoryDisclosureShown) { themed(MemoryDisclosureSheet()) }
+            }
+            // Oct 15 review, IS04: a save that failed, in the Mac's own alert.
+            // Oct 18, Ryan: in the primary language (SaveFailure's words are made with L()).
+            .alert(model.saveFailure?.title ?? L("Couldn't Save"),
+                   isPresented: Binding(get: { model.saveFailure != nil }, set: { if !$0 { model.saveFailure = nil } })) {
+                Button("OK", role: .cancel) { model.saveFailure = nil }
+            } message: {
+                Text(model.saveFailure?.message ?? "")
+            }
     }
 
     private func themed<V: View>(_ view: V) -> some View {
@@ -156,6 +182,8 @@ struct WindowSheets: ViewModifier {
             .environment(\.palette, palette)
             .environment(\.motion, motion)
             .tint(model.accent.color)
+            // Oct 18, Ryan: a sheet is a window of its own: it takes the primary language too.
+            .foveaLanguage()
     }
 }
 
@@ -197,9 +225,10 @@ struct Toolbar: ToolbarContent {
 
     var body: some ToolbarContent {
         let p = palette
-        if model.windowError != nil {
-            // The window can't open its data (row 13, 1–3): nothing to filter, search or open,
-            // so the toolbar keeps only its height.
+        if model.windowError != nil || model.session != .ready {
+            // The window can't open its data (row 13, 1–3), or the session isn't restored yet
+            // (Oct 15 review, MW-02a): nothing to filter, search or open, so the toolbar keeps
+            // only its height.
             ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
         } else if model.page != .settings {
             if model.page == .day {
@@ -223,6 +252,9 @@ struct Toolbar: ToolbarContent {
             // keeps for the open field doesn't show as an empty capsule; you, a circle of glass
             // the same height as the toolbar's (36.5 pt on macOS 27, measured).
             if #available(macOS 26.0, *) {
+                // A flexible space after the centered type, so search and you sit at the trailing
+                // edge (without it the toolbar sets them right after the center).
+                ToolbarSpacer(.flexible, placement: .primaryAction)
                 ToolbarItem(placement: .primaryAction) { ExpandingSearch().toolbarScheme(p) }
                     .sharedBackgroundVisibility(.hidden)
                 ToolbarItem(placement: .primaryAction) { GlassAvatar().toolbarScheme(p) }
@@ -240,6 +272,7 @@ struct Toolbar: ToolbarContent {
                     .sharedBackgroundVisibility(.hidden)
                 ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }
                     .sharedBackgroundVisibility(.hidden)
+                ToolbarSpacer(.flexible, placement: .primaryAction)
                 ToolbarItem(placement: .primaryAction) { GlassAvatar().toolbarScheme(p) }
                     .sharedBackgroundVisibility(.hidden)
             } else {
@@ -260,6 +293,7 @@ struct Toolbar: ToolbarContent {
                 }
             }
             if #available(macOS 26.0, *) {
+                ToolbarSpacer(.flexible, placement: .primaryAction)
                 ToolbarItem(placement: .primaryAction) { GlassAvatar().toolbarScheme(p) }
                     .sharedBackgroundVisibility(.hidden)
             } else {
@@ -279,8 +313,9 @@ struct KindPicker: View {
     @Environment(\.palette) private var palette
 
     var body: some View {
+        // Oct 18, Ryan: in the primary language; each kind's help a whole sentence of its own.
         let segments = [SlidingSegments<CaptureKind?>.Segment(value: nil, title: "All", help: "Show everything")]
-            + CaptureKind.allCases.map { .init(value: $0, title: $0.title, kind: $0, help: "Show only \($0.plural.lowercased())") }
+            + CaptureKind.allCases.map { .init(value: $0, title: $0.title, kind: $0, help: Self.only($0)) }
         // A 28 pt pill 4 pt inside a 36 pt glass track: as tall as the toolbar's other glass,
         // and concentric with it at both ends.
         return SlidingSegments(segments: segments, selection: model.query.kind,
@@ -288,11 +323,18 @@ struct KindPicker: View {
                                height: T.Layout.toolbarControl - 8, inset: 4) { model.setKind($0) }
             .accessibilityLabel("Show")
     }
+
+    static func only(_ kind: CaptureKind) -> String {
+        switch kind {
+        case .dictation: return L("Show only dictations")
+        case .dispatch: return L("Show only dispatches")
+        }
+    }
 }
 
-/// Which app (or, for a dispatch, which agent; in a browser, the website too), which tag, and
-/// when: the four squares at the toolbar's leading edge, a pull-down that lists every app with
-/// its own icon, the tags most used first, then the times.
+/// Which tag, and when: the four squares at the toolbar's leading edge, a pull-down with the tags
+/// most used first, then the times. Oct 17 (Ryan): no app to choose here any more; each card still
+/// shows its app's icon.
 struct AppFilter: View {
     @Environment(CapturesModel.self) private var model
     @Environment(\.palette) private var palette
@@ -303,20 +345,6 @@ struct AppFilter: View {
         let date = model.query.date
         let tag = model.query.tag
         Menu {
-            Picker("App", selection: Binding(get: { app }, set: { v in model.animate(.swap) { model.query.app = v } })) {
-                // macOS menus show a label's icon only when asked to (title and icon).
-                Label("All Apps", systemImage: "square.grid.2x2")
-                    .labelStyle(.titleAndIcon)
-                    .tag(String?.none)
-                Divider()
-                ForEach(CaptureSearch.apps(in: captures), id: \.self) { name in
-                    Label { Text(name) } icon: { Image(nsImage: Art.menuIcon(name, in: captures)) }
-                        .labelStyle(.titleAndIcon)
-                        .tag(String?.some(name))
-                }
-            }
-            .pickerStyle(.inline)
-            Divider()
             // The tags (row 25), most used first; the rest under More.
             let tags = CaptureSearch.tags(in: captures)
             Picker("Tag", selection: Binding(get: { tag }, set: { v in model.animate(.swap) { model.query.tag = v } })) {
@@ -365,8 +393,8 @@ struct AppFilter: View {
         .menuIndicator(.hidden)
         .fixedSize()
         .modifier(ToolbarCircle())
-        .help("Show captures from one app, with one tag, or from one time")
-        .accessibilityLabel(app.map { "Filtered by \($0)" } ?? tag.map { "Filtered by \($0)" } ?? "Filter by app, tag or time")
+        .help("Show captures with one tag, or from one time")
+        .accessibilityLabel(tag.map { L("Filtered by \($0)") } ?? L("Filter by tag or time"))
     }
 }
 
@@ -585,7 +613,7 @@ struct Avatar: View {
             }
         }
         .popover(isPresented: Binding(get: { model.usageShown }, set: { model.usageShown = $0 }), arrowEdge: .bottom) {
-            UsagePopover()
+            UsagePopover().foveaLanguage()
         }
     }
 
@@ -677,14 +705,24 @@ struct CapturesPage: View {
                         VStack(alignment: .leading, spacing: 0) {
                             // The top is above the inset, so scrolling to it shows the inset too.
                             Color.clear.frame(height: model.cardSpacing.metrics.contentInset).id("top")
-                            // Home greets you by name (Oct 9), on the first page only.
-                            if !day, model.query.tokens.isEmpty, model.query.kind == nil,
-                               !model.greetingName.isEmpty || model.tourUnfinished {
-                                HomeGreeting(name: model.greetingName, tourUnfinished: model.tourUnfinished) {
-                                    model.onResumeTour?()
-                                }
+                            // The way back to a tour put away part way, on the first page only (Oct 13:
+                            // no "Hello, name" above it any more).
+                            if !day, model.query.tokens.isEmpty, model.query.kind == nil, model.tourUnfinished {
+                                FinishTour { model.onResumeTour?() }
                             }
-                            content(layout)
+                            // Oct 15 review, RC-01: captures from an earlier version or account.
+                            if !day, model.earlierData.contains(where: { $0.state == .pending }) {
+                                EarlierDataBanner()
+                                    .padding(.bottom, 16)
+                            }
+                            if !day, model.capturesLoad != .loaded {
+                                // Oct 15 review, HI-01.6: loading, or couldn't, in place of the cards.
+                                CapturesLoadView()
+                            } else if !day, model.stagedEmpty {
+                                EmptyState()
+                            } else {
+                                content(layout)
+                            }
                         }
                         .frame(width: layout.contentWidth, alignment: .leading)
                         .padding(.bottom, model.cardSpacing.metrics.sectionGap)
@@ -882,14 +920,16 @@ struct EmptyState: View {
     @Environment(\.palette) private var palette
     var body: some View {
         VStack(spacing: 6) {
-            if model.library.captures.isEmpty {
+            if model.homeEmpty {
                 Text("No Captures Yet").font(.system(size: 17, weight: .semibold)).foregroundStyle(palette.secondary)
-                HStack(spacing: 4) {
-                    Text("Press").foregroundStyle(palette.tertiary)
-                    KeyCap("fn")
-                    Text("and speak. What you say and take shows up here.").foregroundStyle(palette.tertiary)
-                }
-                .font(.system(size: 13))
+                Text("What you say and take shows up here.")
+                    .font(.system(size: 13)).foregroundStyle(palette.tertiary)
+                // Oct 15 review, MW-05.1: both daily keys, as the person has them, not only fn.
+                EmptyKeys()
+                    .padding(.top, 16)
+                Text("Press once to start, again to stop.")
+                    .font(.system(size: 12)).foregroundStyle(palette.tertiary)
+                    .padding(.top, 10)
             } else {
                 Text("No Results").font(.system(size: 17, weight: .semibold)).foregroundStyle(palette.secondary)
                 Text("Fovea searches your words and the text in what you took.")
@@ -982,34 +1022,24 @@ struct ToastRise: ViewModifier, Animatable {
     }
 }
 
-/// "Hello, Ryan": Home greets you by the name you gave the first run, at the top of the first page.
-struct HomeGreeting: View {
+/// The tour, put away part way (Oct 10): one small link at the top of the first page, back to
+/// where it was left. Oct 13: Home no longer greets you by name, so this is all there is.
+struct FinishTour: View {
     @Environment(\.palette) private var palette
-    let name: String
-    /// The tour was put away part way: a way back to it, under the greeting (Oct 10).
-    var tourUnfinished = false
     var resume: () -> Void = {}
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(name.isEmpty ? "Hello" : "Hello, \(name)")
-                .font(.system(size: 26, weight: .semibold))
-                .foregroundStyle(palette.text)
-                .accessibilityAddTraits(.isHeader)
-            if tourUnfinished {
-                Button(action: resume) {
-                    HStack(spacing: 4) {
-                        Text("Finish the tour")
-                        Image(systemName: "arrow.right").font(.system(size: 10, weight: .semibold))
-                    }
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(palette.accent)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help("Pick the tour up where you left it")
+        Button(action: resume) {
+            HStack(spacing: 3) {
+                Text("Finish the tour")
+                Image(systemName: "arrow.right").font(.system(size: 9, weight: .semibold))
             }
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(palette.accent)
+            .contentShape(Rectangle())
         }
-        .padding(.bottom, 18)
+        .buttonStyle(.plain)
+        .help("Pick the tour up where you left it")
+        .padding(.bottom, 12)
     }
 }

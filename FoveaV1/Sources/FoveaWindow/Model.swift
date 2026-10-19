@@ -87,8 +87,10 @@ enum ArchiveStyle: String, CaseIterable {
 enum CardSize: String, CaseIterable {
     case small, medium, large
     var title: String { rawValue.capitalized }
+    /// Medium was 236 (Pinterest's column); 220 since Oct 13, so four cards fit a row in the
+    /// 1024-pt window, the calendar above as wide as the four.
     var width: CGFloat {
-        switch self { case .small: return 200; case .medium: return 236; case .large: return 276 }
+        switch self { case .small: return 200; case .medium: return 220; case .large: return 276 }
     }
     /// The card's inset, about 6 % of its width (Paste's proportion).
     var padding: CGFloat {
@@ -320,76 +322,96 @@ enum SettingsLayout: String, CaseIterable {
 /// (October): Appearance (light or dark, the accent) and Notch (the Island's look, its glow, how
 /// it opens). Language came with the App UI review (row 6): Fovea's words and the notch's.
 /// Memory, Appearance, Notch and Language go past AGENTS.md's list; DESIGN.md says so.
+///
+/// Oct 15 review, MW-04 (Ryan: "we already have all of these in the settings tab; you can
+/// re-organise it"): Dictionary is a section of its own again, Getting Started is new (the tour,
+/// practice, the permissions and your keys), and About takes the version, updates, beta, help
+/// and the legal links out of Account.
 enum SettingsCategory: String, CaseIterable, Identifiable {
-    case account, plan, appearance, notch, language, voice, memory, shortcuts, connectors, eyeTracking
+    case account, plan, gettingStarted, appearance, notch, language, voice, dictionary, memory, shortcuts, connectors,
+         eyeTracking, about
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .account: return "Account"
-        case .plan: return "Plan"
-        case .appearance: return "Appearance"
-        case .notch: return "Notch"
-        case .language: return "Language"
-        case .voice: return "Voice & Capture"
-        case .memory: return "Memory"
-        case .shortcuts: return "Shortcuts"
-        case .connectors: return "Connectors"
-        case .eyeTracking: return "Eye Tracking"
+        case .account: return L("Account")
+        case .plan: return L("Plan")
+        case .gettingStarted: return L("Getting Started")
+        case .appearance: return L("Appearance")
+        case .notch: return L("Notch")
+        case .language: return L("Language")
+        case .voice: return L("Voice & Capture")
+        case .dictionary: return L("Dictionary")
+        case .memory: return L("Memory")
+        case .shortcuts: return L("Shortcuts")
+        case .connectors: return L("Connectors")
+        case .eyeTracking: return L("Eye Tracking")
+        case .about: return L("About")
         }
     }
-    /// The sidebar's groups, divided by space as System Settings' are.
+    /// The sidebar's groups, divided by space as System Settings' are (Oct 15 review, MW-04).
     static let groups: [[SettingsCategory]] = [
-        [.account, .plan], [.appearance, .notch, .language], [.voice, .memory, .shortcuts], [.connectors, .eyeTracking],
+        [.account, .plan], [.gettingStarted], [.appearance, .notch, .language],
+        [.voice, .dictionary, .memory, .shortcuts], [.connectors, .eyeTracking], [.about],
     ]
     /// The white symbol on the tile: filled, as System Settings' are (`nil`: drawn, the notch).
     var symbol: String? {
         switch self {
         case .account: return "person.fill"
         case .plan: return "creditcard.fill"
+        case .gettingStarted: return "flag.fill"
         case .appearance: return "circle.lefthalf.filled"
         case .notch: return nil
         case .language: return "globe"
         case .voice: return "waveform"
+        case .dictionary: return "character.book.closed.fill"
         case .memory: return "brain.head.profile.fill"
         case .shortcuts: return "keyboard.fill"
         case .connectors: return "app.connected.to.app.below.fill"
         case .eyeTracking: return "eye.fill"
+        case .about: return "info"
         }
     }
     /// The tile's color, from System Settings' own: blue as Users & Groups, black as Appearance and
-    /// Desktop & Dock, red as Sound, gray as Keyboard, indigo as Focus.
+    /// Desktop & Dock, red as Sound, gray as Keyboard and General, indigo as Focus, purple as
+    /// Screen Time, pink as Notifications' neighbours.
     var tile: SettingsTileColor {
         switch self {
         case .account: return .blue
         case .plan: return .green
+        case .gettingStarted: return .purple
         case .appearance, .notch: return .black
         case .language: return .blue
         case .voice: return .red
+        case .dictionary: return .pink
         case .memory: return .orange
         case .shortcuts: return .gray
         case .connectors: return .teal
         case .eyeTracking: return .indigo
+        case .about: return .gray
         }
     }
     /// What the section is for, under its name at the top of the pane.
     var summary: String {
         switch self {
-        case .account: return "Your Fovea account, and how Fovea runs on this Mac."
-        case .plan: return "Your credits this month, and the plans."
-        case .appearance: return "Light or dark, and the color that marks what you choose."
-        case .notch: return "How Fovea looks around your MacBook's notch, and how it opens."
-        case .language: return "The language Fovea and the notch speak, and the one you speak."
-        case .voice: return "Your microphone, what Fovea reads from your screen, and how long it keeps your captures."
-        case .memory: return "The words Fovea writes your way, and what it has come to know about you."
-        case .shortcuts: return "The keys that start Fovea from any app."
-        case .connectors: return "The agents your dispatches go to, and what they can see."
-        case .eyeTracking: return "Look at something, say \u{201C}this\u{201D}, and Fovea knows what you mean."
+        case .account: return L("Your Fovea account, and how Fovea runs on this Mac.")
+        case .plan: return L("Your credits this month, and the plans.")
+        case .gettingStarted: return L("The tour again, a task to practise, and what Fovea needs to work.")
+        case .appearance: return L("Light or dark, and the color that marks what you choose.")
+        case .notch: return L("How Fovea looks around your MacBook's notch, and how it opens.")
+        case .language: return L("The language Fovea and the notch speak, and the one you speak.")
+        case .voice: return L("Your microphone, what Fovea reads from your screen, and how long it keeps your captures.")
+        case .dictionary: return L("The names and terms Fovea writes your way.")
+        case .memory: return L("What Fovea has come to know about you, and what it may remember.")
+        case .shortcuts: return L("The keys that start Fovea from any app.")
+        case .connectors: return L("The agents your dispatches go to, and what they can see.")
+        case .eyeTracking: return L("Look at something, say \u{201C}this\u{201D}, and Fovea knows what you mean.")
+        case .about: return L("Fovea's version and its updates, help, and the small print.")
         }
     }
     /// The tab a section lives on in the layouts without a sidebar.
     var pane: SettingsPane {
         switch self {
-        case .account, .memory, .appearance, .language: return .account
+        case .account, .memory, .dictionary, .appearance, .language, .gettingStarted, .about: return .account
         case .plan: return .plan
         case .voice, .notch: return .voice
         case .shortcuts: return .shortcuts
@@ -401,7 +423,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
 
 /// The colors System Settings draws its tiles in.
 enum SettingsTileColor {
-    case blue, green, black, red, orange, gray, teal, indigo
+    case blue, green, black, red, orange, gray, teal, indigo, purple, pink
     var nsColor: NSColor {
         switch self {
         case .blue: return NSColor(srgbRed: 0.04, green: 0.52, blue: 1.0, alpha: 1)
@@ -412,6 +434,9 @@ enum SettingsTileColor {
         case .gray: return NSColor(srgbRed: 0.56, green: 0.56, blue: 0.58, alpha: 1)
         case .teal: return NSColor(srgbRed: 0.19, green: 0.69, blue: 0.78, alpha: 1)
         case .indigo: return NSColor(srgbRed: 0.37, green: 0.36, blue: 0.90, alpha: 1)
+        // Oct 15 review, MW-04: Getting Started's and Dictionary's tiles.
+        case .purple: return NSColor(srgbRed: 0.69, green: 0.32, blue: 0.87, alpha: 1)
+        case .pink: return NSColor(srgbRed: 1.0, green: 0.18, blue: 0.53, alpha: 1)
         }
     }
 }
@@ -468,12 +493,14 @@ enum TitleDesign: String, CaseIterable {
 
 /// The app icon in the Dock, from the variants `scripts/fovea-icon.swift` draws.
 enum IconVariant: String, CaseIterable {
-    /// Ryan's serif f, its hook curling into the o (Oct 6): the app's icon. The geometric fo it
-    /// replaced stays below, to compare.
-    case serif, serifDark, balanced, asDrawn, looking, round, dark
+    /// The pressed loop (Oct 13): the app's icon. The flat yellow loop (Oct 10), Ryan's serif f
+    /// (Oct 6) and the geometric fo before it stay below, to compare.
+    case pressed, loop, serif, serifDark, balanced, asDrawn, looking, round, dark
     var title: String {
         switch self {
-        case .serif: return "Serif f (the app's icon)"
+        case .pressed: return "Pressed loop (the app's icon)"
+        case .loop: return "Highlighter loop, yellow"
+        case .serif: return "Serif f"
         case .serifDark: return "Serif f, dark"
         case .balanced: return "Geometric fo"
         case .asDrawn: return "Geometric fo, as drawn"
@@ -484,6 +511,8 @@ enum IconVariant: String, CaseIterable {
     }
     var file: String {
         switch self {
+        case .pressed: return "Brand/Variants/icon-pressed-light.png"
+        case .loop: return "Brand/Variants/icon-loop-light.png"
         case .serif: return "Brand/Variants/icon-serif-light.png"
         case .serifDark: return "Brand/Variants/icon-serif-dark.png"
         case .balanced: return "Brand/Variants/icon-balanced-light.png"
@@ -510,12 +539,12 @@ enum SettingsPane: String, CaseIterable {
     case account, plan, voice, shortcuts, connectors, eyeTracking
     var title: String {
         switch self {
-        case .account: return "Account"
-        case .plan: return "Plan"
-        case .voice: return "Voice & Capture"
-        case .shortcuts: return "Shortcuts"
-        case .connectors: return "Connectors"
-        case .eyeTracking: return "Eye Tracking"
+        case .account: return L("Account")
+        case .plan: return L("Plan")
+        case .voice: return L("Voice & Capture")
+        case .shortcuts: return L("Shortcuts")
+        case .connectors: return L("Connectors")
+        case .eyeTracking: return L("Eye Tracking")
         }
     }
     var symbol: String {
@@ -537,18 +566,19 @@ enum Plan: String, CaseIterable, Comparable {
 
     var title: String {
         switch self {
-        case .free: return "Free"
-        case .pro: return "Pro"
-        case .max: return "Max"
+        case .free: return L("Free")
+        case .pro: return L("Pro")
+        // Oct 18, Ryan: "Max" alone is also a level of thinking (最高), so the plan has a key of its own.
+        case .max: return L("Max (plan)", english: "Max")
         }
     }
 
     /// The line under its name: who it's for.
     var line: String {
         switch self {
-        case .free: return "For speaking instead of typing."
-        case .pro: return "For pointing at things and sending them on."
-        case .max: return "For handing work to agents all day."
+        case .free: return L("For speaking instead of typing.")
+        case .pro: return L("For pointing at things and sending them on.")
+        case .max: return L("For handing work to agents all day.")
         }
     }
 
@@ -570,11 +600,12 @@ enum Plan: String, CaseIterable, Comparable {
     }
 
     var includes: [String] {
-        let credits = "\(self.credits.formatted()) credits a month"
+        let n = self.credits.formatted()
+        let credits = L("\(n) credits a month")
         switch self {
-        case .free: return ["Dictation, as much as you like", credits, "History for 30 days"]
-        case .pro: return ["Dictation, as much as you like", credits, "History kept for good"]
-        case .max: return ["Dictation, as much as you like", credits, "History kept for good", "Eye tracking first"]
+        case .free: return [L("Dictation, as much as you like"), credits, L("History for 30 days")]
+        case .pro: return [L("Dictation, as much as you like"), credits, L("History kept for good")]
+        case .max: return [L("Dictation, as much as you like"), credits, L("History kept for good"), L("Eye tracking first")]
         }
     }
 
@@ -584,7 +615,7 @@ enum Plan: String, CaseIterable, Comparable {
 enum DictionaryTab: String, CaseIterable {
     case all, learned, added
     var title: String {
-        switch self { case .all: return "All"; case .learned: return "Learned"; case .added: return "Added by you" }
+        switch self { case .all: return L("All"); case .learned: return L("Learned"); case .added: return L("Added by you") }
     }
 }
 
@@ -667,7 +698,10 @@ final class CapturesModel {
         case .almostOut: u.used = Int(Double(u.total) * 0.93)
         // Paying for Pro from Free, a little of Free used (as in the Mac app's own picture).
         case .paymentProcessing: u.used = Int(Double(u.total) * 0.12)
-        case nil: break
+        // Oct 15 review, AC-02.1: a week into the trial; just moved to Free.
+        case .trial: u.used = Int(Double(u.total) * 0.31)
+        case .trialEnded, .expired: u.used = Int(Double(u.total) * 0.08)
+        case .subscriptionEnding, .paymentFailed, .billingUnavailable, nil: break
         }
         return u
     }
@@ -677,13 +711,13 @@ final class CapturesModel {
     func choose(_ next: Plan) {
         if next == plan {
             animate(.swap) { nextPlan = nil }
-            say("You're staying on \(plan.title)")
+            say(L("You're staying on \(plan.title)"))
         } else if next > plan {
             animate(.swap) { plan = next; nextPlan = nil }
-            say("You're on \(next.title) (simulated: nothing was charged)")
+            say(L("You're on \(next.title) (simulated: nothing was charged)"))
         } else {
             animate(.swap) { nextPlan = next }
-            say("\(next.title) starts \(Lines.day(usage.resets)) (simulated)")
+            say(L("\(next.title) starts \(Lines.day(usage.resets)) (simulated)"))
         }
     }
 
@@ -725,15 +759,69 @@ final class CapturesModel {
     var windowError: WindowError?
     var memoryState: LoadState = .loaded
     var signedOut = false
+    @ObservationIgnored var onSignedOut: (() -> Void)?
     /// The memory browser (row 24): open, its filter, what's selected; the memories deleted last,
     /// for Undo.
     var browsingMemories = false
-    var memoryFilter: MemoryFilter = .all
+    var memoryFilter: MemoryFilter = .recent
     var memorySelection: Set<String> = []
     var lastDeletedMemories: [String] = []
     var accessLogShown = false
+    /// Oct 15 review: the rebuilt Settings panes' own state (SettingsPanesState.swift).
+    let panes = PanesState()
     /// The harness's stand-in for the pointer.
     var hoverKey: String?
+
+    // MARK: Oct 15 review: Home's and Account's new states (docs/v1/REVIEW_2026-10-15.md)
+
+    /// MW-02a: the session the window opens with; nothing of the captures shows until it's ready.
+    var session: SessionState = .ready
+    /// HI-01.6: Home's captures loading, or failed to load.
+    var capturesLoad: LoadState = .loaded
+    /// MW-05.1 (the empty Home) and Getting Started: the keys each shortcut answers to now, by
+    /// `FoveaShortcut.id` (`FoveaKeys.chord`, from the prefs the controller reads).
+    var shortcutKeys: [String: [String]] = [:]
+    /// RC-01, RC-02: captures from an earlier version or account (simulated; a stage adds them).
+    var earlierData: [EarlierData] = []
+    /// AC-01.4, AC-01.5: signing in, while the sheet is up.
+    var signIn: SignInFlow?
+    /// ST-02.4: your name couldn't be saved (staged: 1.0 saves it on this Mac).
+    var nameSaveFailed = false
+    /// IS04: a save that failed, shown as an alert.
+    var saveFailure: SaveFailure?
+    /// OB-02: "What Fovea remembers", shown once in Home.
+    var memoryDisclosureShown = false
+    /// ST-10.3: Get Beta Updates is being turned off, waiting on "Leave the Beta?".
+    var leavingBeta = false
+    /// MW-04c: Report a Problem's sending fails (staged; 1.0 has no server to send to).
+    var reportFails = false
+    /// MW-05.1's review stage: Home drawn empty without touching the captures.
+    var stagedEmpty = false
+    /// VF13: failed recordings wait here instead of being tried again (a review stage holds them).
+    var holdRetries = false
+    /// MW-04d: Refresh, asking whether a payment went through.
+    var refreshingPayment = false
+    /// Getting Started's permissions are read again when this changes (the window became key).
+    var permissionsChecked = Date()
+    /// Captures a review stage put in: shown, never written to the store.
+    @ObservationIgnored var stagedIDs: Set<String> = []
+    /// Failed recordings already waiting to be tried again.
+    @ObservationIgnored var retryScheduled: Set<String> = []
+    /// The diagnostics' data folder, for Open Diagnostics (MW-02b).
+    @ObservationIgnored var dataFolder: URL?
+
+    // Hooks the app wires (the report's "Wiring needed").
+    /// OB-03.1: Getting Started's Replay the Tour.
+    @ObservationIgnored var onReplayTour: (() -> Void)?
+    /// OB-03.1: Practise Again, with the first run's step ("weeklyUpdate", "packList", "followUp",
+    /// "dictation").
+    @ObservationIgnored var onPractice: ((String) -> Void)?
+    /// HI-01.3, QA25: an expanded Dispatch card's Open in Notch, and a failed one's Send Again.
+    @ObservationIgnored var onOpenInNotch: ((String) -> Void)?
+    @ObservationIgnored var onSendAgain: ((String) -> Void)?
+    /// A change to the prefs the window keeps only in FoveaPrefs (signed in, the disclosure read).
+    @ObservationIgnored var onAccountEdited: ((_ email: String, _ provider: AccountProvider) -> Void)?
+    @ObservationIgnored var onMemoryDisclosureRead: (() -> Void)?
 
     // The design, settled (Ryan's choices on the control panel, since removed). The other
     // values of each are kept for the snapshot harness's comparison shots.
@@ -759,7 +847,7 @@ final class CapturesModel {
     var focusMark: FocusMark = .ring
     var avatarStyle: AvatarStyle = .circle
     var titleDesign: TitleDesign = .standard
-    var iconVariant: IconVariant = .serif
+    var iconVariant: IconVariant = .pressed
     var historyStyle: HistoryStyle = .yearGraphTop
     var archiveStyle: ArchiveStyle = .page
     var layout: LayoutStyle = .cards
@@ -781,7 +869,8 @@ final class CapturesModel {
     @ObservationIgnored var play: Task<Void, Never>?
     @ObservationIgnored private var toastTask: Task<Void, Never>?
 
-    var motion: MotionSpec { MotionSpec(speed: speed, reduce: reduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion) }
+    // Oct 15 review, IS02: Appearance › Motion decides; Match the Mac follows Reduce Motion.
+    var motion: MotionSpec { MotionSpec(speed: speed, reduce: Self.reduces(prefs.motion, harness: reduceMotion)) }
     var now: Date { library.now }
 
     func load(_ set: FixtureSet) {
@@ -822,6 +911,30 @@ final class CapturesModel {
         dayCounts = byDay.mapValues(\.count)
         levels = History.Levels(Array(dayCounts.values))
         years = History.years(library.captures, now: library.now, calendar: cal)
+        // Oct 15 review, MW-05.3: each Dispatch session's requests; VF13: failed recordings retried.
+        requestCounts = Self.sessions(library.captures)
+        scheduleRetries()
+    }
+
+    /// Oct 15 review, MW-05.3: how many requests each Dispatch session has had, by its agent and
+    /// chat ("New chat" is every new one's name until it has its own, so it counts once).
+    private(set) var requestCounts: [String: Int] = [:]
+
+    static func sessionKey(_ d: Destination) -> String { "\(d.agent)\u{1F}\(d.chat)" }
+
+    static func sessions(_ captures: [Capture]) -> [String: Int] {
+        var counts: [String: Int] = [:]
+        for c in captures where c.kind == .dispatch {
+            guard let d = c.destination, d.chat != "New chat" else { continue }
+            counts[sessionKey(d), default: 0] += 1
+        }
+        return counts
+    }
+
+    /// The requests in this capture's Dispatch session: those Home has, or its turn if later.
+    func requests(_ c: Capture) -> Int {
+        guard c.kind == .dispatch, let d = c.destination else { return 1 }
+        return max(d.turn, requestCounts[Self.sessionKey(d)] ?? 1)
     }
 
     /// What the first page's cards cover: the last three days (when no period is picked), or
@@ -1157,7 +1270,7 @@ final class CapturesModel {
             animate(.swap) { noteID = next; selectedID = next }
         }
         lastDeleted = (capture, i)
-        say("Deleted \(capture.kind.title.lowercased())", undo: true)
+        say(capture.kind == .dictation ? L("Deleted the dictation") : L("Deleted the dispatch"), undo: true)
     }
 
     func undoDelete() {
@@ -1168,48 +1281,54 @@ final class CapturesModel {
         withAnimation(motion.animation(.content)) { toast = nil }
     }
 
-    enum SaveTarget { case everything, recording, pictures, picture, file(String) }
+    // Oct 15 review, IS04: Save writes real files (`saveToDisk`, Saving.swift); VF11 and QA19:
+    // there's no recording to save.
 
-    /// Save (row 28): everything (the words, the recording and what you took, in a folder named
-    /// for it), or one part. The prototype writes nothing; it says where it would.
-    func save(_ capture: Capture, _ what: SaveTarget) {
-        let name = capture.failed ? "Recording" : capture.theme
-        switch what {
-        case .everything: say("Saved “\(name)” to Downloads: the words, the recording and what you took")
-        case .recording: say("Saved the recording (\(Lines.duration(capture.seconds))) to Downloads")
-        case .pictures:
-            let n = capture.attachments.filter { $0.kind == .region }.count
-            say("Saved \(n) \(n == 1 ? "picture" : "pictures") to Downloads")
-        case .picture: say("Saved the picture to Downloads")
-        case .file(let file): say("Saved a copy of \(file) to Downloads")
+    /// Oct 15 review, VF13 (Ryan: "recordings are only saved for failed cases, and then it will
+    /// automatically try to re-transcribe; no audio will be seen by the users"): a recording whose
+    /// words didn't come back is tried again on its own a moment after it shows, and its words take
+    /// its place when they're back. Nothing to press. Simulated: 1.0 transcribes on this Mac as you
+    /// speak, so a retry brings back only the words a review stage left for it (`recovered`).
+    func scheduleRetries() {
+        guard !holdRetries else { return }
+        for c in library.captures where c.failed && !retryScheduled.contains(c.id) {
+            retryScheduled.insert(c.id)
+            let id = c.id
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(self.motion.seconds(T.Simulated.retryWait)))
+                self.retryTranscription(id)
+            }
         }
     }
 
-    /// Transcribes a failed recording again (row 28), from its expanded card, and its words come
-    /// back. Written up the one way there is (row 15, Oct 7): Auto, Faithful in code editors and
-    /// terminals, Polished everywhere else; no setting.
-    func transcribeAgain(_ id: String) {
-        guard !transcribing.contains(id) else { return }
+    /// One more try at a recording's words: "Trying again…" on its card, then its words.
+    func retryTranscription(_ id: String) {
+        guard !holdRetries, !transcribing.contains(id), library.captures.contains(where: { $0.id == id && $0.failed }) else {
+            retryScheduled.remove(id)
+            return
+        }
         cut { transcribing.insert(id) }
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(motion.seconds(1.6)))
-            guard let i = library.captures.firstIndex(where: { $0.id == id }) else { return }
-            animate(.swap) {
-                transcribing.remove(id)
+            try? await Task.sleep(for: .seconds(self.motion.seconds(T.Simulated.retranscribing)))
+            guard let i = self.library.captures.firstIndex(where: { $0.id == id }) else { return }
+            self.animate(.swap) {
+                self.transcribing.remove(id)
                 if let back = Self.recovered[id] {
-                    library.captures[i].text = back.text
-                    library.captures[i].theme = back.theme
-                    library.captures[i].tags = back.tags
-                    library.captures[i].failure = nil
+                    self.library.captures[i].text = back.text
+                    self.library.captures[i].theme = back.theme
+                    self.library.captures[i].tags = back.tags
+                    self.library.captures[i].failure = nil
                 }
             }
-            say("Transcribed")
+            // Still not back: it stays "trying again" until Fovea opens next.
         }
     }
 
     /// What the two failed recordings said, for when they're tried again.
     static let recovered: [String: (text: String, theme: String, tags: [String])] = [
         "d-failed-notes": ("Errands for tonight: pick up the dry cleaning before six, and call the landlord about the heater on the second floor, because it's been clicking all week. Then send Lin the notch study before Thursday's review, with the two island materials side by side and a line on which one I'd pick, so she isn't seeing them cold in the room.", "Errands and the notch study", ["Errands", "Design review"]),
+        // Oct 15 review, VF13: the review stage's recording, whose words come back.
+        "review-failed-notes": ("Errands for tonight: pick up the dry cleaning before six, and call the landlord about the heater on the second floor, because it's been clicking all week. Then send Lin the notch study before Thursday's review, with the two island materials side by side and a line on which one I'd pick, so she isn't seeing them cold in the room.", "Errands and the notch study", ["Errands", "Design review"]),
         "d-failed-mail": ("Hi Mei, thanks for sending the interview recordings. I listened to the first three last night, and the part where people point at their screen and say this one keeps coming up, so I think we're onto something. Could you send the other two by Friday? I'd also love your notes on who seemed most excited, since I want to invite those people first.", "Interview recordings", ["Interviews"]),
     ]
 

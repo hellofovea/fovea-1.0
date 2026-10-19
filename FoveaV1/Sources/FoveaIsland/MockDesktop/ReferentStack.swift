@@ -1,9 +1,12 @@
 import SwiftUI
 import AppKit
 import FoveaCore
+import FoveaLook
+import FoveaKit
 
 // The referent stack: captures in the voice bar, collapsed as a small pile left of the
-// waveform, fanned to the right on hover, laid out in rows when opened. Geometry is pure
+// waveform ("+N" past three), fanned to the right on hover, laid out in one numbered row when
+// opened, swiped sideways when it's wider than the island (Oct 15 review, VF04/QA02). Geometry is pure
 // (`StackLayout`), so the views, the flight into the stack and the checks share one answer.
 // docs/island/REFERENT_STACK.md has the reasons for every number.
 
@@ -18,6 +21,10 @@ struct CapturedReferent: Identifiable, Equatable {
     /// A region of the screen, a passage of text, or a file: each drawn as a card, so all three
     /// ride the same stack, flights and looks closer.
     var kind: ReferentKind = .screenshot
+    /// Oct 15 review, VF05: taken on another display than the one the island is on.
+    var otherDisplay = false
+    /// Oct 17, Ryan: a file taken, where it is (a dictation pastes it after the words).
+    var fileURL: URL? = nil
 
     static func == (a: CapturedReferent, b: CapturedReferent) -> Bool { a.id == b.id }
 }
@@ -31,8 +38,9 @@ enum ReferentKind: Equatable {
 
     var label: String {
         switch self {
-        case .screenshot: return "Screenshot"
-        case .text: return "Text"
+        // Oct 18, Ryan: in the primary language.
+        case .screenshot: return L("Screenshot")
+        case .text: return L("Text")
         case .file(let name, _): return name
         }
     }
@@ -109,27 +117,45 @@ struct StackLayout: Equatable {
     var caption: CGRect?
     /// Rows when opened.
     var rows = 0
+    /// Oct 15 review, VF04/QA02: collapsed, the "+N" chip on the stack for the referents hidden
+    /// behind the three that show; nil with three or fewer.
+    var more: CGRect?
+    var moreCount = 0
+    /// Opened, the one row's visible part (from the island's center and top), how far it scrolls,
+    /// how far it is scrolled, and the scroll's thumb under the row (nil when it all fits).
+    var viewport: CGRect?
+    var scrollMax: CGFloat = 0
+    var scroll: CGFloat = 0
+    var scrollThumb: CGRect?
 
     static func make(state: NotchState, aspects: [CGFloat], shape: ReferentShape, expanded: Bool,
-                     peek: Bool, inspecting: Int? = nil, metrics: ScreenMetrics) -> StackLayout {
+                     peek: Bool, inspecting: Int? = nil, scroll: CGFloat = 0, metrics: ScreenMetrics) -> StackLayout {
         if state.collects, expanded, !aspects.isEmpty {
             if let inspecting, aspects.indices.contains(inspecting) {
-                return inspected(inspecting, aspects: aspects, shape: shape, metrics: metrics)
+                return inspected(inspecting, aspects: aspects, shape: shape, scroll: scroll, metrics: metrics)
             }
-            return opened(aspects: aspects, shape: shape, metrics: metrics)
+            return opened(aspects: aspects, shape: shape, scroll: scroll, metrics: metrics)
         }
         return collapsed(state: state, aspects: aspects, shape: shape, peek: peek, metrics: metrics)
+    }
+
+    /// Oct 15 review, VF04: the "+N" chip's width for N, its label's characters at the chip's size.
+    static func moreWidth(_ count: Int) -> CGFloat {
+        let T = WorkbenchTokens.Referents.self
+        return (2 * T.morePaddingH + CGFloat("+\(count)".count) * T.moreCharWidth).rounded()
     }
 
     /// One capture looked at closely: its card grows to the capture's own proportions, up to
     /// the review width and 300 pt tall, centered; the others fade where they were, so going
     /// back is the same move reversed. The island fits the one card; the pill steps back, the
     /// caption names the tab it came from.
-    static func inspected(_ index: Int, aspects: [CGFloat], shape: ReferentShape, metrics: ScreenMetrics) -> StackLayout {
+    static func inspected(_ index: Int, aspects: [CGFloat], shape: ReferentShape, scroll: CGFloat = 0,
+                          metrics: ScreenMetrics) -> StackLayout {
         let T = WorkbenchTokens.Referents.self
         let spec = WorkbenchTokens.Island.spec
         let notch = NotchGeometry.notchRect(metrics: metrics, spec: spec)
-        var layout = opened(aspects: aspects, shape: shape, metrics: metrics)
+        var layout = opened(aspects: aspects, shape: shape, scroll: scroll, metrics: metrics)
+        layout.scrollThumb = nil
         let pad = T.expandedPadding
         let maxW = T.expandedMaxWidth - 2 * spec.expandedTopRadius - 2 * pad
         let a = min(max(aspects[index], T.inspectAspectRange.lowerBound), T.inspectAspectRange.upperBound)
@@ -210,75 +236,78 @@ struct StackLayout: Equatable {
         // The waveform sits between the stack at rest and the band's right inset; a hover
         // fanning the stack does not push it.
         let restRight = frontRight + CGFloat(max(0, layers - 1)) * T.layerOffset
-        let waveX: CGFloat = n == 0 ? 0 : ((restRight + T.waveformGap) + (half - T.inset)) / 2
         let fanRight = frontRight + CGFloat(max(0, layers - 1)) * offset
-        let hit: CGRect? = (voice && n > 0)
-            ? CGRect(x: frontLeft, y: bandTop + T.inset, width: fanRight - frontLeft, height: h).insetBy(dx: -3, dy: -3)
+        // Oct 15 review, VF04: past three, "+N" sits on the stack's right, riding the fan; the
+        // waveform makes room for it at rest.
+        let hidden = max(0, n - T.maxLayers)
+        let moreW = hidden > 0 ? moreWidth(hidden) : 0
+        let more: CGRect? = (voice && hidden > 0)
+            ? CGRect(x: fanRight + T.moreGap, y: bandTop + (spec.voiceBelow - T.moreHeight) / 2, width: moreW, height: T.moreHeight)
             : nil
-        return StackLayout(outline: Outline(size: CGSize(width: frames.width, height: frames.minHeight),
-                                            topRadius: frames.topRadius, bottomRadius: frames.bottomRadius),
-                           cards: cards, waveform: CGPoint(x: waveX, y: bandTop + spec.voiceBelow / 2),
-                           stackHit: hit, close: nil)
+        let stackEnd = hidden > 0 ? restRight + T.moreGap + moreW : restRight
+        let waveX: CGFloat = n == 0 ? 0 : ((stackEnd + T.waveformGap) + (half - T.inset)) / 2
+        let hitRight = max(fanRight, more?.maxX ?? fanRight)
+        let hit: CGRect? = (voice && n > 0)
+            ? CGRect(x: frontLeft, y: bandTop + T.inset, width: hitRight - frontLeft, height: h).insetBy(dx: -3, dy: -3)
+            : nil
+        var layout = StackLayout(outline: Outline(size: CGSize(width: frames.width, height: frames.minHeight),
+                                                  topRadius: frames.topRadius, bottomRadius: frames.bottomRadius),
+                                 cards: cards, waveform: CGPoint(x: waveX, y: bandTop + spec.voiceBelow / 2),
+                                 stackHit: hit, close: nil)
+        layout.more = more
+        layout.moreCount = hidden
+        return layout
     }
 
-    /// Every capture, left to right from the first, in rows that wrap at the review width;
-    /// cards shrink before a fourth row is needed. The island is as wide as its widest row
-    /// (never narrower than the notch), with the close control and the waveform in a footer.
-    static func opened(aspects: [CGFloat], shape: ReferentShape, metrics: ScreenMetrics) -> StackLayout {
+    /// Every capture, left to right from the first, in one row (Oct 15 review, VF04/QA02: "only
+    /// one line of referents in the expanded view"; they used to wrap into rows and shrink). A row
+    /// wider than the review width scrolls sideways (`scroll`, from a swipe or the wheel), its cards
+    /// passing under the panel's edge. The island is as wide as the row's visible part (never
+    /// narrower than the notch), with the close control and the waveform in a footer.
+    static func opened(aspects: [CGFloat], shape: ReferentShape, scroll: CGFloat = 0, metrics: ScreenMetrics) -> StackLayout {
         let T = WorkbenchTokens.Referents.self
         let spec = WorkbenchTokens.Island.spec
         let notch = NotchGeometry.notchRect(metrics: metrics, spec: spec)
         let pad = T.expandedPadding
         let maxContent = T.expandedMaxWidth - 2 * spec.expandedTopRadius - 2 * pad
-        func rows(_ h: CGFloat) -> [[Int]] {
-            var rows: [[Int]] = [[]]
-            var x: CGFloat = 0
-            for (i, a) in aspects.enumerated() {
-                let w = shape.width(height: h, aspect: a, stacked: false)
-                let needed = rows[rows.count - 1].isEmpty ? w : x + T.expandedSpacing + w
-                if needed > maxContent, !rows[rows.count - 1].isEmpty {
-                    rows.append([i]); x = w
-                } else {
-                    rows[rows.count - 1].append(i); x = needed
-                }
-            }
-            return rows
-        }
-        var h = T.expandedThumbHeight
-        while h > T.expandedMinThumbHeight, rows(h).count > T.expandedMaxRows { h -= 4 }
-        let laidOut = rows(h)
+        let h = T.expandedThumbHeight
         let widths = aspects.map { shape.width(height: h, aspect: $0, stacked: false) }
-        let rowWidths = laidOut.map { row in
-            row.map { widths[$0] }.reduce(0, +) + CGFloat(max(0, row.count - 1)) * T.expandedSpacing
-        }
+        let rowWidth = widths.reduce(0, +) + CGFloat(max(0, widths.count - 1)) * T.expandedSpacing
+        let visible = min(rowWidth, maxContent)
+        let scrollMax = max(0, rowWidth - visible)
+        let offset = min(max(0, scroll), scrollMax)
         let span = WorkbenchTokens.Island.waveformSpan
-        let content = max(rowWidths.max() ?? 0, T.closeWidth + 2 * T.expandedSpacing + span)
+        let content = max(visible, T.closeWidth + 2 * T.expandedSpacing + span)
         let body = max(content + 2 * pad, notch.width)
         let left = -body / 2 + pad
         let top0 = notch.height + pad + WorkbenchTokens.Native.panelGap
-        var cards = [Card](repeating: Card(cx: 0, top: 0, width: 0, height: 0, radius: 0, rotation: 0, opacity: 0, z: 0),
-                           count: aspects.count)
-        for (r, row) in laidOut.enumerated() {
-            var x = left
-            let top = top0 + CGFloat(r) * (h + T.expandedSpacing)
-            for i in row {
-                let w = widths[i]
-                cards[i] = Card(cx: x + w / 2, top: top, width: w, height: h,
-                                radius: shape.radius(height: h, concentric: T.expandedRadius),
-                                rotation: 0, opacity: 1, z: Double(aspects.count - i))
-                x += w + T.expandedSpacing
-            }
+        var cards: [Card] = []
+        var x = left - offset
+        for (i, w) in widths.enumerated() {
+            cards.append(Card(cx: x + w / 2, top: top0, width: w, height: h,
+                              radius: shape.radius(height: h, concentric: T.expandedRadius),
+                              rotation: 0, opacity: 1, z: Double(aspects.count - i)))
+            x += w + T.expandedSpacing
         }
-        let rowsHeight = CGFloat(laidOut.count) * h + CGFloat(laidOut.count - 1) * T.expandedSpacing
-        let footerTop = top0 + rowsHeight + T.footerGap
+        let footerTop = top0 + h + T.footerGap
         let close = CGRect(x: left, y: footerTop + (T.footerHeight - T.closeHeight) / 2,
                            width: T.closeWidth, height: T.closeHeight)
-        return StackLayout(outline: Outline(size: CGSize(width: body + 2 * spec.expandedTopRadius,
-                                                         height: footerTop + T.footerHeight + pad),
-                                            topRadius: spec.expandedTopRadius, bottomRadius: spec.expandedBottomRadius),
-                           cards: cards,
-                           waveform: CGPoint(x: body / 2 - pad - span / 2, y: footerTop + T.footerHeight / 2),
-                           stackHit: nil, close: close, rows: laidOut.count)
+        var layout = StackLayout(outline: Outline(size: CGSize(width: body + 2 * spec.expandedTopRadius,
+                                                               height: footerTop + T.footerHeight + pad),
+                                                  topRadius: spec.expandedTopRadius, bottomRadius: spec.expandedBottomRadius),
+                                 cards: cards,
+                                 waveform: CGPoint(x: body / 2 - pad - span / 2, y: footerTop + T.footerHeight / 2),
+                                 stackHit: nil, close: close, rows: aspects.isEmpty ? 0 : 1)
+        layout.viewport = CGRect(x: left, y: top0, width: visible, height: h)
+        layout.scrollMax = scrollMax
+        layout.scroll = offset
+        // Where the row is, under it, as an overlay scroller's thumb: there's more to either side.
+        if scrollMax > 0.5 {
+            let thumb = max(T.scrollThumbMin, visible * visible / rowWidth)
+            layout.scrollThumb = CGRect(x: left + (visible - thumb) * offset / scrollMax, y: top0 + h + T.scrollThumbGap,
+                                        width: thumb, height: T.scrollThumbHeight)
+        }
+        return layout
     }
 }
 
@@ -354,6 +383,11 @@ struct CardPlacement: ViewModifier, Animatable {
     /// The card's remove button, shown while `removeVisible`.
     var remove: (() -> Void)? = nil
     var removeVisible = false
+    /// Oct 15 review, VF04/QA02/VF05: the referent's number (top left) and, taken on the other
+    /// display, its glyph (lower left), shown while `badgesVisible` (the stack opened).
+    var number: Int? = nil
+    var otherDisplay = false
+    var badgesVisible = false
 
     var animatableData: CardVector {
         get { vector }
@@ -372,6 +406,27 @@ struct CardPlacement: ViewModifier, Animatable {
                 if let remove {
                     ReferentRemoveButton(visible: removeVisible, action: remove)
                         .position(StackLayout.removeCenter(width: max(0, v.w), height: max(0, v.h), radius: max(0, v.r)))
+                }
+            }
+            // Oct 15 review, VF04/QA02: 1, 2, 3… in the order taken.
+            .overlay(alignment: .topLeading) {
+                if let number {
+                    ReferentNumberBadge(number: number)
+                        .padding(WorkbenchTokens.Referents.numberInset)
+                        .opacity(badgesVisible ? 1 : 0)
+                        .animation(WorkbenchTokens.Referents.numberFade, value: badgesVisible)
+                        .allowsHitTesting(false)
+                        // One tag for the change, on the first.
+                }
+            }
+            // Oct 15 review, VF05: taken on the other display.
+            .overlay(alignment: .bottomLeading) {
+                if otherDisplay {
+                    ReferentOtherDisplayBadge()
+                        .padding(WorkbenchTokens.Referents.numberInset)
+                        .opacity(badgesVisible ? 1 : 0)
+                        .animation(WorkbenchTokens.Referents.numberFade, value: badgesVisible)
+                        .allowsHitTesting(false)
                 }
             }
             .scaleEffect(hoverScale)
@@ -452,3 +507,77 @@ struct ReferentRemoveButton: View {
         .accessibilityHidden(!visible)
     }
 }
+
+// MARK: - Oct 15 review: the stack's count, the referents' numbers, the other display
+
+/// Oct 15 review, VF04: "+N" on the collapsed stack, the referents hidden behind the three that
+/// show. A quiet capsule in the bar's ink; a click on the stack (it's part of it) opens them all.
+struct ReferentMoreChip: View {
+    let count: Int
+
+    var body: some View {
+        let T = WorkbenchTokens.Referents.self
+        Text("+\(count)")
+            .font(T.moreFont)
+            .foregroundStyle(T.moreText)
+            .lineLimit(1)
+            .frame(width: StackLayout.moreWidth(count), height: T.moreHeight)
+            .background(Capsule(style: .continuous).fill(T.moreFill))
+            .accessibilityLabel("\(count) more")
+    }
+}
+
+/// Oct 15 review, VF04/QA02: a referent's number, 1, 2, 3… in the order taken, what "the second
+/// one" binds to. The ✕'s own dark disc and ring (top left, the ✕ is top right), so it reads on a
+/// white page and on a photo alike.
+struct ReferentNumberBadge: View {
+    let number: Int
+
+    var body: some View {
+        let T = WorkbenchTokens.Referents.self
+        Text("\(number)")
+            .font(T.numberFont)
+            .foregroundStyle(T.removeGlyphColor)
+            .frame(minWidth: T.numberSize, minHeight: T.numberSize)
+            .padding(.horizontal, number > 9 ? T.numberWidePadding : 0)
+            .background(Capsule(style: .continuous).fill(T.removeFill))
+            .overlay(Capsule(style: .continuous).strokeBorder(T.removeRing, lineWidth: 0.75))
+            .accessibilityHidden(true)
+    }
+}
+
+/// Oct 15 review, VF05: taken on the other display, a display glyph on the card's lower left.
+struct ReferentOtherDisplayBadge: View {
+    var body: some View {
+        let T = WorkbenchTokens.Referents.self
+        Image(systemName: "display.2")
+            .font(T.otherDisplayGlyph)
+            .foregroundStyle(T.removeGlyphColor)
+            .frame(width: T.numberSize, height: T.numberSize)
+            .background(Circle().fill(T.removeFill))
+            .overlay(Circle().strokeBorder(T.removeRing, lineWidth: 0.75))
+            .help(CapturedReferent.otherDisplayLine)
+            .accessibilityLabel(CapturedReferent.otherDisplayLine)
+    }
+}
+
+extension CapturedReferent {
+    /// Oct 15 review, VF05.
+    static var otherDisplayLine: String { L("From your other display") }
+
+    /// Where it came from, as a caption or a help tag says it: the other display first, if so.
+    var whereTaken: String {
+        otherDisplay ? "\(Self.otherDisplayLine) · \(source)" : source
+    }
+}
+
+/// The opened row's scroll thumb, as an overlay scroller draws it: there's more to either side.
+struct ReferentScrollThumb: View {
+    var body: some View {
+        Capsule(style: .continuous)
+            .fill(WorkbenchTokens.Referents.scrollThumbFill)
+            .accessibilityHidden(true)
+    }
+}
+
+

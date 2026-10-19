@@ -1,5 +1,6 @@
 import SwiftUI
 import FoveaCore
+import FoveaKit
 
 // Transcribing and the undo window, drawn in the bar's 44 pt band under the notch. Chosen
 // (docs/island/PROGRESS.md): "Thinking" with SF Symbols' ellipsis over a 4 pt line that fills;
@@ -10,7 +11,8 @@ import FoveaCore
 /// turned into words (the transcript is kept, never shown). Still under Reduce Motion.
 struct ThinkingText: View {
     let still: Bool
-    var label = "Thinking"
+    // Oct 18, Ryan: in the primary language.
+    var label = L("island.thinking", english: "Thinking")
 
     var body: some View {
         let P = WorkbenchTokens.Progress.self
@@ -47,7 +49,7 @@ struct TranscribingBand: View {
             .padding(.top, P.paddingTop)
             .frame(maxHeight: .infinity, alignment: .top)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Thinking")
+            .accessibilityLabel(L("island.thinking", english: "Thinking"))
             .accessibilityValue("\(Int(p * 100)) percent")
         }
     }

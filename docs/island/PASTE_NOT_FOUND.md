@@ -7,6 +7,12 @@ has no input box to paste into. The island keeps the words:
 - ✕ at the bottom left, inside a ring that drains over 5 s, after which the island rests;
 - the chevron in the middle, and a gray **Copy** with white words at the right.
 
+**Oct 15 (the dev team's review, VF09/VF10, decided by Ryan):** the pointer on the island now holds
+it: the 5 s pause while the pointer is over it, and a full 5 s starts again when it leaves. A
+**Paste** sits beside Copy and puts the words into whatever field is focused now (the same paste
+dictation uses), then the island rests; with no field focused it says so a moment and the words
+stay. The 2026-09-28 rule below ("the pointer doesn't hold it") is superseded.
+
 The chevron opens the island downward to the whole transcript. Sources were read on 2026-09-28.
 Nothing here changes the product.
 

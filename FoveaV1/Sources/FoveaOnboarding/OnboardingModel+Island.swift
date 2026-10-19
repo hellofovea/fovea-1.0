@@ -41,6 +41,11 @@ protocol OnboardingHost: AnyObject {
     func finished()
     /// "Exit tour": the place kept, everything put back, Home.
     func exitTour()
+    /// The first run's sessions off the board (a task started over with Back, Oct 17).
+    func clearIslandSessions()
+    /// The primary language changed on the hello page (Oct 18, Ryan): the island's practice chat
+    /// is named again.
+    func languageChanged()
 }
 
 extension OnboardingModel: IslandDirector {
@@ -59,6 +64,8 @@ extension OnboardingModel: IslandDirector {
                 }
             } else {
                 island = .voice(.dictation)
+                // Oct 17, Ryan: what's taken from now lands after these words.
+                dictationTaken = []
                 if step == .dictation, let target = pointerOver {
                     dictationTarget = target
                     let owed = flow.waitingFor
@@ -102,28 +109,28 @@ extension OnboardingModel: IslandDirector {
             if step == .followUp { return true }
             if step.stage == .home || finished { return true }
             // Pressed where it isn't taught: said on the bar, never swallowed without a word.
-            if notchTaught, !step.isReading { hint("Not yet. Follow this step first.") }
+            if notchTaught, !step.isReading { hint(L("Not yet. Follow this step first.")) }
             return false
         }
         if step == .dictation {
             guard pointerOver != nil else {
-                hint("Put your pointer on a window first.")
+                hint(L("Put your pointer on a window first."))
                 return false
             }
             let owed = flow.waitingFor
             if owed?.contains(.feedbackKey) == true, pointerOver != .feedback {
-                hint("Start with the feedback window, on the left.")
+                hint(L("Start with the feedback window, on the left."))
                 return false
             }
             if owed?.contains(.replyKey) == true, pointerOver != .messages {
-                hint("Now Messages, on the right.")
+                hint(L("Now Messages, on the right."))
                 return false
             }
             return true
         }
         if finished { return true }
-        if step == .followUp { hint("Open the packing list from the notch first, then press \(keys.spoken(.dictation)).") }
-        else if notchTaught, !step.isReading { hint("Not yet. Follow this step first.") }
+        if step == .followUp { hint(L("Open the packing list from the notch first, then press \(keys.spoken(.dictation)).")) }
+        else if notchTaught, !step.isReading { hint(L("Not yet. Follow this step first.")) }
         return false
     }
 
@@ -139,50 +146,64 @@ extension OnboardingModel: IslandDirector {
         guard isPracticeTry, !continuing else { return true }
         guard flow.waitingFor?.contains(.finish) == true else {
             hint(step == .packList
-                 ? "Not quite. Take the line and the packing list, then press \(keys.spoken(.request))."
-                 : "Not quite. Take the screen and the two parts, then press \(keys.spoken(.request)).")
+                 ? L("Not quite. Take the line and the packing list, then press \(keys.spoken(.request)).")
+                 : L("Not quite. Take the numbers and the pull requests, then press \(keys.spoken(.request))."))
             return false
         }
         beat(.finish)
         return true
     }
 
-    /// A drag with ⌘. In the weekly update, a part taken in the GitHub tab is the merged pull
-    /// requests, in the Support tab the open tickets; a drag that misses them there is said, and
-    /// not taken.
+    /// A drag with ⌥. In the weekly update, a part taken in the Analytics tab is this week's numbers
+    /// (Oct 17, Ryan, round 2: in place of the whole screen), in the GitHub tab the merged pull
+    /// requests (Oct 18, Ryan: the two; the tickets went); a drag that misses them there is said,
+    /// and not taken.
     func acceptRegion(_ rect: CGRect) -> Bool {
-        guard step == .weeklyUpdate, let beat = [Beat.prs, .tickets].first(where: { $0.tab == currentTab }),
-              pageFrame.contains(rect.center) else { return true }
-        let part = partFrames[beat == .prs ? "prs" : "tickets"] ?? .zero
+        guard step == .weeklyUpdate, let beat = Self.weeklyParts.first(where: { $0.tab == currentTab }),
+              pageFrame.contains(rect.center), let name = beat.part else { return true }
+        let part = partFrames[name] ?? .zero
         let overlap = part.intersection(rect)
         guard !overlap.isNull, overlap.width * overlap.height > rect.width * rect.height * OT.Practice.partCover else {
-            hint(beat == .prs ? "That missed the pull requests. Press \(keys.spoken(.screenshot)) and drag over the list."
-                              : "That missed the tickets. Press \(keys.spoken(.screenshot)) and drag over them.")
+            let shot = keys.spoken(.screenshot)
+            switch beat {
+            case .numbers: hint(L("That missed this week's numbers. Press \(shot) and drag over them."))
+            default: hint(L("That missed the pull requests. Press \(shot) and drag over the list."))
+            }
             return false
         }
         return true
     }
 
-    /// ⌥ and a click on a file. The packing task wants the packing list: another file is said.
+    /// The weekly update's parts, a tab each (Oct 18, Ryan: two).
+    static let weeklyParts: [Beat] = [.numbers, .prs]
+
+    /// A file dragged onto the notch (Oct 17, Ryan, round 2; it was ⌥ and a click). The packing
+    /// task wants the packing list: another file is said.
     func acceptFile(_ url: URL) -> Bool {
         guard step == .packList else { return true }
         if url.lastPathComponent != PracticeFiles.list {
-            hint("For this one, take \(PracticeFiles.list).")
+            hint(L("For this one, take \(PracticeFiles.list)."))
             return false
         }
         return true
     }
 
     private func taken(_ kind: IslandEvent.TakenKind, rect: CGRect) {
+        // Oct 17, Ryan: taken while dictating, it lands after the words (OnboardingModel+Real).
+        if step == .dictation {
+            takenWhileDictating(kind, rect: rect)
+            return
+        }
         switch kind {
         case .wholeScreen:
+            // Nothing teaches it any more (Oct 17, Ryan, round 2: ⌥ twice is Claude's); kept if the
+            // island ever says so, as a picture taken.
             referents.append(TakenReferent(kind: .wholeScreen, tab: currentTab))
             sound.cue(.capture)
-            beat(.wholeScreen)
         case .region:
             referents.append(TakenReferent(kind: .region(rect), tab: pageFrame.contains(rect.center) ? currentTab : nil))
             sound.cue(.capture)
-            if step == .weeklyUpdate, let beat = [Beat.prs, .tickets].first(where: { $0.tab == currentTab }),
+            if step == .weeklyUpdate, let beat = Self.weeklyParts.first(where: { $0.tab == currentTab }),
                pageFrame.contains(rect.center) { self.beat(beat) }
         case .passage:
             let paragraph = paragraphFrames.first { $0.value.insetBy(dx: -4, dy: -4).intersects(rect) }?.key ?? OT.Practice.snowParagraph
@@ -198,12 +219,14 @@ extension OnboardingModel: IslandDirector {
 
     // MARK: Fovea's own windows, to point at and paste into
 
+    // Oct 18, Ryan: the words land in the window under the pointer when they land, not the one
+    // under it when the listening started (that one only if the pointer's off both).
     func pasteTarget() -> Bool {
-        step == .dictation && (dictationTarget ?? pointerOver) != nil
+        step == .dictation && dictationLanding != nil
     }
 
     func paste(_ text: String) -> Bool {
-        guard step == .dictation, let target = dictationTarget ?? pointerOver else { return false }
+        guard step == .dictation, let target = dictationLanding else { return false }
         land(text, in: target)
         return true
     }
@@ -242,13 +265,13 @@ extension OnboardingModel: IslandDirector {
     /// What's made in the first run goes to Home tagged "First run", from Fovea's own windows.
     func decorate(_ capture: Capture) -> Capture {
         var c = capture
-        c.tags = ["First run"]
+        c.tags = [L("First run")]
         if c.kind == .dispatch {
-            c.app = AppRef("Fovea · Practice", "app.fovea")
+            c.app = AppRef(L("Fovea · Practice"), "app.fovea")
             c.site = currentTab.address
         } else {
-            c.app = dictationTarget == .messages || pointerOver == .messages
-                ? AppRef("Messages · Practice", "com.apple.MobileSMS") : AppRef("Fovea · Feedback", "app.fovea")
+            c.app = dictationLanding == .messages
+                ? AppRef(L("Messages · Practice"), "com.apple.MobileSMS") : AppRef(L("Fovea · Feedback"), "app.fovea")
         }
         return c
     }
@@ -263,7 +286,7 @@ extension OnboardingModel: IslandDirector {
             sessions[index].turns.append(.init(ask: words, answer: nil))
             openSessionID = sessions[index].id
             flow.add(PracticeRecord(kind: .dispatch, words: words, agent: agentName, chat: OT.Practice.chat,
-                                    theme: "Sorting the packing list", secondsBeforeEnd: 150))
+                                    theme: L("Sorting the packing list"), secondsBeforeEnd: 150))
             dispatch(PracticeRequest(words: words, referents: [], step: .followUp), session: sessions[index].id,
                      turn: sessions[index].turns.count - 1)
             return true
@@ -298,7 +321,7 @@ extension OnboardingModel: IslandDirector {
     /// The chat Choose chat offers in the first run: the practice chat with the agent.
     var practiceChat: IslandChat {
         IslandChat(agent: sendsToRealAgent ? "claude-code" : (connectedAgents.first?.islandID ?? "claude-code"),
-                   chat: OT.Practice.chat, project: "First run")
+                   chat: OT.Practice.chat, project: L("First run"))
     }
 }
 

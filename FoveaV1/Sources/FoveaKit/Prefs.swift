@@ -9,7 +9,7 @@ import Foundation
 public enum FoveaAccent: String, CaseIterable, Identifiable, Codable, Sendable {
     case multicolor, blue, purple, pink, red, orange, yellow, green, graphite
     public var id: String { rawValue }
-    public var title: String { rawValue.capitalized }
+    public var title: String { L(key: rawValue.capitalized) }
 }
 
 /// The glow in the Dispatch voice bar, Fovea's aura: a palette to start from, turned round the
@@ -17,7 +17,7 @@ public enum FoveaAccent: String, CaseIterable, Identifiable, Codable, Sendable {
 public enum GlowPalette: String, CaseIterable, Identifiable, Codable, Sendable {
     case colorful, mono, ocean, sunset, forest, candy, ice, gold, custom
     public var id: String { rawValue }
-    public var title: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
+    public var title: String { L(key: rawValue.prefix(1).uppercased() + rawValue.dropFirst()) }
     /// The palettes to start from, in the order Settings and the onboarding list them.
     public static let templates: [GlowPalette] = [.colorful, .ocean, .sunset, .forest, .candy, .ice, .gold, .mono]
     /// Mono is gray: there's no hue to turn and nothing to drift.
@@ -29,7 +29,7 @@ public enum GlowPalette: String, CaseIterable, Identifiable, Codable, Sendable {
 public enum NotchAppearance: String, CaseIterable, Identifiable, Codable, Sendable {
     case light, dark
     public var id: String { rawValue }
-    public var title: String { rawValue.capitalized }
+    public var title: String { L(key: rawValue.capitalized) }
 }
 
 /// How what drops below meets the notch: one glass shape hanging from the top edge with its ears
@@ -37,7 +37,7 @@ public enum NotchAppearance: String, CaseIterable, Identifiable, Codable, Sendab
 public enum NativePanels: String, CaseIterable, Identifiable, Codable, Sendable {
     case attached, floating
     public var id: String { rawValue }
-    public var title: String { self == .attached ? "Attached" : "Floating" }
+    public var title: String { L(key: self == .attached ? "Attached" : "Floating") }
 }
 
 /// How much room what opens below the notch takes: Compact, as the notch was drawn through Oct 8,
@@ -45,19 +45,52 @@ public enum NativePanels: String, CaseIterable, Identifiable, Codable, Sendable 
 public enum NotchDensity: String, CaseIterable, Identifiable, Codable, Sendable {
     case compact, spacious
     public var id: String { rawValue }
-    public var title: String { rawValue.capitalized }
+    public var title: String { L(key: rawValue.capitalized) }
 }
 
-/// How the person signed up in the first run.
+/// How the person signed up in the first run (Oct 15: Apple too, the dev team's review AC-01.1).
 public enum AccountProvider: String, Codable, Sendable {
-    case email, google
+    case email, google, apple
+}
+
+/// Motion in the window and the notch (Oct 15, review IS02): as the Mac's Reduce Motion says, or
+/// always reduced, or always full.
+public enum MotionPreference: String, CaseIterable, Identifiable, Codable, Sendable {
+    case system, reduce, full
+    public var id: String { rawValue }
+    public var title: String {
+        switch self {
+        case .system: return L("Match the Mac")
+        case .reduce: return L("Reduce")
+        case .full: return L("Full")
+        }
+    }
+}
+
+/// A shortcut the person recorded (Oct 15, review ST-03.1: shortcuts can be changed). Modifiers
+/// alone, pressed once to start and again to stop (fn, fn ⌃, right ⌥), or modifiers with a key
+/// (⌥ Space). Kept by the shortcut's id (`FoveaShortcut.id`); a missing one is the default.
+public struct KeyChord: Codable, Equatable, Hashable, Sendable {
+    /// Modifier caps in the Mac's order: "fn", "⌃", "⌥", "⇧", "⌘". A right-hand key is written
+    /// "right ⌥" and so on.
+    public var modifiers: [String]
+    /// The key pressed with them (its virtual key code and its cap), or nil for modifiers alone.
+    public var keyCode: Int?
+    public var keyCap: String?
+
+    public init(modifiers: [String], keyCode: Int? = nil, keyCap: String? = nil) {
+        self.modifiers = modifiers; self.keyCode = keyCode; self.keyCap = keyCap
+    }
+
+    /// The caps as Settings draws them.
+    public var caps: [String] { modifiers + (keyCap.map { [$0] } ?? []) }
 }
 
 /// How long the pointer rests at the notch before the board opens: named, never in milliseconds.
 public enum HoverWait: String, CaseIterable, Identifiable, Codable, Sendable {
     case quick, normal, relaxed
     public var id: String { rawValue }
-    public var title: String { rawValue.capitalized }
+    public var title: String { L(key: rawValue.capitalized) }
     /// The dwell before the board opens, and the most it may take, in seconds.
     public var dwell: (start: Double, cap: Double) {
         switch self {
@@ -73,7 +106,7 @@ public enum HoverWait: String, CaseIterable, Identifiable, Codable, Sendable {
 public enum FoveaLanguage: String, CaseIterable, Identifiable, Codable, Sendable {
     case english, chinese
     public var id: String { rawValue }
-    public var title: String { rawValue.capitalized }
+    public var title: String { L(key: rawValue.capitalized) }
     /// As the language writes itself.
     public var nativeName: String { self == .english ? "English" : "简体中文" }
     /// The locale speech recognition listens in.
@@ -117,9 +150,43 @@ public struct FoveaPrefs: Codable, Equatable, Sendable {
     public var language: FoveaLanguage = .english
     /// Languages typed under More…, kept to choose what comes next.
     public var requestedLanguages: [String] = []
+    /// Oct 18 (Ryan): "Choose your languages." The supported ones the person speaks (English,
+    /// Chinese, or both). `language` is the primary of them: Fovea's interface is in it and
+    /// speech recognition listens in it. Empty means just `language`.
+    public var languages: [FoveaLanguage] = []
+    /// The chosen languages, the primary first.
+    public var chosenLanguages: [FoveaLanguage] {
+        [language] + languages.filter { $0 != language }
+    }
     public var openAtLogin = true
+    // Oct 15, the dev team's review (docs/v1/REVIEW_2026-10-15.md).
+    /// Voice & Capture's "Tidy my words" (ST-04.2/3): on, fillers out, capitals and punctuation;
+    /// off, exactly what was said.
+    public var tidyWords = true
+    /// Appearance's Motion (IS02).
+    public var motion: MotionPreference = .system
+    /// "What Fovea remembers" has been read: in the first run, or once in Home for someone who
+    /// finished the tour before it existed (OB-01.6, OB-02).
+    public var memoryDisclosureSeen = false
+    /// Recorded shortcuts by `FoveaShortcut.id` (ST-03.1); a missing one is the default.
+    public var shortcutChords: [String: KeyChord] = [:]
+    /// Account › On this Mac › Show in Dock (ST-02.5). Off, Fovea lives in the menu bar alone.
+    public var showInDock = true
+    /// Signed out from Account (AC-01.5): the captures stay on this Mac; Account offers Sign In…,
+    /// the dictionary is read-only, until signing in again.
+    public var signedOut = false
+    /// Settings › Memory's "Tell me when a memory updates" (NH-03): the notch says "Remembered"
+    /// after a request. Off by default: the notch stays quiet unless asked.
+    public var memoryNotice = false
 
     public init() {}
+
+    /// The glow as drawn (Oct 18, Ryan: the palettes are fixed; only Custom has a hue and a drift
+    /// to change): a template's hue turn is always 0 and its drift the default; Custom's are the
+    /// person's.
+    public var drawnGlowHue: Double { glowPalette == .custom ? glowHue : 0 }
+    public var drawnGlowDrift: Double { glowPalette == .custom ? glowDrift : FoveaPrefs().glowDrift }
+    public var drawnGlowSpread: Double { glowPalette == .custom ? glowSpread : FoveaPrefs().glowSpread }
 
     /// The notch's settings as they ship: Restore Defaults puts these back.
     public var notchIsDefault: Bool {
@@ -160,5 +227,13 @@ public struct FoveaPrefs: Codable, Equatable, Sendable {
         language = (try? c.decode(FoveaLanguage.self, forKey: .language)) ?? d.language
         requestedLanguages = (try? c.decode([String].self, forKey: .requestedLanguages)) ?? d.requestedLanguages
         openAtLogin = (try? c.decode(Bool.self, forKey: .openAtLogin)) ?? d.openAtLogin
+        languages = (try? c.decode([FoveaLanguage].self, forKey: .languages)) ?? d.languages
+        tidyWords = (try? c.decode(Bool.self, forKey: .tidyWords)) ?? d.tidyWords
+        motion = (try? c.decode(MotionPreference.self, forKey: .motion)) ?? d.motion
+        memoryDisclosureSeen = (try? c.decode(Bool.self, forKey: .memoryDisclosureSeen)) ?? d.memoryDisclosureSeen
+        shortcutChords = (try? c.decode([String: KeyChord].self, forKey: .shortcutChords)) ?? d.shortcutChords
+        showInDock = (try? c.decode(Bool.self, forKey: .showInDock)) ?? d.showInDock
+        signedOut = (try? c.decode(Bool.self, forKey: .signedOut)) ?? d.signedOut
+        memoryNotice = (try? c.decode(Bool.self, forKey: .memoryNotice)) ?? d.memoryNotice
     }
 }

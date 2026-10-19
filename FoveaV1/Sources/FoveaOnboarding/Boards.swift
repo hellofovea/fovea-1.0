@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import FoveaCore
+import FoveaLook
 import OnboardingCore
 
 /// The guide, in the one design kept (Oct 9: Stage). Reading steps darken the desktop and set the
@@ -27,7 +28,7 @@ struct StageBoard: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             if model.step.isReading {
-                // Frosted, as VoiceOS does it: the desktop goes soft behind the words, dark or light
+                // Frosted: the desktop goes soft behind the words, dark or light
                 // as the Mac is (then as the person picks). It comes in at a calm pace and lifts
                 // slowly (Oct 9).
                 Rectangle().fill(.ultraThinMaterial)
@@ -47,10 +48,26 @@ struct StageBoard: View {
                                                                 removal: .opacity.animation(OT.Motion.content)))
             }
         }
-        // On every page: how far the run is, in the accent (Oct 10), and the way out.
+        // On every page: how far the run is, in the accent (Oct 10), and the way out. Back sits at
+        // the progress line's left on the pages that have it (Oct 15 review, OB-01.7), so the line
+        // stays where it was, centred.
         .overlay(alignment: .bottom) {
-            TourProgress(model: model)
-                .padding(.bottom, OT.Board.progressBottom)
+            // A slot each side of the line, the same width, so the line stays centred; the row as
+            // tall as the line, so it stays where it was and Back stands out of it, centred on it.
+            HStack(spacing: OT.Board.backGap) {
+                ZStack(alignment: .trailing) {
+                    if model.canGoBack {
+                        BackButton(model: model, onPage: model.step.isReading)
+                            .transition(.opacity)
+                    }
+                }
+                .frame(width: OT.Board.backSlot, alignment: .trailing)
+                TourProgress(model: model)
+                Color.clear.frame(width: OT.Board.backSlot, height: OT.Board.progressHeight)
+            }
+            .frame(height: OT.Board.progressHeight)
+            .animation(OT.Motion.calm, value: model.canGoBack)
+            .padding(.bottom, OT.Board.progressBottom)
         }
         // The sound at the bottom left; Exit tour at the bottom right (Oct 10).
         .overlay(alignment: .bottomLeading) {
@@ -167,6 +184,7 @@ struct GlassBar: View {
                         TypedText(text: instruction, font: OT.Board.instruction, color: ink.primary, typing: model.typesLines)
                             .id(instruction)
                     }
+                    // Oct 15 review, ST-03.1: the keys named are the person's own (KeyMap(prefs:)).
                 }
                 BoardScript(model: model)
                 BoardActions(model: model)
@@ -218,25 +236,56 @@ struct TourProgress: View {
     }
 }
 
+/// Oct 15 review, OB-01.7 and FR-05: a quiet Back beside the progress line. It goes to the page
+/// before as it was left: what was entered stays. ⌘[ does the same (KeyRig). Off a page to read, it
+/// sits on glass of its own, as Exit tour does. Oct 17, Ryan: on every step after the first, the
+/// practice tasks and the end included; a practice task gone back to starts over, cleanly.
+struct BackButton: View {
+    let model: OnboardingModel
+    let onPage: Bool
+    @Environment(\.boardInk) private var ink
+
+    var body: some View {
+        Button(action: { model.goBack() }) {
+            HStack(spacing: 4) {
+                Image(systemName: "chevron.left").font(.system(size: 9.5, weight: .semibold))
+                Text(Copy.back).font(.system(size: 11.5, weight: .medium))
+            }
+            .foregroundStyle(ink.secondary)
+            .padding(.horizontal, 8).frame(height: OT.Board.backHeight)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Back to the page before (⌘[)")
+        .padding(.horizontal, 4)
+        .background { if !onPage { Capsule().fill(.ultraThinMaterial) } }
+        .fixedSize()
+        .playTarget(.back, model)
+    }
+}
+
 /// Exit tour, in the bottom right of every page (Oct 10). It puts the tour away at once, keeping
 /// the place: Home opens, and the tour picks up from there. Off a page to read, it sits on glass of
-/// its own, over whatever the desktop shows.
+/// its own, over whatever the desktop shows. In a practice run again from Home (Oct 15 review,
+/// OB-03.1) it's Exit practice: Home again, nothing about the first run changed.
 struct TourCorner: View {
     let model: OnboardingModel
     let onPage: Bool
     @Environment(\.boardInk) private var ink
 
     var body: some View {
+        let practising = model.practiceRun != nil
         HStack(spacing: 6) {
             Button(action: { model.exitTour() }) {
-                Text("Exit tour")
+                Text(practising ? Copy.exitPractice : Copy.exitTour)
                     .font(.system(size: 11.5, weight: .medium))
                     .foregroundStyle(ink.secondary)
                     .padding(.horizontal, 8).frame(height: 24)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Put the tour away. Pick it up from Home whenever you like.")
+            .help(practising ? "Back to Home. The rest of the tour stays as it is."
+                  : "Put the tour away. Pick it up from Home whenever you like.")
         }
         .padding(.horizontal, 4)
         .background {

@@ -21,6 +21,9 @@ public enum Typewriter {
     private static let sentenceEnds: Set<Character> = [".", "?", "!", "…"]
     private static let clauseEnds: Set<Character> = [",", ";", ":", "–", "—"]
     private static let closers: Set<Character> = ["\"", "”", "’", ")", "]"]
+    /// Oct 18, Ryan (the first run in Chinese): Chinese marks, which no space follows.
+    private static let wideSentenceEnds: Set<Character> = ["。", "？", "！"]
+    private static let wideClauseEnds: Set<Character> = ["，", "；", "：", "、"]
 
     /// The wait before each character appears, in seconds; one per character of `text`.
     public static func delays(for text: String, pace: Pace = Pace()) -> [Double] {
@@ -32,6 +35,8 @@ public enum Typewriter {
         for i in 0..<(characters.count - 1) {
             let c = characters[i]
             let next = characters[i + 1]
+            if wideSentenceEnds.contains(c) { delays[i + 1] += pace.sentencePause; continue }
+            if wideClauseEnds.contains(c) { delays[i + 1] += pace.clausePause; continue }
             // A pause belongs after the mark (and after a closing quote that follows it), before
             // the space: never inside "..." or before a closing quote.
             guard next.isWhitespace else { continue }

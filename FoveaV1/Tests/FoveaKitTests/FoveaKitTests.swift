@@ -89,9 +89,15 @@ final class KeysTests: XCTestCase {
     func testTheKeysAreRoundTwo() {
         XCTAssertEqual(FoveaKeys.voiceflow.keys, ["fn"])
         XCTAssertEqual(FoveaKeys.dispatch.keys, ["fn", "⌃"])
-        XCTAssertEqual(FoveaKeys.region.keys, ["⌘"])
+        // Oct 17 (Ryan): ⌥ takes the screen (⌘ clashed with Codex); words and files need no key.
+        XCTAssertEqual(FoveaKeys.region.keys, ["⌥"])
+        // Oct 18: ⌘ twice takes the whole screen (⌥ twice is the Claude app's).
+        XCTAssertEqual(FoveaKeys.wholeScreen.keys, ["⌘"])
         XCTAssertEqual(FoveaKeys.wholeScreen.presses, 2)
-        XCTAssertEqual(FoveaKeys.highlighter.keys, ["⌥"])
+        XCTAssertTrue(FoveaKeys.whileSpeaking.contains { $0.id == FoveaKeys.wholeScreen.id })
+        XCTAssertEqual(FoveaKeys.highlighter.keys, [])
+        XCTAssertNil(FoveaKeys.chord(FoveaKeys.highlighter.id, FoveaPrefs()))
+        XCTAssertEqual(FoveaKeys.chord(FoveaKeys.region.id, FoveaPrefs())?.modifiers, ["⌥"])
         XCTAssertEqual(Set(FoveaKeys.all.map(\.id)).count, FoveaKeys.all.count)
     }
 }

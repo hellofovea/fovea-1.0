@@ -344,13 +344,14 @@ struct MiniCalendar: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(palette.text)
                 Spacer()
-                stepButton("chevron.left", help: "Previous month") { model.stepMonth(-1) }
-                stepButton("chevron.right", help: "Next month") { model.stepMonth(1) }
+                // Oct 18, Ryan: in the primary language.
+                stepButton("chevron.left", help: L("Previous month")) { model.stepMonth(-1) }
+                stepButton("chevron.right", help: L("Next month")) { model.stepMonth(1) }
                     .disabled(!model.canStepMonthForward)
             }
             HStack(spacing: 2) {
                 ForEach(0..<7, id: \.self) { i in
-                    Text(cal.veryShortWeekdaySymbols[(cal.firstWeekday - 1 + i) % 7])
+                    Text(CalendarWords.names.veryShortWeekdaySymbols[(cal.firstWeekday - 1 + i) % 7])
                         .font(.system(size: 9.5, weight: .semibold))
                         .foregroundStyle(palette.tertiary)
                         .frame(maxWidth: .infinity)
@@ -383,10 +384,7 @@ struct MiniCalendar: View {
     }
 
     static func title(_ first: Date, now: Date) -> String {
-        let cal = Lines.calendar
-        let f = DateFormatter(); f.calendar = cal; f.timeZone = cal.timeZone; f.locale = cal.locale
-        f.dateFormat = "MMMM yyyy"
-        return f.string(from: first)
+        CalendarWords.formatter("MMMM yyyy", chinese: "yyyyMMM").string(from: first)
     }
 }
 
@@ -405,7 +403,8 @@ private struct DayCellMini: View {
         let isToday = day == today
         let open = model.archiveDay == day && model.page == .day && model.noteID == nil
         let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
-        let line = n == 0 ? "Nothing on \(Lines.longDay(day, now: model.now))" : "\(n) on \(Lines.longDay(day, now: model.now))"
+        let when = Lines.longDay(day, now: model.now)
+        let line = n == 0 ? L("Nothing on \(when)") : L("\(n) on \(when)")
         Text("\(cal.component(.day, from: day))")
             .font(.system(size: 11, weight: isToday || open ? .semibold : .regular))
             .monospacedDigit()
@@ -535,7 +534,7 @@ struct PageIsland: View {
                             }
                         }
                     } else {
-                        segment("All", kind: nil, on: model.query.kind == nil) { model.setKind(nil) }
+                        segment(L("All"), kind: nil, on: model.query.kind == nil) { model.setKind(nil) }
                         ForEach(CaptureKind.allCases, id: \.self) { kind in
                             segment(kind.title, kind: kind, on: model.query.kind == kind) { model.setKind(kind) }
                         }

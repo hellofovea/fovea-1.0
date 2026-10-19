@@ -68,7 +68,7 @@ Keyboard focus traversal of buttons follows the macOS "Keyboard navigation" sett
 - `Sources/Fovea/Platform` — `NotchPanel` (non-activating panel above the menu bar), press-to-toggle hotkeys (Carbon chords plus an fn-key event monitor), AVAudioEngine level meter + on-device `SFSpeechRecognizer`, screen observer.
 - `Sources/Fovea/Island` — the Island UI: model, controller, shape, per-state views, detached Quick Answer panel.
 - `Sources/Fovea` — the window UI. `Tokens.swift` holds every color, type size, spacing and motion constant (`Tokens.Ledger` for the Home rows, `Tokens.Island` for the black surface). `Home/CaptureRow.swift` is one ledger row.
-- `Sources/FoveaCore/Resources/Brand` — the logo masters (mark, reversed mark, app icon, dark app icon)
+- `Sources/FoveaCore/Resources/Brand` — the logo masters (mark, reversed mark, app icon)
   and the menu bar marks at 16 and 32 px; `Resources/AppIcon.png` is the 1024 px app icon export, which
   `scripts/bundle-app.sh` turns into the `.icns`.
 - `Sources/FoveaCore/Resources/Destinations` — provider marks (Claude, Codex, ChatGPT, Cursor, Raycast) fetched by `scripts/fetch-destination-icons.sh` from lobe-icons (MIT) and Raycast's press kit; nominative use only, to be replaced by the official icon package from the PRD checklist.

@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import FoveaCore
+import FoveaKit
 
 // Dispatch Version 2's flow (its sample requests are in V2Requests.swift):
 //
@@ -13,7 +14,7 @@ import FoveaCore
 // and what is done but not yet opened (Ready for review, on top). A quick answer opens by itself;
 // any session opens to its expanded chat on a click; a chat's grab bar pulls it out of the notch
 // into a window that can go anywhere, tuck into a side of the screen and come back out; its box
-// asks more there, and its ✕ closes it (stopping the session if it is still at work).
+// asks more there, and its ✕ closes it (a session at work goes back on the board, still working: Oct 15).
 // docs/island/DISPATCH_V2.md has the reasons.
 
 /// A chat pulled out of the notch: a small window, or tucked into a side of the screen.
@@ -26,13 +27,9 @@ struct V2Detached: Identifiable, Equatable {
     /// Tucked into a side, at this height.
     var docked: Side?
     var dockY: CGFloat
-    /// How big it is, against its usual size (its corner, or a pinch, sets it).
-    var scale: CGFloat = 1
-
-    var size: CGSize {
-        let base = V2DetachedLayout.size
-        return CGSize(width: base.width * scale, height: base.height * scale)
-    }
+    /// The window's size (its corner, or a pinch, sets it): the window resizes, its words keep
+    /// their size and reflow (Oct 11; they used to scale with it).
+    var size: CGSize = V2DetachedLayout.size
 }
 
 /// One exchange in a session: what was asked, and what came back (nil: the person asked the next
@@ -110,9 +107,9 @@ extension WorkbenchModel {
     /// answer's first sentence, as the agent wrote it); for one at work, its project; for one whose
     /// state can't be read, its project and when it was last active.
     func v2BoardLine(_ task: AgentTaskItem) -> String {
-        let project = task.project == DispatchV2.quickProject ? "Quick answer" : task.project
+        let project = task.project == DispatchV2.quickProject ? L("Quick answer") : task.project
         if task.statusUnknown {
-            return AgentBoard.duration(task.age).map { "\(project) · last active \($0) ago" } ?? project
+            return AgentBoard.duration(task.age).map { L("\(project) · last active \($0) ago") } ?? project
         }
         switch task.state {
         case .needsYou: return task.activity
@@ -125,7 +122,7 @@ extension WorkbenchModel {
     /// How long since it finished: the board's Done and Failed rows.
     func v2Since(_ task: AgentTaskItem, now: Date = Date()) -> String {
         let seconds = v2FinishedAt[task.id].map { (snapshotMode ? 0 : now.timeIntervalSince($0)) } ?? task.inState
-        return AgentBoard.duration(seconds) ?? "now"
+        return AgentBoard.duration(seconds) ?? L("now")
     }
 
     /// The first sentence of a message written in Markdown, its marks taken out.
@@ -155,13 +152,13 @@ extension WorkbenchModel {
             seconds = Int(task.inState)
         }
         if clock { return String(format: "%d:%02d", seconds / 60, seconds % 60) }
-        if seconds < 60 { return "now" }
-        return seconds < 3600 ? "\(seconds / 60)m" : "\(seconds / 3600)h"
+        if seconds < 60 { return L("now") }
+        return seconds < 3600 ? L("\(seconds / 60)m") : L("\(seconds / 3600)h")
     }
 
     var v2SendLayout: V2SendLayout {
         V2SendLayout.make(request: v2Spoken, attachments: liveReferents.count, browsing: v2Browsing,
-                          browseRows: v2BrowseRows.count, sheet: v2ModelSheet, metrics: metrics)
+                          browseRows: v2BrowseRows.count, sheet: v2ModelSheet, sheetNotes: v2ModelNotes.count, metrics: metrics)
     }
     var v2BoardLayout: V2BoardLayout {
         V2BoardLayout.variant(boardStyle, model: self, metrics: metrics)
@@ -209,54 +206,79 @@ extension WorkbenchModel {
         guard let start = v2Started[id] else { return nil }
         let end = v2FinishedAt[id] ?? (snapshotMode ? start.addingTimeInterval(12) : now)
         let s = max(0, Int(end.timeIntervalSince(start)))
-        return s < 60 ? "\(s) s" : String(format: "%d:%02d", s / 60, s % 60)
+        return s < 60 ? L("\(s) s") : String(format: "%d:%02d", s / 60, s % 60)
     }
 
     // MARK: Choosing the chat
 
     /// A suggestion (or a chat found browsing) becomes where it goes.
     func chooseV2(_ pick: V2Suggestion) {
+        // Oct 15 review, QA06/QA10: locked while it's sending; another chat after Not sent or
+        // Declined puts that away.
+        guard cases.sending?.isSending != true else { return }
+        if cases.sending != nil { cases.sending = nil }
         v2PickStorage = pick
     }
 
     /// ⌃, or the pill: every chat below, as Dispatch's expanded view; again, folded.
     func toggleV2Browse() {
         guard notchState == .v2Send else { return }
+        // Oct 15 review, QA06: while it's sending, the chat is locked.
+        guard cases.sending?.isSending != true else { return }
         v2ModelSheet = false
         v2Browsing.toggle()
         if v2Browsing {
             v2BrowseAgent = v2Pick.quick ? ChatBook.predictedAgent : v2Pick.agent
             v2BrowseProject = nil
+            setBrowseQuery("")
         }
     }
 
     func browseV2Agent(_ id: String) {
         v2BrowseAgent = id
         v2BrowseProject = nil
+        cases.browseShown = WorkbenchTokens.Cases.browsePage
     }
 
-    /// The browser's rows: the agent's projects, or one project's chats (a New chat first).
+    /// The browser's rows: the agent's projects, or one project's chats (a New chat first). Oct 15
+    /// review, QA04: a search lists the agent's chats by title or project (or says nothing
+    /// matches); a long list shows a page, then Load More; a list on its way, or one that couldn't
+    /// load, says so.
     var v2BrowseRows: [V2BrowseRow] {
+        switch cases.browseLoad {
+        case .loading: return [.status(.loading)]
+        case .failed: return [.status(.failed)]
+        case .loaded: break
+        }
+        let query = cases.browseQuery.trimmingCharacters(in: .whitespaces)
+        if !query.isEmpty { return v2SearchRows(query) }
         let projects = ChatBook.projects(of: v2BrowseAgent, in: ChatBook.chats)
         if let folder = v2BrowseProject, let project = projects.first(where: { $0.folder == folder }) {
             return [.back(folder), .chat(ChatBook.newChat(agent: v2BrowseAgent, folder: folder))]
-                + project.chats.map { .chat($0) }
+                + v2Paged(project.chats.map { .chat($0) })
         }
         return projects.map { .project($0) }
     }
 
     /// A browser row: a project opens to its chats; Back returns; a chat is chosen, and the
-    /// browser folds back to the pill with it (as Dispatch's does).
+    /// browser folds back to the pill with it (as Dispatch's does). A chat that can't take the
+    /// request isn't chosen (it says why); Load More shows the next page; Try Again loads again.
     func pickV2Browse(_ row: V2BrowseRow) {
         switch row {
         case .project(let project): v2BrowseProject = project.folder
         case .back: v2BrowseProject = nil
+        case .more: loadMoreChats()
+        case .status(.failed): retryBrowseLoad()
+        case .status: break
+        case .chat(let chat) where v2ChatBlock(chat) != nil: break
         case .chat(let chat):
+            if cases.sending != nil { cases.sending = nil }
             v2PickStorage = V2Suggestion(agent: chat.agent, chat: chat.isNew ? nil : chat.title, project: chat.folder,
-                                         reason: chat.isNew ? "New" : chat.age)
+                                         reason: chat.isNew ? L("island.chat.new", english: "New") : chat.age)
             // On the voice bar's sheet (#19) the chat is chosen and the sheet stays, for the model.
             if notchState != .v2Voice { v2Browsing = false }
             v2BrowseProject = nil
+            setBrowseQuery("")
         }
     }
 
@@ -362,6 +384,8 @@ extension WorkbenchModel {
         if let director = live?.director, !director.allowsVoice(dispatch: true) { return }
         restingFlow = .dispatchV2
         v2Continuing = id
+        // Oct 15 review, QA07: an edit is put away.
+        cases.editing = nil
         // Asking more keeps the session on screen under the bar (Oct 9, evening).
         if let id { v2Focus = id }
         if notchState != .v2Voice { clearReferents() }
@@ -415,15 +439,30 @@ extension WorkbenchModel {
         v2ModelSheet = false
         v2BrowseProject = nil
         v2Inspecting = nil
+        // Oct 15 review: a fresh Choose chat, nothing on its way, no search.
+        cases.tasks["send"]?.cancel()
+        cases.sending = nil
+        setBrowseQuery("")
         notchState = .v2Send
     }
 
     /// It goes where the pill says: by the send button, fn⌃ or Return.
     func sendV2Now() {
         guard notchState == .v2Send else { return }
+        // Oct 15 review, QA10: Return on Not sent tries again; nothing else while one is on its way.
+        if let sending = cases.sending {
+            if case .notSent = sending { retrySendV2() }
+            return
+        }
         let pick = v2Pick
         let index = v2Suggestions.firstIndex(of: pick)
         let label: V2RoutingLabel = index == 0 ? .keptFirst : (index.map { .picked($0 + 1) } ?? .browsed)
+        // Oct 15 review, QA06: on the real Mac, "Sending to …" a moment, the chat locked, until the
+        // agent takes it (the first run and the Workbench send at once, as their checks expect).
+        if live != nil, live?.director == nil, !snapshotMode {
+            beginSendV2(pick, label: label)
+            return
+        }
         send(pick, label: label)
     }
 
@@ -443,6 +482,8 @@ extension WorkbenchModel {
         let images = liveReferents.map(\.image)
         let id = makeV2Session(pick, at: 0)
         if !images.isEmpty { v2Attachments[id] = images }
+        // Oct 15 review, QA09: the session keeps the approvals chosen for it.
+        cases.sessionModes[id] = cases.approvalMode
         // The first run: its agent (Claude Code on this Mac) works it, not the script.
         if let director = live?.director, directorSend(director, id: id, followUp: false, text: v2Spoken) {
             decorateV2(id, beat: 0)
@@ -458,7 +499,8 @@ extension WorkbenchModel {
         guard let i = agentTasks.firstIndex(where: { $0.id == id }) else { return }
         // Feedback #24: while it works, a new message waits its turn (Send now takes it in at once).
         if !now, agentTasks[i].state == .working || agentTasks[i].state == .needsYou {
-            enqueueV2(id, text: text ?? (v2Requests[id] ?? v2Request).followUp.spoken)
+            // Screenshots taken while asking go with the message (feedback #24, Oct 11).
+            enqueueV2(id, text: text ?? (v2Requests[id] ?? v2Request).followUp.spoken, images: liveReferents.map(\.image))
             if !inWindow { showBoardAfterSend(id) }
             return
         }
@@ -574,7 +616,20 @@ extension WorkbenchModel {
                 decorateV2(id, beat: i)
             }
             // A session waiting on the person holds its queue (feedback #24).
-            if script[i].state == .needsYou { v2QueuePaused.insert(id) }
+            if script[i].state == .needsYou {
+                // Oct 15 review, QA14/QA09: allowed for this session, or approvals off for it, it
+                // doesn't stop to ask; a line says so.
+                if v2AllowsWithoutAsking(id, ask: script[i].ask) {
+                    agentTasks[index].state = .working
+                    agentTasks[index].ask = nil
+                    let next = script.indices.contains(i + 1) ? script[i + 1].activity : L("going on")
+                    let doing = next.prefix(1).lowercased() + next.dropFirst()
+                    decideV2(id, cases.allowedForSession.contains(id) ? L("Allowed for this session · \(doing)") : L("Allowed by your setting · \(doing)"))
+                    continue
+                }
+                v2QueuePaused.insert(id)
+                v2PausedBeat[id] = i
+            }
         }
         v2Runs[id] = nil
         v2Finished(id)
@@ -592,11 +647,16 @@ extension WorkbenchModel {
         v2FinishedAt[id] = Date()
         // Feedback #24: the next waiting message goes once this one is done.
         if takeNextQueued(id) { return }
+        // Oct 15 review, NH-03: what memory took from it, with the setting on.
+        noteMemoryV2(id)
         // Pulled out, its window shows the answer: seen there.
         if v2Detached.contains(where: { $0.id == id }) {
             v2Checked.insert(id)
             return
         }
+        // Oct 15 review, QA21: one closed while it worked (opened, then put back) comes back Ready
+        // for review: its answer hasn't been seen.
+        if !(notchState == .v2Chat && v2Focus == id) { v2Checked.remove(id) }
         guard showAnswers, v2Quick(id) else { return }
         if notchState == .v2Board, panelSentTask == id { return }
         if notchState == .silent { showV2Chat(id, popped: true) }
@@ -607,6 +667,8 @@ extension WorkbenchModel {
     /// after a while unless the pointer is on it; opened by the person, it stays.
     func showV2Chat(_ id: String, popped: Bool, fromBoard: Bool = false, expanded: Bool = false) {
         guard v2Task(id) != nil else { return }
+        // Oct 15 review, QA07: another session (or this one again) opens as it is, not edited.
+        cases.editing = nil
         v2Size = expanded ? .expanded : .usual
         v2OutlineShown = false
         v2HistoryHeld = false
@@ -646,6 +708,8 @@ extension WorkbenchModel {
     /// Read (the pointer was on it, or it was opened), it is no longer Ready for review.
     func closeV2Chat() {
         guard notchState == .v2Chat else { return }
+        // Oct 15 review, QA07: an edit is stepped out of first.
+        if cases.editing != nil { cancelEditV2(); return }
         v2ChatHold?.cancel()
         if v2ChatInteracted, let id = v2Focus { v2Checked.insert(id) }
         v2Expanded = false
@@ -704,15 +768,19 @@ extension WorkbenchModel {
         }
     }
 
-    /// Copy what it wrote: the draft, else the outcome.
+    /// Copy Answer (Oct 15 review, DSP-18): a draft as it is, else the answer as plain text.
     func copyV2(_ id: String? = nil) {
-        guard let task = v2Task(id ?? v2Focus), let text = task.result?.draft ?? task.result?.outcome else { return }
-        if !options.smoke && !snapshotMode {
+        guard let task = v2Task(id ?? v2Focus), let text = v2CopyText(task) else { return }
+        if !options.smoke && !snapshotMode && live?.smoke == nil {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
         }
         v2Copied = true
         v2ChatInteracted = true
+        withAnimation(WorkbenchTokens.Cases.change) { cases.copied = task.id }
+        caseTask("copied", after: WorkbenchTokens.Cases.copiedHold) { model in
+            withAnimation(WorkbenchTokens.Cases.change) { model.cases.copied = nil }
+        }
     }
 
     // MARK: Pulling a chat out of the notch
@@ -737,35 +805,54 @@ extension WorkbenchModel {
         showAgentPanel(pinned: v2BoardPinned, sent: v2BoardPinned ? nil : id)
     }
 
+    /// Where the pulled-out chats are laid out: the size of the display they're on.
+    var detachedArea: CGSize { liveDetachedArea ?? display.frame.size }
+
     /// A window dragged by its header.
     func moveDetachedV2(_ id: String, to origin: CGPoint) {
         guard let i = v2Detached.firstIndex(where: { $0.id == id }) else { return }
+        v2DetachedMoving = true
         v2Detached[i].origin = origin
         v2Detached[i].docked = nil
+    }
+
+    /// The pulled-out chats go to another display (the one the pointer is on, Oct 11): each keeps
+    /// its place relative to the screen, a tucked one its side and height.
+    func moveDetachedArea(to area: CGSize) {
+        let from = detachedArea
+        guard area != from, from.width > 0, from.height > 0 else { liveDetachedArea = area; return }
+        let sx = area.width / from.width, sy = area.height / from.height
+        liveDetachedArea = area
+        for i in v2Detached.indices {
+            let item = v2Detached[i]
+            v2Detached[i].origin = clampedV2(CGPoint(x: item.origin.x * sx, y: item.origin.y * sy), size: item.size)
+            v2Detached[i].dockY = min(max(metrics.menuBarHeight + 8, item.dockY * sy), area.height - WorkbenchTokens.V2.tabSize.height - 8)
+        }
     }
 
     /// Let go: with the pointer at a side of the screen, it tucks into that side; otherwise it
     /// stays where it is.
     func endMoveDetachedV2(_ id: String, pointer: CGPoint) {
+        v2DetachedMoving = false
         guard let i = v2Detached.firstIndex(where: { $0.id == id }) else { return }
         let V = WorkbenchTokens.V2.self
         if pointer.x <= V.edgeSnap {
             v2Detached[i].docked = .left
-        } else if pointer.x >= display.frame.width - V.edgeSnap {
+        } else if pointer.x >= detachedArea.width - V.edgeSnap {
             v2Detached[i].docked = .right
         } else {
             v2Detached[i].origin = clampedV2(v2Detached[i].origin, size: v2Detached[i].size)
             return
         }
         v2Detached[i].dockY = min(max(metrics.menuBarHeight + 8, pointer.y - V.tabSize.height / 2),
-                                  display.frame.height - V.tabSize.height - 8)
+                                  detachedArea.height - V.tabSize.height - 8)
     }
 
     /// The tucked tab pulled (or clicked): the window comes back out beside that side.
     func undockV2(_ id: String) {
         guard let i = v2Detached.firstIndex(where: { $0.id == id }), let side = v2Detached[i].docked else { return }
         let size = v2Detached[i].size
-        let x = side == .left ? 24 : display.frame.width - size.width - 24
+        let x = side == .left ? 24 : detachedArea.width - size.width - 24
         v2Detached[i].origin = clampedV2(CGPoint(x: x, y: v2Detached[i].dockY - 20), size: size)
         v2Detached[i].docked = nil
     }
@@ -798,24 +885,37 @@ extension WorkbenchModel {
                               result: task.state == .complete ? task.result : nil)]
     }
 
-    /// A pulled-out chat made bigger or smaller (its corner, or a pinch): the window and all in it
-    /// scale together, its top-left staying put, and it stays on the screen.
-    func scaleDetachedV2(_ id: String, to scale: CGFloat) {
+    /// A pulled-out chat made bigger or smaller (its corner, or a pinch): the window resizes, its
+    /// top-left staying put, and stays on the screen. Its words keep their size and reflow: only
+    /// the window changes (Oct 11; everything in it used to scale, the words too).
+    func resizeDetachedV2(_ id: String, to size: CGSize) {
         guard let i = v2Detached.firstIndex(where: { $0.id == id }) else { return }
-        let range = WorkbenchTokens.V2.detachedScale
-        v2Detached[i].scale = min(max(scale, range.lowerBound), range.upperBound)
+        let base = V2DetachedLayout.size, range = WorkbenchTokens.V2.detachedResize
+        let area = detachedArea
+        let width = min(max(size.width, base.width * range.lowerBound), base.width * range.upperBound, area.width - 8)
+        let height = min(max(size.height, base.height * range.lowerBound), base.height * range.upperBound,
+                         area.height - metrics.menuBarHeight - 8)
+        v2Detached[i].size = CGSize(width: width, height: height)
         v2Detached[i].origin = clampedV2(v2Detached[i].origin, size: v2Detached[i].size)
     }
 
-    /// ✕ on a pulled-out chat: it goes; a session still at work is stopped with it (cancelled).
+    /// ✕ on a pulled-out chat: it goes. Oct 15 review, QA21/QA23/DSP-24 (Ryan: "Close never
+    /// stops"): a session still at work goes back on the board and keeps working; only Stop stops.
+    /// At rest, the board shows it there a moment.
     func closeDetachedV2(_ id: String) {
-        if v2Task(id)?.state == .working { stopTask(id) }
+        let atWork = v2Task(id).map { $0.state == .working || $0.state == .needsYou } ?? false
         v2Detached.removeAll { $0.id == id }
+        guard atWork else { return }
+        v2Checked.remove(id)
+        v2Sessions.insert(id)
+        if notchState == .silent { showAgentPanel(pinned: false, sent: id) }
+        else if notchState == .v2Board { v2Focus = id }
     }
 
     private func clampedV2(_ origin: CGPoint, size: CGSize = V2DetachedLayout.size) -> CGPoint {
-        return CGPoint(x: min(max(4, origin.x), display.frame.width - size.width - 4),
-                       y: min(max(metrics.menuBarHeight + 4, origin.y), display.frame.height - size.height - 4))
+        let area = detachedArea
+        return CGPoint(x: min(max(4, origin.x), area.width - size.width - 4),
+                       y: min(max(metrics.menuBarHeight + 4, origin.y), area.height - size.height - 4))
     }
 
     // MARK: Keys
@@ -854,6 +954,13 @@ extension WorkbenchModel {
     func v2Key(_ key: ChatKey) -> Bool {
         switch notchState {
         case .v2Send:
+            // Oct 15 review, QA04: Return on a search takes the first chat found that can take it.
+            if v2Browsing, key == .enter, !cases.browseQuery.trimmingCharacters(in: .whitespaces).isEmpty {
+                if let first = v2BrowseRows.first(where: { if case .chat(let chat) = $0 { return v2ChatBlock(chat) == nil }; return false }) {
+                    pickV2Browse(first)
+                }
+                return true
+            }
             if v2Browsing, key == .left || key == .right {
                 let ids = ChatAgent.all.map(\.id)
                 let i = ids.firstIndex(of: v2BrowseAgent) ?? 0

@@ -5,6 +5,7 @@ import CapturesCore
 import FoveaKit
 import FoveaStore
 import FoveaPlatform
+import FoveaLook
 
 // The window: Home and Settings, the Captures design (Oct 6–9) on what's kept on this Mac. Every
 // design variant the prototype compared is fixed at its default (no Variants or States menus).
@@ -50,7 +51,10 @@ package final class HomeWindowController: NSObject {
         self.stores = stores
         let model = CapturesModel()
         self.model = model
-        let hosting = NSHostingController(rootView: MainView().environment(model))
+        // Oct 18, Ryan: the window in the primary language, switching live (FoveaLook's `.foveaLanguage()`);
+        // literal text too, once Bundle.main answers in it (LanguageBundle.swift).
+        FoveaLanguageBundle.install()
+        let hosting = NSHostingController(rootView: MainView().environment(model).foveaLanguage())
         hosting.sceneBridgingOptions = [.toolbars]
         hosting.sizingOptions = []
         // One size (no .resizable), and no full screen: the size is part of the design.
@@ -71,11 +75,83 @@ package final class HomeWindowController: NSObject {
         pullAll()
         model.onLibraryEdited = { [weak self] in self?.pushLibrary() }
         model.onPrefsEdited = { [weak self] in self?.pushPrefs() }
+        // Oct 15 review: signing in (AC-01.5) and "What Fovea remembers" read (OB-02) are kept in
+        // the prefs every surface reads.
+        model.onAccountEdited = { [weak self] email, provider in
+            guard let self else { return }
+            var p = self.stores.prefs.prefs
+            p.accountEmail = email
+            p.accountProvider = provider
+            p.signedOut = false
+            if p != self.stores.prefs.prefs { self.stores.prefs.prefs = p }
+        }
+        // Signing out is kept too, so every surface and the next launch agree (AC-01.5).
+        model.onSignedOut = { [weak self] in self?.stores.prefs.prefs.signedOut = true }
+        model.onMemoryDisclosureRead = { [weak self] in self?.stores.prefs.prefs.memoryDisclosureSeen = true }
+        model.dataFolder = DataLocation.resolve().root
         observeStores()
         applyAppearance()
         observeAppearance()
         pendingSettings = options.settings
+        // Getting Started's permissions are read again whenever the window comes back to the front.
+        NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.model.permissionsChecked = Date() }
+        }
+        registerReviewStages()
+        Self.registerSettingsPaneStages(model: model) { [weak self] in self?.show() }
     }
+
+    // MARK: Hooks the app wires (Oct 15 review)
+
+    /// OB-03.1: Settings › Getting Started's Replay the Tour.
+    package var onReplayTour: (() -> Void)? {
+        get { model.onReplayTour }
+        set { model.onReplayTour = newValue }
+    }
+    /// OB-03.1: Practise Again, with the first run's step: "weeklyUpdate", "packList", "followUp",
+    /// "dictation".
+    package var onPractice: ((String) -> Void)? {
+        get { model.onPractice }
+        set { model.onPractice = newValue }
+    }
+    /// HI-01.3: an expanded Dispatch card's Open in Notch, with the capture's id.
+    package var onOpenInNotch: ((String) -> Void)? {
+        get { model.onOpenInNotch }
+        set { model.onOpenInNotch = newValue }
+    }
+    /// QA25: a Dispatch that wasn't sent (`Capture.sendFailure`), sent again, with its id.
+    package var onSendAgain: ((String) -> Void)? {
+        get { model.onSendAgain }
+        set { model.onSendAgain = newValue }
+    }
+
+    /// Opens the window on any Settings section, from anywhere (the menu bar's icon, the menus):
+    /// "about", "gettingStarted", "plan", "account:earlier-data" (a part of it by its id).
+    package func showSettings(section: String) {
+        show()
+        openSettings(section)
+    }
+
+    /// The menu bar's Check for Updates…: About, checking.
+    package func checkForUpdates() {
+        show()
+        model.checkForUpdatesFromMenu()
+    }
+
+    /// The first run is done and the window is in front: "What Fovea remembers", once (OB-02),
+    /// for someone who finished the tour before the first run said it.
+    private func offerMemoryDisclosure() {
+        guard !disclosureOffered, !tourUnfinished, !stores.prefs.prefs.memoryDisclosureSeen else { return }
+        disclosureOffered = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.8))
+            guard self.window.isVisible, !self.stores.prefs.prefs.memoryDisclosureSeen else { return }
+            self.model.memoryDisclosureShown = true
+        }
+    }
+    private var disclosureOffered = false
+    /// Off for the design shots, which picture the sheet on purpose.
+    var offersDisclosure = true
 
     /// `--settings`: opened once the window is on screen (its toolbar follows the page then).
     private var pendingSettings: String?
@@ -96,6 +172,7 @@ package final class HomeWindowController: NSObject {
         if !placed { place(); placed = true }
         window.makeKeyAndOrderFront(nil)
         if !options.noActivate { NSApp.activate(ignoringOtherApps: true) }
+        if offersDisclosure { offerMemoryDisclosure() }
         if let target = pendingSettings {
             pendingSettings = nil
             Task { @MainActor in
@@ -106,10 +183,11 @@ package final class HomeWindowController: NSObject {
         }
     }
 
-    /// Opens Settings, on a category ("notch", "shortcuts:keys").
+    /// Opens Settings, on a category ("notch", "shortcuts:keys"), bringing the window forward.
     package func openSettings(_ target: String = "account") {
         let parts = target.split(separator: ":").map(String.init)
         guard let category = SettingsCategory(rawValue: parts.first ?? "account") else { return }
+        if !window.isVisible { show() }
         model.openSettings(category)
         if parts.count > 1 {
             Task { @MainActor in
@@ -140,8 +218,14 @@ package final class HomeWindowController: NSObject {
         pulling = true
         defer { pulling = false }
         let simulated = Fixtures.library(.typical)
+        // The credits are simulated; they reset on the first of next month, from today (Oct 15
+        // review: the fixture's own date read "resets Sep 30" in October beside a trial's end).
+        var usage = simulated.usage
+        let cal = Lines.calendar
+        if let month = cal.date(from: cal.dateComponents([.year, .month], from: Date())),
+           let next = cal.date(byAdding: .month, value: 1, to: month) { usage.resets = next }
         model.library = Library(now: Date(), captures: stores.captures.captures, dictionary: stores.dictionary.words,
-                                memories: simulated.memories, usage: simulated.usage, areas: simulated.areas)
+                                memories: simulated.memories, usage: usage, areas: simulated.areas)
         model.media = stores.captures.media
         model.calendarYear = Lines.calendar.component(.year, from: Date())
         pullPrefs()
@@ -167,13 +251,29 @@ package final class HomeWindowController: NSObject {
         set(\.showAnswers, p.showAnswers)
         set(\.reviewFirst, p.reviewFirst)
         set(\.openAtLogin, p.openAtLogin)
+        // Oct 15 review, ST-02.5: Show in Dock, for real (the app sets the activation policy).
+        set(\.showInDock, p.showInDock)
         set(\.appLanguage, p.language)
+        // Oct 18, Ryan: the languages chosen, the primary among them (none kept yet: the primary).
+        set(\.languages, p.languages.isEmpty ? [p.language] : p.languages)
+        // Oct 15 review: Tidy my words, Motion, the recorded shortcuts.
+        set(\.tidyWords, p.tidyWords)
+        set(\.motion, p.motion)
+        set(\.shortcutChords, p.shortcutChords)
+        // Oct 17, Ryan (FR-06): the languages asked for, the first run's and Settings' one list.
+        set(\.requestedLanguages, p.requestedLanguages)
+        // Oct 15 review, MW-05.1 and OB-03.2: each shortcut's keys as the person has them.
+        var keys: [String: [String]] = [:]
+        for shortcut in FoveaKeys.all { keys[shortcut.id] = FoveaKeys.chord(shortcut.id, p)?.caps ?? shortcut.keys }
+        if model.shortcutKeys != keys { model.shortcutKeys = keys }
         let accent = AccentChoice(rawValue: p.accent.rawValue) ?? .multicolor
         if model.accent != accent { model.accent = accent }
         if model.profileName != p.accountName { model.profileName = p.accountName }
         // Google, in 1.0, is a sign-up without an account server: no email to show.
-        let email = p.accountEmail.isEmpty && p.accountProvider == .google ? "Signed in with Google" : p.accountEmail
+        let email = p.accountEmail.isEmpty && p.accountProvider == .google ? L("Signed in with Google") : p.accountEmail
         if model.profileEmail != email { model.profileEmail = email }
+        if model.signedOut != p.signedOut { model.signedOut = p.signedOut }
+        if model.prefs.rememberNotice != p.memoryNotice { model.prefs.rememberNotice = p.memoryNotice }
     }
 
     private func pushPrefs() {
@@ -192,7 +292,14 @@ package final class HomeWindowController: NSObject {
         p.showAnswers = m.showAnswers
         p.reviewFirst = m.reviewFirst
         p.openAtLogin = m.openAtLogin
+        p.showInDock = m.showInDock
         p.language = m.appLanguage
+        p.languages = m.languages
+        p.tidyWords = m.tidyWords
+        p.memoryNotice = m.rememberNotice
+        p.motion = m.motion
+        p.shortcutChords = m.shortcutChords
+        p.requestedLanguages = m.requestedLanguages
         p.accent = FoveaAccent(rawValue: model.accent.rawValue) ?? .multicolor
         p.accountName = model.profileName
         if p != stores.prefs.prefs { stores.prefs.prefs = p }
@@ -200,7 +307,9 @@ package final class HomeWindowController: NSObject {
 
     private func pushLibrary() {
         guard !pulling else { return }
-        if model.library.captures != stores.captures.captures { stores.captures.replaceAll(model.library.captures) }
+        // A review stage's captures are shown, never kept.
+        let kept = model.stagedIDs.isEmpty ? model.library.captures : model.library.captures.filter { !model.stagedIDs.contains($0.id) }
+        if kept != stores.captures.captures { stores.captures.replaceAll(kept) }
         if model.library.dictionary != stores.dictionary.words { stores.dictionary.replaceAll(model.library.dictionary) }
     }
 
@@ -214,9 +323,11 @@ package final class HomeWindowController: NSObject {
             Task { @MainActor in
                 guard let self else { return }
                 self.pulling = true
-                if self.model.library.captures != self.stores.captures.captures {
+                let staged = self.model.library.captures.filter { self.model.stagedIDs.contains($0.id) }
+                let kept = self.model.library.captures.filter { !self.model.stagedIDs.contains($0.id) }
+                if kept != self.stores.captures.captures {
                     self.model.library.now = Date()
-                    self.model.library.captures = self.stores.captures.captures
+                    self.model.library.captures = (self.stores.captures.captures + staged).sorted { $0.time > $1.time }
                 }
                 if self.model.library.dictionary != self.stores.dictionary.words {
                     self.model.library.dictionary = self.stores.dictionary.words
@@ -286,7 +397,19 @@ package final class HomeWindowController: NSObject {
     // MARK: The menu bar's commands (every toolbar command is in the menu bar too)
 
     @objc package func showSettingsCommand(_ sender: Any?) { showSettings() }
+    // Oct 15 review, MW-06 and MW-04a: About opens Settings › About; Go and Help reach the new
+    // sections; the website's help and what's new.
+    @objc func showAbout(_ sender: Any?) { showSettings(section: SettingsCategory.about.rawValue) }
+    @objc func checkForUpdatesCommand(_ sender: Any?) { checkForUpdates() }
+    @objc func showGettingStarted(_ sender: Any?) { showSettings(section: SettingsCategory.gettingStarted.rawValue) }
+    @objc func showDictionary(_ sender: Any?) { showSettings(section: SettingsCategory.dictionary.rawValue) }
+    @objc func showMemory(_ sender: Any?) { showSettings(section: SettingsCategory.memory.rawValue) }
+    @objc func openHelpCenter(_ sender: Any?) { NSWorkspace.shared.open(FoveaSite.helpCenter) }
+    @objc func openWhatsNew(_ sender: Any?) { NSWorkspace.shared.open(FoveaSite.whatsNew) }
     @objc func reportProblem(_ sender: Any?) { show(); model.reporting = true }
+    /// The website's feedback and subscription pages (Oct 13).
+    @objc func sendFeedback(_ sender: Any?) { NSWorkspace.shared.open(FoveaSite.feedback) }
+    @objc func manageSubscription(_ sender: Any?) { NSWorkspace.shared.open(FoveaSite.account) }
     @objc func goBack(_ sender: Any?) { model.back() }
     @objc func find(_ sender: Any?) {
         show()
@@ -305,6 +428,8 @@ package final class HomeWindowController: NSObject {
 
     /// The main menu: Fovea, Edit, View, Go, Window, Help. `quit` is the App's (it puts back the
     /// apps a first run hid before it quits).
+    /// Oct 18, Ryan: every title in the primary language; the App builds it again when the
+    /// language changes.
     package func mainMenu(quit: Selector, quitTarget: AnyObject) -> NSMenu {
         let main = NSMenu()
         func add(_ title: String, _ items: [NSMenuItem]) -> NSMenu {
@@ -323,45 +448,59 @@ package final class HomeWindowController: NSObject {
             i.target = target
             return i
         }
-        _ = add("Fovea", [
-            item("About Fovea", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), ""),
+        _ = add(L("Fovea"), [
+            item(L("About Fovea"), #selector(showAbout(_:)), "", target: self),
+            item(L("Check for Updates…"), #selector(checkForUpdatesCommand(_:)), "", target: self),
             .separator(),
-            item("Settings…", #selector(showSettingsCommand(_:)), ",", target: self),
+            item(L("Settings…"), #selector(showSettingsCommand(_:)), ",", target: self),
             .separator(),
-            item("Hide Fovea", #selector(NSApplication.hide(_:)), "h"),
-            item("Hide Others", #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
-            item("Show All", #selector(NSApplication.unhideAllApplications(_:)), ""),
+            item(L("Hide Fovea"), #selector(NSApplication.hide(_:)), "h"),
+            item(L("Hide Others"), #selector(NSApplication.hideOtherApplications(_:)), "h", [.command, .option]),
+            item(L("Show All"), #selector(NSApplication.unhideAllApplications(_:)), ""),
             .separator(),
-            item("Quit Fovea", quit, "q", target: quitTarget),
+            item(L("Quit Fovea"), quit, "q", target: quitTarget),
         ])
-        _ = add("Edit", [
-            item("Undo", Selector(("undo:")), "z"),
-            item("Redo", Selector(("redo:")), "z", [.command, .shift]),
+        _ = add(L("Edit"), [
+            item(L("Undo"), Selector(("undo:")), "z"),
+            item(L("Redo"), Selector(("redo:")), "z", [.command, .shift]),
             .separator(),
-            item("Cut", #selector(NSText.cut(_:)), "x"),
-            item("Copy", #selector(NSText.copy(_:)), "c"),
-            item("Paste", #selector(NSText.paste(_:)), "v"),
-            item("Select All", #selector(NSText.selectAll(_:)), "a"),
+            item(L("Cut"), #selector(NSText.cut(_:)), "x"),
+            item(L("Copy"), #selector(NSText.copy(_:)), "c"),
+            item(L("Paste"), #selector(NSText.paste(_:)), "v"),
+            item(L("Select All"), #selector(NSText.selectAll(_:)), "a"),
             .separator(),
-            item("Find", #selector(find(_:)), "f", target: self),
+            item(L("Find"), #selector(find(_:)), "f", target: self),
         ])
-        _ = add("View", [
-            item("All", #selector(showKind(_:)), "1", tag: 0, target: self),
-            item("Dictation", #selector(showKind(_:)), "2", tag: 1, target: self),
-            item("Dispatch", #selector(showKind(_:)), "3", tag: 2, target: self),
+        _ = add(L("View"), [
+            item(L("All"), #selector(showKind(_:)), "1", tag: 0, target: self),
+            item(L("Dictation"), #selector(showKind(_:)), "2", tag: 1, target: self),
+            item(L("Dispatch"), #selector(showKind(_:)), "3", tag: 2, target: self),
         ])
-        _ = add("Go", [
-            item("Home", #selector(showHome(_:)), "0", target: self),
-            item("Back", #selector(goBack(_:)), "[", target: self),
+        // ⇧⌘ and a letter, as Finder's Go menu has them, clear of View's ⌘1–3.
+        _ = add(L("Go"), [
+            item(L("Home"), #selector(showHome(_:)), "0", target: self),
+            .separator(),
+            item(L("Getting Started"), #selector(showGettingStarted(_:)), "g", [.command, .shift], target: self),
+            item(L("Dictionary"), #selector(showDictionary(_:)), "d", [.command, .shift], target: self),
+            item(L("Memory"), #selector(showMemory(_:)), "m", [.command, .shift], target: self),
+            .separator(),
+            item(L("Back"), #selector(goBack(_:)), "[", target: self),
         ])
-        let windowMenu = add("Window", [
-            item("Close", #selector(NSWindow.performClose(_:)), "w"),
-            item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
+        let windowMenu = add(L("Window"), [
+            item(L("Close"), #selector(NSWindow.performClose(_:)), "w"),
+            item(L("Minimize"), #selector(NSWindow.performMiniaturize(_:)), "m"),
         ])
         NSApp.windowsMenu = windowMenu
         // Help, as every Mac app's ends (row 9): the Mac adds its search field to it.
-        let helpMenu = add("Help", [
-            item("Report a Problem…", #selector(reportProblem(_:)), "", target: self),
+        let helpMenu = add(L("Help"), [
+            item(L("Fovea Help Center"), #selector(openHelpCenter(_:)), "?", target: self),
+            item(L("What's New in Fovea"), #selector(openWhatsNew(_:)), "", target: self),
+            .separator(),
+            item(L("Getting Started"), #selector(showGettingStarted(_:)), "", target: self),
+            .separator(),
+            item(L("Report a Problem…"), #selector(reportProblem(_:)), "", target: self),
+            item(L("Send Feedback…"), #selector(sendFeedback(_:)), "", target: self),
+            item(L("Manage Subscription…"), #selector(manageSubscription(_:)), "", target: self),
         ])
         NSApp.helpMenu = helpMenu
         return main

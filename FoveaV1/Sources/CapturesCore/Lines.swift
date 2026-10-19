@@ -1,4 +1,5 @@
 import Foundation
+import FoveaKit
 
 /// Every line Fovea computes about a capture, worded once, so the card, the detail and search say
 /// the same thing.
@@ -10,75 +11,85 @@ public enum Lines {
         return c
     }()
 
+    /// Oct 18, Ryan: the lines are in the primary language. English keeps its exact formats; Chinese
+    /// takes the system's own for its locale ("10月18日 星期日", "下午2:30").
+    static var chinese: Bool { FoveaLocale.shared.language == .chinese }
+
+    static func formatter(_ english: String, chinese template: String) -> DateFormatter {
+        let f = DateFormatter()
+        f.calendar = calendar; f.timeZone = calendar.timeZone
+        if chinese {
+            f.locale = Locale(identifier: "zh-Hans")
+            f.setLocalizedDateFormatFromTemplate(template)
+        } else {
+            f.locale = calendar.locale
+            f.dateFormat = english
+        }
+        return f
+    }
+
     /// Paste's header time: "just now", "3 minutes ago", "2 hours ago", "Yesterday", "3 days ago",
     /// then the date.
     public static func relative(_ date: Date, now: Date) -> String {
         let s = max(0, now.timeIntervalSince(date))
-        if s < 60 { return "just now" }
-        if s < 3_600 { let m = Int(s / 60); return m == 1 ? "1 minute ago" : "\(m) minutes ago" }
-        if calendar.isDate(date, inSameDayAs: now) { let h = Int(s / 3_600); return h == 1 ? "1 hour ago" : "\(h) hours ago" }
+        if s < 60 { return L("just now") }
+        if s < 3_600 { let m = Int(s / 60); return m == 1 ? L("1 minute ago") : L("\(m) minutes ago") }
+        if calendar.isDate(date, inSameDayAs: now) { let h = Int(s / 3_600); return h == 1 ? L("1 hour ago") : L("\(h) hours ago") }
         let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: now)).day ?? 0
-        if days == 1 { return "Yesterday" }
-        if days < 7 { return "\(days) days ago" }
+        if days == 1 { return L("Yesterday") }
+        if days < 7 { return L("\(days) days ago") }
         return day(date)
     }
 
     /// Paste 6's compact time: "now", "3m", "2h", "1d", "3w", then the date.
     public static func compact(_ date: Date, now: Date) -> String {
         let s = max(0, now.timeIntervalSince(date))
-        if s < 60 { return "now" }
-        if s < 3_600 { return "\(Int(s / 60))m" }
-        if calendar.isDate(date, inSameDayAs: now) { return "\(Int(s / 3_600))h" }
+        if s < 60 { return L("now") }
+        if s < 3_600 { let m = Int(s / 60); return L("\(m)m") }
+        if calendar.isDate(date, inSameDayAs: now) { let h = Int(s / 3_600); return L("\(h)h") }
         let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: now)).day ?? 0
-        if days < 7 { return "\(max(1, days))d" }
-        if days < 35 { return "\(days / 7)w" }
+        if days < 7 { let d = max(1, days); return L("\(d)d") }
+        if days < 35 { let w = days / 7; return L("\(w)w") }
         return day(date)
     }
 
-    /// "Oct 1" (no year this year).
+    /// "Oct 1" (no year this year); "10月1日".
     public static func day(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.calendar = calendar; f.timeZone = calendar.timeZone; f.locale = calendar.locale
-        f.dateFormat = "MMM d"
-        return f.string(from: date)
+        formatter("MMM d", chinese: "MMMd").string(from: date)
     }
 
     public static func clock(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.calendar = calendar; f.timeZone = calendar.timeZone; f.locale = calendar.locale
-        f.dateFormat = "HH:mm"
-        return f.string(from: date)
+        formatter("HH:mm", chinese: "HHmm").string(from: date)
     }
 
     /// A day group's title: Today, Yesterday, then the weekday and date.
     public static func dayGroup(_ date: Date, now: Date) -> String {
-        if calendar.isDate(date, inSameDayAs: now) { return "Today" }
-        if let y = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: y) { return "Yesterday" }
-        let f = DateFormatter()
-        f.calendar = calendar; f.timeZone = calendar.timeZone; f.locale = calendar.locale
-        f.dateFormat = "EEEE, MMM d"
-        return f.string(from: date)
+        if calendar.isDate(date, inSameDayAs: now) { return L("Today") }
+        if let y = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: y) { return L("Yesterday") }
+        return formatter("EEEE, MMM d", chinese: "MMMdEEEE").string(from: date)
     }
 
     /// A time of day as an archived card shows it, under a header that already names the day:
     /// "10:42 AM".
     public static func time(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.calendar = calendar; f.timeZone = calendar.timeZone; f.locale = calendar.locale
-        f.dateFormat = "h:mm a"
-        return f.string(from: date)
+        formatter("h:mm a", chinese: "hmm").string(from: date)
     }
 
     /// A day as the archive names it: "Today", "Yesterday", then "Thursday, September 24", with
     /// the year when it isn't this one.
     public static func longDay(_ date: Date, now: Date) -> String {
-        if calendar.isDate(date, inSameDayAs: now) { return "Today" }
-        if let y = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: y) { return "Yesterday" }
-        let f = DateFormatter()
-        f.calendar = calendar; f.timeZone = calendar.timeZone; f.locale = calendar.locale
+        if calendar.isDate(date, inSameDayAs: now) { return L("Today") }
+        if let y = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: y) { return L("Yesterday") }
         let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: now)
-        f.dateFormat = sameYear ? "EEEE, MMMM d" : "EEEE, MMMM d, yyyy"
-        return f.string(from: date)
+        return formatter(sameYear ? "EEEE, MMMM d" : "EEEE, MMMM d, yyyy", chinese: sameYear ? "MMMMdEEEE" : "yyyyMMMMdEEEE").string(from: date)
+    }
+
+    /// One type's count: "6 dictations", "1 dispatch".
+    public static func count(_ n: Int, of kind: CaptureKind) -> String {
+        switch kind {
+        case .dictation: return n == 1 ? L("1 dictation") : L("\(n) dictations")
+        case .dispatch: return n == 1 ? L("1 dispatch") : L("\(n) dispatches")
+        }
     }
 
     /// A day's captures by type: "6 dictations · 5 captures · 3 dispatches" (types it has).
@@ -86,7 +97,7 @@ public enum Lines {
         CaptureKind.allCases.compactMap { kind -> String? in
             let n = captures.filter { $0.kind == kind }.count
             guard n > 0 else { return nil }
-            return "\(n) \(n == 1 ? kind.title.lowercased() : kind.plural.lowercased())"
+            return count(n, of: kind)
         }
         .joined(separator: " · ")
     }
@@ -102,10 +113,11 @@ public enum Lines {
 
     /// An attachment as VoiceOver and the copy menu name it: "Region 1", "Passage 2", "File 3".
     public static func name(_ attachment: Attachment) -> String {
+        let i = attachment.index
         switch attachment.kind {
-        case .region: return "Region \(attachment.index)"
-        case .passage: return "Passage \(attachment.index)"
-        case .file: return "File \(attachment.index)"
+        case .region: return L("Region \(i)")
+        case .passage: return L("Passage \(i)")
+        case .file: return L("File \(i)")
         }
     }
 
@@ -129,12 +141,13 @@ public enum Lines {
         f.numberStyle = .decimal
         let left = f.string(from: NSNumber(value: usage.left)) ?? "\(usage.left)"
         let total = f.string(from: NSNumber(value: usage.total)) ?? "\(usage.total)"
-        return "\(left) of \(total) credits left · resets \(day(usage.resets))"
+        let resets = day(usage.resets)
+        return L("\(left) of \(total) credits left · resets \(resets)")
     }
 
     /// A count line over the grid: "21 captures", "3 dictations".
     public static func count(_ n: Int, kind: CaptureKind?) -> String {
-        let noun = kind.map { n == 1 ? $0.title.lowercased() : $0.plural.lowercased() } ?? (n == 1 ? "item" : "items")
-        return "\(n) \(noun)"
+        if let kind { return count(n, of: kind) }
+        return n == 1 ? L("1 item") : L("\(n) items")
     }
 }

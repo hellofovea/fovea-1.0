@@ -79,7 +79,13 @@ extension V2BoardLayout {
             return V2BoardLayout(outline: rest, listHeight: 0, scrolls: false,
                                  hoverSize: CGSize(width: BV.capsuleWide, height: room))
         case .sections, .badges, .petList:
-            return V2BoardLayout.make(sections: model.v2BoardGroups.map(\.count), style: style, metrics: metrics)
+            var layout = V2BoardLayout.make(sections: model.v2BoardGroups.map(\.count), style: style, metrics: metrics)
+            // Oct 15 review, NH-03: room for "Remembered" over the list.
+            if model.cases.memoryNotice != nil {
+                layout.notice = WorkbenchTokens.Cases.memoryRow
+                layout.outline.size.height += layout.notice
+            }
+            return layout
         }
     }
 }
@@ -191,7 +197,7 @@ struct BoardBigButton: View {
 }
 
 /// A session's big buttons: Deny and Allow (or its answers); Read the answer and Open in its app;
-/// Retry; Stop and Open.
+/// Retry; Stop and Open. Oct 17, Ryan: Open in <agent> works as the session's own (one way).
 struct BoardActions: View {
     let model: WorkbenchModel
     let task: AgentTaskItem
@@ -200,7 +206,7 @@ struct BoardActions: View {
         let agent = ChatAgent.named(task.agent)
         HStack(spacing: WorkbenchTokens.BoardV.actionGap) {
             if task.statusUnknown {
-                BoardBigButton(title: "Open in \(agent.name)", symbol: "arrow.up.forward") { model.openTask(task.id) }
+                BoardBigButton(title: "Open in \(agent.name)", symbol: "arrow.up.forward") { model.openInAgentV2(task.id) }
             } else {
                 switch task.state {
                 case .needsYou:
@@ -221,10 +227,10 @@ struct BoardActions: View {
                     BoardBigButton(title: "Read the answer", symbol: "arrow.up.left.and.arrow.down.right", primary: true) {
                         model.openV2(task.id, expanded: true)
                     }
-                    BoardBigButton(title: "Open in \(agent.name)", symbol: "arrow.up.forward") { model.openTask(task.id) }
+                    BoardBigButton(title: "Open in \(agent.name)", symbol: "arrow.up.forward") { model.openInAgentV2(task.id) }
                 case .failed:
                     BoardBigButton(title: "Retry", symbol: "arrow.clockwise", primary: true) { guarded { model.retryTask(task.id) } }
-                    BoardBigButton(title: "Open in \(agent.name)", symbol: "arrow.up.forward") { model.openTask(task.id) }
+                    BoardBigButton(title: "Open in \(agent.name)", symbol: "arrow.up.forward") { model.openInAgentV2(task.id) }
                 case .working:
                     BoardBigButton(title: "Stop", symbol: "stop.fill") { guarded { model.stopTask(task.id) } }
                     BoardBigButton(title: "Open", symbol: "arrow.up.forward") { model.openV2(task.id) }

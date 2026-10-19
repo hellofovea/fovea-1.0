@@ -5,6 +5,14 @@ import FoveaKit
 import FoveaLook
 import FoveaPlatform
 
+/// Oct 18, Ryan: a word whose English means two things in the app ("Done" the first run's button
+/// and a state here, "Running" a board section and a step's verb, "Thinking" the agent at work
+/// and the model sheet's row), looked up by a key of its own so Chinese can say each: the English
+/// as given, the Chinese under `key` in Localization/zh-Hans/island.strings.
+func L(_ key: StaticString, english: String.LocalizationValue) -> String {
+    String(localized: LocalizedStringResource(key, defaultValue: english, locale: FoveaLocale.shared.locale, bundle: .main))
+}
+
 // The dev team's notch feedback of Oct 6 and Yulun's answers, one panel tab per item
 // (docs/island/FEEDBACK_2026-10-06.md has every decision and why). Items 5, 18, 20, 21 and 22
 // were set aside; 8, 14 and 17 are research, written up, not drawn.
@@ -55,6 +63,15 @@ struct ScreenHighlight: Identifiable, Equatable {
     var rects: [CGRect]
     var file: Bool
     var referent: UUID?
+    /// Oct 17, Ryan: words taken while Fovea listens: a highlighter's mark in the accent over
+    /// exactly their lines, kept until the session is done or the referent leaves the stack.
+    var taken = false
+    /// Oct 18, Ryan: taken from another app's window: drawn over that window (`MarkWindow`), on its
+    /// display and its Space only, not in the island's layer. Its rects there, in that window's own
+    /// top-left points.
+    var window: CGWindowID? = nil
+    var windowRects: [CGRect] = []
+    var windowBounds: CGRect = .zero
 }
 
 /// Fovea's accent (FoveaKit's `FoveaAccent`), in the system's own colors (FoveaLook): the
@@ -132,10 +149,10 @@ enum BoardSection: Int, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .needsYou: return "Needs you"
-        case .running: return "Running"
-        case .done: return "Done"
-        case .unknown: return "Status unavailable"
+        case .needsYou: return L("Needs you")
+        case .running: return L("Running")
+        case .done: return L("island.done", english: "Done")
+        case .unknown: return L("Status unavailable")
         }
     }
 }
@@ -181,6 +198,23 @@ enum VoiceError: String, CaseIterable, Identifiable {
 
     enum Action: String {
         case retry = "Retry", openSettings = "Open Settings", signIn = "Sign in", upgrade = "Upgrade", renew = "Renew"
+        /// Oct 15 review, NH-04: the microphone is chosen in Fovea's Settings › Voice.
+        case chooseMicrophone = "Choose Microphone…"
+
+        /// A label longer than Open Settings: its notice is a little wider.
+        var isLong: Bool { self == .chooseMicrophone }
+
+        /// Oct 18, Ryan: the button's words, in the primary language.
+        var label: String {
+            switch self {
+            case .retry: return L("Retry")
+            case .openSettings: return L("Open Settings")
+            case .signIn: return L("Sign in")
+            case .upgrade: return L("Upgrade")
+            case .renew: return L("Renew")
+            case .chooseMicrophone: return L("Choose Microphone…")
+            }
+        }
     }
 
     var moment: Moment {
@@ -224,23 +258,23 @@ enum VoiceError: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .noSpeech: return "No speech detected"
-        case .tooShort: return "Recording too short"
-        case .micPermission: return "Microphone access is off"
-        case .micUnavailable: return "Microphone unavailable"
-        case .speechPermission: return "Speech Recognition is off"
-        case .screenRecording: return "Screen Recording is off"
-        case .imageTooLarge: return "Image over 20 MB, not added"
-        case .offline: return "You're offline"
-        case .timeout: return "Request timed out"
-        case .serverUnavailable: return "Service temporarily unavailable"
-        case .sessionExpired: return "Session expired"
-        case .quotaUsed: return "Usage limit reached"
-        case .trialEnded: return "Trial ended"
-        case .proExpired: return "Pro subscription expired"
-        case .rateLimited: return "Too many requests"
-        case .tooLarge: return "Recording too large"
-        case .unexpected: return "Something went wrong"
+        case .noSpeech: return L("No speech detected")
+        case .tooShort: return L("Recording too short")
+        case .micPermission: return L("Microphone access is off")
+        case .micUnavailable: return L("Microphone unavailable")
+        case .speechPermission: return L("Speech Recognition is off")
+        case .screenRecording: return L("Screen Recording is off")
+        case .imageTooLarge: return L("Image over 20 MB, not added")
+        case .offline: return L("You're offline")
+        case .timeout: return L("Request timed out")
+        case .serverUnavailable: return L("Service temporarily unavailable")
+        case .sessionExpired: return L("Session expired")
+        case .quotaUsed: return L("Usage limit reached")
+        case .trialEnded: return L("Trial ended")
+        case .proExpired: return L("Pro subscription expired")
+        case .rateLimited: return L("Too many requests")
+        case .tooLarge: return L("Recording too large")
+        case .unexpected: return L("Something went wrong")
         }
     }
 
@@ -248,29 +282,43 @@ enum VoiceError: String, CaseIterable, Identifiable {
     var message: String? {
         switch self {
         case .noSpeech, .imageTooLarge, .screenRecording: return nil
-        case .tooShort: return "Say a little more, then try again."
-        case .micPermission, .speechPermission: return "Allow it in System Settings, then try again."
-        case .micUnavailable: return "Restart Fovea to use it again."
-        case .offline: return "Your recording is saved. Check your connection."
-        case .timeout: return "Your recording is saved. The server took too long."
-        case .serverUnavailable: return "Your recording is saved. Try again soon."
-        case .sessionExpired: return "Sign in again to keep using Fovea."
-        case .quotaUsed: return "This week's quota is used up. Resets Mon, Oct 12."
-        case .trialEnded: return "Upgrade to Pro to keep using Fovea."
-        case .proExpired: return "Renew it to keep using Fovea."
-        case .rateLimited: return "Try again in a few seconds."
-        case .tooLarge: return "Your recording is saved in History. Try a shorter one."
-        case .unexpected: return "Your recording is saved. Support ID: 7F3K-92QD"
+        case .tooShort: return L("Say a little more, then try again.")
+        case .micPermission, .speechPermission: return L("Allow it in System Settings, then try again.")
+        // Oct 15 review, NH-04: Choose Microphone… beside it.
+        case .micUnavailable: return L("Choose another, or restart Fovea.")
+        case .offline: return L("Your recording is saved. Check your connection.")
+        case .timeout: return L("Your recording is saved. The server took too long.")
+        case .serverUnavailable: return L("Your recording is saved. Try again soon.")
+        case .sessionExpired: return L("Sign in again to keep using Fovea.")
+        case .quotaUsed: return L("This week's quota is used up. Resets Mon, Oct 12.")
+        case .trialEnded: return L("Upgrade to Pro to keep using Fovea.")
+        case .proExpired: return L("Renew it to keep using Fovea.")
+        case .rateLimited: return L("Try again in a few seconds.")
+        case .tooLarge: return L("Your recording is saved in History. Try a shorter one.")
+        // Real in 1.0 (recognition that broke), which keeps no recording: no "saved", no made-up ID.
+        case .unexpected: return L("Speech recognition stopped. Try again.")
         }
     }
 
     var action: Action? {
         switch self {
         case .micPermission, .speechPermission, .screenRecording: return .openSettings
+        // Oct 15 review, NH-04: every notice whose fix is in Settings or System Settings has its button.
+        case .micUnavailable: return .chooseMicrophone
         case .offline, .timeout, .serverUnavailable, .unexpected: return .retry
         case .sessionExpired: return .signIn
         case .quotaUsed, .trialEnded: return .upgrade
         case .proExpired: return .renew
+        default: return nil
+        }
+    }
+
+    /// Oct 15 review, NH-04: the page of Fovea's own Settings where the fix is (the microphone in
+    /// Voice, signing in again in Account); nil when it's System Settings, the website, or nowhere.
+    var settingsPage: String? {
+        switch action {
+        case .chooseMicrophone: return "voice"
+        case .signIn: return "account"
         default: return nil
         }
     }
@@ -457,7 +505,16 @@ extension WorkbenchModel {
     /// open where the fix is (System Settings, the sign-in page, pricing), and the island rests.
     func performErrorAction(_ error: VoiceError) {
         if barNotice == error {
+            // Inside the bar (Screen Recording off): its button opens System Settings too, and the
+            // bar goes on listening (it only closed the notice before, Oct 11).
+            if live != nil, error == .screenRecording { Permission.screenRecording.openSettings() }
             dismissBarNotice()
+            return
+        }
+        // Oct 15 review, NH-04: where the fix is, in Fovea's own Settings (the app opens the window).
+        if let live, let page = error.settingsPage {
+            live.openSettings?(page)
+            notchState = .silent
             return
         }
         // Fovea: where the fix is, in System Settings.
@@ -471,8 +528,22 @@ extension WorkbenchModel {
             notchState = .silent
             return
         }
+        // Keeping or renewing the plan is the website's (Oct 13): Renew opens the subscription,
+        // Upgrade the plans.
+        if live != nil, error.action == .renew || error.action == .upgrade {
+            NSWorkspace.shared.open(error.action == .renew ? FoveaSite.account : FoveaSite.pricing)
+            notchState = .silent
+            return
+        }
         switch error.action {
         case .retry:
+            // 1.0 keeps no recording to send again: Retry listens again (Oct 11).
+            // In the flow that failed: Dispatch's bar again after a Dispatch error (Oct 11).
+            if live != nil, !demoSamples {
+                notchState = .silent
+                if restingFlow == .dispatchV2 { startV2Voice() } else { toggleVoiceFlow() }
+                return
+            }
             if transcript.isEmpty { transcript = Self.sampleTranscript }
             startTranscribing()
         default:
@@ -548,16 +619,17 @@ extension WorkbenchModel {
         if click ? !turnedOn : turnedOn { highlighting = false }
     }
 
-    /// ⌘ on a voice bar: a screenshot, one region per press (decided Oct 6, round two). Held, capture
-    /// is on while held.
-    func commandDown() {
+    /// The region's key on a voice bar: a screenshot, one region per press (decided Oct 6, round
+    /// two). Held, capture is on while held. ⌘ until Oct 17, then ⌥ (Ryan: ⌘ clashed with Codex), or
+    /// whatever Settings › Shortcuts records; the Workbench's mock keeps ⌘.
+    func regionDown() {
         guard notchState.collects else { commandTurnedOn = nil; return }
         if highlighting { highlighting = false }
         commandTurnedOn = !capturing
         capturing = true
     }
 
-    func commandUp(click: Bool) {
+    func regionUp(click: Bool) {
         guard let turnedOn = commandTurnedOn else { return }
         commandTurnedOn = nil
         guard notchState.collects else { return }
@@ -663,10 +735,9 @@ extension WorkbenchModel {
     func finishHighlight(from a: CGPoint, to b: CGPoint) {
         guard highlighting else { return }
         highlightDraft = nil
-        if let live {
-            finishLiveHighlight(live, from: a, to: b)
-            return
-        }
+        // Oct 17, Ryan: the real Mac has no highlighter; words and files are taken with no key
+        // (`autoTake`, IslandModel+Live.swift). This is the Workbench's.
+        guard live == nil else { highlighting = false; return }
         if hypot(a.x - b.x, a.y - b.y) <= 3 {
             for file in DesktopFile.all {
                 if screenContent == .desktop, let rect = agentAnchors["desktop.\(file.name)"], rect.contains(b) {

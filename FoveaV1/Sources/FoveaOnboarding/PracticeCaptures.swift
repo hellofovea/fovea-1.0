@@ -22,7 +22,7 @@ enum PracticeCaptures {
                 destination = Destination(agent, chat: chat, turn: turns[chat] ?? 1)
             }
             let app = record.kind == .dictation
-                ? (record.theme.hasPrefix("Feedback") ? AppRef("Fovea", "com.fovea.app") : AppRef("Messages", "com.apple.MobileSMS"))
+                ? (record.theme == L("Feedback on the first run") ? AppRef("Fovea", "com.fovea.app") : AppRef(L("Messages"), "com.apple.MobileSMS"))
                 : AppRef("Safari", "com.apple.Safari")
             return CapturesCore.Capture(
                 id: "onboarding-\(index)",
@@ -34,8 +34,8 @@ enum PracticeCaptures {
                 destination: destination,
                 theme: record.theme,
                 seconds: max(2, Double(text.split(separator: " ").count) * 0.4),
-                site: record.kind == .dictation ? nil : (record.theme.contains("Pack") ? PracticeTab.trail.address : PracticeTab.analytics.address),
-                tags: ["First run"])
+                site: record.kind == .dictation ? nil : ([L("Packing for the snow"), L("Sorting the packing list")].contains(record.theme) ? PracticeTab.trail.address : PracticeTab.analytics.address),
+                tags: [L("First run")])
         }
     }
 
@@ -44,7 +44,7 @@ enum PracticeCaptures {
         case .region(let source):
             return Attachment(index, .region, anchor: anchor, art: OT.Practice.photoArt, text: "", source: source)
         case .wholeScreen:
-            return Attachment(index, .region, anchor: anchor, art: OT.Practice.photoArt, text: "The whole screen", source: "Desktop")
+            return Attachment(index, .region, anchor: anchor, art: OT.Practice.photoArt, text: L("The whole screen"), source: L("Desktop"))
         case .passage(let text, let source):
             return Attachment(index, .passage, anchor: anchor, text: text, source: source)
         case .file(let name, let type, let folder):

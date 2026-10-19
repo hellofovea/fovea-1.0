@@ -2,16 +2,20 @@ import AppKit
 import SwiftUI
 import CapturesCore
 import FoveaKit
+import FoveaLook
 
 // What the App UI review (Oct 6) added to a capture, each built on the card as it was:
-// - a recording that failed says so, keeps nothing from you, and can be transcribed again
-//   (row 28; after Messages' "Not Delivered" and Superwhisper's Reprocess);
+// - a recording whose words didn't come back says so, and Fovea tries it again on its own
+//   (row 28; Oct 15 review, VF11, VF13 and QA19: no recording to see, play or save, no button);
 // - its tags, yours to change, each showing every capture that has it (row 25);
-// - Save, the recording among what it saves, and a picture opened large (row 28).
+// - Save, and a picture opened large (row 28; Oct 15 review, IS04: real files).
 // Gone (Yulun, Oct 7): the recording to play on the card, and Open in Claude Code (row 27).
+// Oct 15 review, HI-01.3 and QA25: a Dispatch's expanded card says where it went, opens it in the
+// notch, and sends a failed one again.
 
-/// A recording whose words never came back: what happened, that nothing is lost, and how to try
-/// again. On the card, two lines; in the expanded card, Transcribe Again.
+/// A recording whose words haven't come back yet: what happened, and that Fovea is trying again
+/// on its own (Oct 15 review, VF13). On the card, two lines; in the expanded card, a quiet notice
+/// and "Trying again…" while it does. Nothing to press, no recording to see.
 struct FailedNotice: View {
     @Environment(CapturesModel.self) private var model
     @Environment(\.palette) private var palette
@@ -22,50 +26,116 @@ struct FailedNotice: View {
         let busy = model.transcribing.contains(capture.id)
         if compact {
             VStack(alignment: .leading, spacing: 4) {
-                Text(capture.failure ?? "")
+                // The title above says "Not transcribed yet": here, why, and that Fovea is on it.
+                // Oct 18, Ryan: why, in the primary language (looked up as written).
+                Text(L(key: capture.failure ?? ""))
                     .font(.system(size: T.Text.cardBody)).foregroundStyle(palette.text)
-                Text(busy ? "Transcribing…" : "The recording is kept. Open it to transcribe it again.")
+                Text(busy ? "Trying again…" : "Fovea is trying again.")
                     .font(.system(size: 11.5)).foregroundStyle(palette.secondary)
+                    .contentTransition(.opacity)
             }
             .fixedSize(horizontal: false, vertical: true)
+            // Oct 15 review, VF13: no "the recording is kept, open it"; Fovea retries by itself.
         } else {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "exclamationmark.circle.fill")
-                    .font(.system(size: 17)).foregroundStyle(palette.danger)
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 15, weight: .medium)).foregroundStyle(palette.secondary)
+                    .padding(.top, 1)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Fovea couldn't transcribe this").font(.system(size: 13, weight: .semibold)).foregroundStyle(palette.text)
-                    Text("\(capture.failure ?? "") Your recording is kept, so nothing you said is lost.")
+                    Text("Not transcribed yet").font(.system(size: 13, weight: .semibold)).foregroundStyle(palette.text)
+                    Text("\(L(key: capture.failure ?? "")) Fovea is trying again, and your words show up here when they're back.")
                         .font(.system(size: 13)).foregroundStyle(palette.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 8) {
-                        if busy {
+                    if busy {
+                        HStack(spacing: 8) {
                             ProgressView().controlSize(.small)
-                            Text("Transcribing…").font(.system(size: 12)).foregroundStyle(palette.secondary)
-                        } else {
-                            Button("Transcribe Again") { model.transcribeAgain(capture.id) }
-                                .buttonStyle(.borderedProminent)
+                            Text("Trying again…").font(.system(size: 12)).foregroundStyle(palette.secondary)
                         }
+                        .frame(minHeight: 24)
+                        .padding(.top, 4)
+                        .transition(.opacity)
                     }
-                    .frame(minHeight: 28)
-                    .padding(.top, 6)
                 }
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(palette.dangerWash))
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(palette.fill))
             .accessibilityElement(children: .contain)
         }
     }
 }
 
-/// The foot of an expanded capture: its tags. Nothing else (Yulun, Oct 7: no recording to play
-/// and no Open in Claude Code on any card).
+/// Oct 15 review, QA25: a Dispatch that didn't reach its agent: why, and Send Again (the notch
+/// sends it, `onSendAgain`).
+struct NotSentNotice: View {
+    @Environment(CapturesModel.self) private var model
+    @Environment(\.palette) private var palette
+    let capture: Capture
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.system(size: 17)).foregroundStyle(palette.danger)
+            VStack(alignment: .leading, spacing: 4) {
+                // Oct 18, Ryan: in the primary language.
+                Text("Not sent to \(capture.destination?.agent ?? L("your agent"))")
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(palette.text)
+                Text(L(key: capture.sendFailure ?? ""))
+                    .font(.system(size: 13)).foregroundStyle(palette.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 12)
+            PillButton("Send Again", symbol: "arrow.up", kind: .prominent) { model.sendAgain(capture.id) }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(palette.dangerWash))
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// The foot of an expanded capture: its tags; for a Dispatch, where it went and Open in Notch
+/// (Oct 15 review, HI-01.3). No recording to play, no Open in Claude Code (Yulun, Oct 7).
 struct CaptureFooter: View {
     let capture: Capture
 
     var body: some View {
-        TagRow(capture: capture)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: 14) {
+            if capture.kind == .dispatch, capture.destination != nil {
+                DispatchRoute(capture: capture)
+            }
+            TagRow(capture: capture)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+/// Where a Dispatch went (the agent, its chat, how many requests it has had) and the way back to
+/// it in the notch, where its answers are: Fovea is a remote control, not a display, so the
+/// session opens there, never here (AGENTS.md).
+struct DispatchRoute: View {
+    @Environment(CapturesModel.self) private var model
+    @Environment(\.palette) private var palette
+    let capture: Capture
+
+    var body: some View {
+        let d = capture.destination!
+        let n = model.requests(capture)
+        HStack(spacing: 10) {
+            Image(nsImage: Art.agentIcon(d.agent)).resizable().interpolation(.high).frame(width: 20, height: 20)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(d.chat).font(.system(size: 13, weight: .medium)).foregroundStyle(palette.text).lineLimit(1)
+                Text(n > 1 ? L("\(d.agent) · \(n) requests") : d.agent)
+                    .font(.system(size: 11.5)).foregroundStyle(palette.secondary)
+            }
+            Spacer(minLength: 12)
+            if !capture.notSent {
+                PillButton("Open in Notch", symbol: "macbook") { model.openInNotch(capture.id) }
+                    .help("Open this session at the notch, where its answers are")
+            }
+        }
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -153,8 +223,8 @@ struct TagChip: View {
     }
 }
 
-/// Save, in the expanded card's bar: everything (the words, the recording and what you took), or
-/// one part.
+/// Save, in the expanded card's bar: everything (the words and what you took, in a folder), or
+/// the pictures. Oct 15 review: no Save Recording (VF11, QA19); real files (IS04).
 struct SaveMenu: View {
     @Environment(CapturesModel.self) private var model
     @Environment(\.palette) private var palette
@@ -162,11 +232,10 @@ struct SaveMenu: View {
 
     var body: some View {
         Menu {
-            Button("Save Everything…") { model.save(capture, .everything) }
-            Divider()
-            Button("Save Recording…") { model.save(capture, .recording) }
+            Button("Save Everything…") { model.saveToDisk(capture, .everything) }
             if capture.attachments.contains(where: { $0.kind == .region }) {
-                Button("Save Pictures…") { model.save(capture, .pictures) }
+                Divider()
+                Button("Save Pictures…") { model.saveToDisk(capture, .pictures) }
             }
         } label: {
             Image(systemName: "square.and.arrow.down")
@@ -181,6 +250,8 @@ struct SaveMenu: View {
         .fixedSize()
         .help("Save")
         .accessibilityLabel("Save")
+        // Nothing to save until the words are back.
+        .disabled(capture.failed)
     }
 }
 
@@ -220,10 +291,10 @@ struct ImageViewer: View {
                             if let image = Art.region(attachment) {
                                 NSPasteboard.general.clearContents()
                                 NSPasteboard.general.writeObjects([image])
-                                model.say("Copied the picture")
+                                model.say(L("Copied the picture"))
                             }
                         }
-                        IconButton(symbol: "square.and.arrow.down", help: "Save Picture…") { model.save(capture, .picture) }
+                        IconButton(symbol: "square.and.arrow.down", help: "Save Picture…") { model.saveToDisk(capture, .picture(attachment.index)) }
                     }
                 }
                 if let image = Art.region(attachment) {

@@ -739,7 +739,7 @@ enum WorkbenchSmoke {
     /// browses every chat and one goes into the pill; the send button sends; the board shows a
     /// moment with only what matters (Ready for review on top, then Running: seven or eight); a
     /// quick answer opens by itself; fn asks more; a chat pulls out into a window, tucks into a
-    /// side and comes back, asks more in its box, and ✕ closes it, stopping the work; an opened
+    /// side and comes back, asks more in its box, and ✕ closes it (it keeps working); an opened
     /// session leaves Ready for review.
     private static func dispatchV2(model: WorkbenchModel, window: NSWindow) async {
         let saved = (model.screenContent, model.appearance, model.v2Request)
@@ -927,18 +927,21 @@ enum WorkbenchSmoke {
             check("…the window keeps every exchange, for the rail: the answer, the one it moved on from, the one now",
                   turns.map(\.question).suffix(2) == ["And on Friday?", "And next week?"] && turns.count == 4
                   && turns[turns.count - 2].result == nil && turns.first?.result != nil, turns.map(\.question).joined(separator: " | "))
-            model.scaleDetachedV2(id, to: 1.3); await settle(window, 0.2)
-            let scaled = model.v2Detached.first
-            check("…its corner scales it: bigger, every part with it, still on the screen",
-                  scaled.map { abs($0.scale - 1.3) < 0.001 && abs($0.size.width - V.detachedSize.width * 1.3) < 0.5
-                      && $0.origin.x + $0.size.width <= model.display.frame.width
-                      && $0.origin.y + $0.size.height <= model.display.frame.height } ?? false)
-            model.scaleDetachedV2(id, to: 9); let most = model.v2Detached.first?.scale
-            model.scaleDetachedV2(id, to: 0.1); let least = model.v2Detached.first?.scale
-            check("…within its limits", most == V.detachedScale.upperBound && least == V.detachedScale.lowerBound)
-            model.scaleDetachedV2(id, to: 1)
+            let base = V.detachedSize
+            model.resizeDetachedV2(id, to: CGSize(width: base.width * 1.3, height: base.height * 1.3)); await settle(window, 0.2)
+            let resized = model.v2Detached.first
+            check("…its corner resizes the window (its words keep their size), still on the screen",
+                  resized.map { abs($0.size.width - base.width * 1.3) < 0.5
+                      && $0.origin.x + $0.size.width <= model.detachedArea.width
+                      && $0.origin.y + $0.size.height <= model.detachedArea.height } ?? false)
+            model.resizeDetachedV2(id, to: CGSize(width: 9999, height: 9999)); let most = model.v2Detached.first?.size.width ?? 0
+            model.resizeDetachedV2(id, to: .zero); let least = model.v2Detached.first?.size.width ?? 0
+            check("…within its limits", most <= base.width * V.detachedResize.upperBound + 0.5
+                  && abs(least - base.width * V.detachedResize.lowerBound) < 0.5)
+            model.resizeDetachedV2(id, to: base)
             model.closeDetachedV2(id); await settle(window, 0.2)
-            check("…✕ closes it, stopping the work", model.v2Detached.isEmpty && model.v2Task(id)?.stopped == true)
+            // Oct 15 review, QA21: closing never stops; only Stop does.
+            check("…✕ closes it, and it keeps working", model.v2Detached.isEmpty && model.v2Task(id)?.stopped != true)
         }
 
         // Opening a session from the board: its chat; back; it is no longer Ready for review.

@@ -2,6 +2,7 @@ import SwiftUI
 import CoreText
 import FoveaCore
 import OnboardingCore
+import FoveaKit
 
 /// Every size, color, face, duration and sound level the onboarding draws or plays with, in one
 /// place (AGENTS.md). The Island's numbers follow the Notch Workbench (WorkbenchTokens) so the
@@ -78,6 +79,13 @@ enum OT {
         static let largeKeyCapHeight: CGFloat = 56
         static let largeKeyCapMinWidth: CGFloat = 56
         static let largeKeyCapRadius: CGFloat = 12
+        /// A picture taken while dictating, where it lands (Oct 17, Ryan).
+        static let takenInFeedback: CGFloat = 72
+        static let takenInMessages: CGFloat = 110
+        static let takenRadius: CGFloat = 8
+        /// Its ✕ (Oct 18, Ryan), and the feedback box's least height while it's being changed.
+        static let takenRemove: CGFloat = 16
+        static let feedbackBoxMin: CGFloat = 60
 
         // The ghost pointer
         static let pointerSize: CGFloat = 22
@@ -380,8 +388,9 @@ enum OT {
     // MARK: Dictation's stand-ins, for the play, the smoke run and a Mac without speech
 
     enum Dictation {
-        static let sampleFeedback = "The keyboard made it clear what to press, and the tasks felt like real work. The permissions took me a moment."
-        static let sampleReply = "Friday at three works for me."
+        // Oct 18, Ryan: the practice in the primary language.
+        static var sampleFeedback: String { L("The keyboard made it clear what to press, and the tasks felt like real work. The permissions took me a moment.") }
+        static var sampleReply: String { L("Friday at three works for me.") }
         static let sampleWords = "favea → Fovea\nCodex\nHeyClicky\nClaude Code\nfovea"
         /// What Connect reads in the smoke run and the snapshots: never anyone's real words.
         static let sampleRows: [(word: String, replacement: String?)] = [
@@ -410,29 +419,40 @@ enum OT {
 
     enum Send {
         static let timeout: Double = 150
-        /// The practice agent's weekly update, from the numbers in the three tabs.
-        static let practiceUpdate = """
-        # Weekly update · Oct 9
-
-        **Growth.** 1,284 signups this week, up 18% on last week. Activation held at 41%, and 23 people churned, 4 fewer than last week.
-
-        **Shipped.** Six pull requests merged: faster search on large libraries, a fix for the crash when closing a window, one-step permissions in onboarding, dark mode for Settings, retries for failed uploads, and updated dependencies.
-
-        **Support.** 14 tickets open, 5 fewer than Monday; the oldest is 3 days old. Most are about signing in with SSO (6).
-        """
-        static let practiceUpdateReply = "Wrote this week's update to weekly-update.md, in three parts: growth, from the signups chart; what shipped, the six merged pull requests; and support, the open tickets. Check the support numbers before Maya posts it: they're from this morning."
+        /// The practice agent's weekly update, from the two parts taken (Oct 18, Ryan: two). Oct 18,
+        /// Ryan: the practice agent writes and answers in the primary language.
+        static var practiceUpdate: String {
+            "# \(L("Weekly update · Oct 9"))\n\n"
+                + "**\(L("Growth."))** \(L("1,284 signups this week, up \("18%") on last week. Activation held at \("41%"), and 23 people churned, 4 fewer than last week."))\n\n"
+                + "**\(L("Shipped."))** \(L("Six pull requests merged: faster search on large libraries, a fix for the crash when closing a window, one-step permissions in onboarding, dark mode for Settings, retries for failed uploads, and updated dependencies."))\n"
+        }
+        static var practiceUpdateReply: String {
+            L("Wrote this week's update to \(PracticeFiles.update), in two parts: growth, from this week's numbers; and what shipped, the six merged pull requests. Check the numbers before Maya posts it: they're from this morning.")
+        }
         /// The practice agent's pace, between its lines.
         static let practiceBeat: Double = 1.1
-        static let practiceAdded = "- Insulated jacket\n- Warm gloves\n- Microspikes\n- Sunglasses\n"
-        static let practiceReply = "Added an insulated jacket, warm gloves, microspikes and sunglasses to your packing list, for the fresh snow up top. The report says the light goes by four, so the headlamp you already had stays on it."
-        static let practiceSorted = "Packing list\n\nClothes\n- Insulated jacket\n- Warm gloves\n- Sunglasses\n\nGear\n- Tent\n- Sleeping bag\n- Headlamp\n- Stove\n- Microspikes\n"
-        static let practiceSortedReply = "Sorted the list into Clothes and Gear, each item kept as it was. The jacket, gloves and sunglasses are under Clothes; the tent, stove and microspikes under Gear."
+        static var practiceAdded: String { [L("Insulated jacket"), L("Warm gloves"), L("Microspikes"), L("Sunglasses")].map { "- \($0)\n" }.joined() }
+        static var practiceReply: String {
+            L("Added an insulated jacket, warm gloves, microspikes and sunglasses to your packing list, for the fresh snow up top. The report says the light goes by four, so the headlamp you already had stays on it.")
+        }
+        static var practiceSorted: String {
+            let clothes = [L("Insulated jacket"), L("Warm gloves"), L("Sunglasses")]
+            let gear = [L("Tent"), L("Sleeping bag"), L("Headlamp"), L("Stove"), L("Microspikes")]
+            return "\(L("Packing list"))\n\n\(L("Clothes"))\n" + clothes.map { "- \($0)\n" }.joined()
+                + "\n\(L("Gear"))\n" + gear.map { "- \($0)\n" }.joined()
+        }
+        static var practiceSortedReply: String {
+            L("Sorted the list into Clothes and Gear, each item kept as it was. The jacket, gloves and sunglasses are under Clothes; the tent, stove and microspikes under Gear.")
+        }
     }
 
     // MARK: The board (Oct 9: Stage only)
 
     enum Board {
-        static let stageTitle = Font.system(size: 30, weight: .semibold, design: .serif)
+        // Oct 18: the serif is New York's, for Latin; in Chinese it fell back to Songti, its
+        // full-width commas gaping ("你好， Ryan"), so Chinese titles take the system's own face.
+        static var titleDesign: Font.Design { FoveaLocale.shared.language == .chinese ? .default : .serif }
+        static var stageTitle: Font { Font.system(size: 30, weight: .semibold, design: titleDesign) }
         static let stageBody = Font.system(size: 13.5)
         static let stageWidth: CGFloat = 540
         /// The space between a reading page's parts.
@@ -440,9 +460,17 @@ enum OT {
         /// Make it yours: the gap and hairline between the accent and the light (Oct 9).
         static let sectionGap: CGFloat = 26
         static let personalizeWidth: CGFloat = 440
+        /// The lights' tiles a row: nine, the eight and Customize, in three rows (Oct 18, Ryan).
+        static let auraColumns = 3
         static let importWidth: CGFloat = 520
         static let extrasWidth: CGFloat = 480
-        static let languageField: CGFloat = 220
+        static let languageField: CGFloat = 260
+        /// The languages asked for under More…, as chips (Oct 17, Ryan, FR-06).
+        static let languageChips: CGFloat = 420
+        static let languageChipHeight: CGFloat = 24
+        /// Dictation's intro: what works while talking, the keys in a column of this width.
+        static let takeKeysWidth: CGFloat = 92
+        static let takeListWidth: CGFloat = 460
         /// The words shown to tick before the rest are counted.
         static let importShown = 12
         /// The glass bar, and its width with the keyboard at its right. A size smaller on Oct 9,
@@ -456,13 +484,30 @@ enum OT {
         static let instruction = Font.system(size: 12.5, weight: .medium)
         /// A doing step's one caption, and the line to say, set apart (Oct 9, round two).
         static let caption = Font.system(size: 13, weight: .semibold)
-        static let script = Font.system(size: 14, weight: .medium, design: .serif)
+        static var script: Font { Font.system(size: 14, weight: .medium, design: titleDesign) }
         /// The end's three parts, each with room around it.
         static let closingGap: CGFloat = 34
         /// How far the run is: a short thin line at the foot of every page, in the accent.
         static let progressWidth: CGFloat = 160
         static let progressHeight: CGFloat = 3
         static let progressBottom: CGFloat = 34
+        /// Oct 15 review, OB-01.7: Back, this far to the left of the progress line, and its height.
+        static let backGap: CGFloat = 14
+        static let backHeight: CGFloat = 24
+        /// The room kept each side of the line for it, so the line stays centred.
+        static let backSlot: CGFloat = 90
+        /// The sign-up page's buttons and its box, one width (Oct 15 review, AC-01.1).
+        static let accountWidth: CGFloat = 260
+        static let accountHeight: CGFloat = 30
+        static let accountGap: CGFloat = 8
+        /// The breathing dot while Apple or Google has the person (never a spinner).
+        static let waitingDot: CGFloat = 7
+        /// What Fovea remembers' four points (Oct 15 review, OB-01.6).
+        static let memoryWidth: CGFloat = 430
+        static let memoryGap: CGFloat = 18
+        static let memoryIcon: CGFloat = 28
+        static let memoryTitle = Font.system(size: 14, weight: .semibold)
+        static let memoryDetail = Font.system(size: 13)
     }
 
     // MARK: Marks and the pointer (round three of Oct 6 #3, #8; WorkbenchTokens.Feedback)
@@ -564,6 +609,15 @@ enum OT {
         static let doubleTapWindow: Double = 0.45
         static let hoverDwell: Double = 0.12
         static let hoverClose: Double = 0.1
+        /// Oct 15 review, FR-03: Apple's or Google's own window, simulated (1.0 has no account
+        /// server): signed in after this.
+        static let signInAnswer: Double = 1.8
+        /// AC-01.2: the email's link taken as opened after this, so the tour goes on.
+        static let emailLinkOpened: Double = 6
+        /// A review stage of "Check your email": the countdown as it's staged ("Resend in 0:24").
+        static let stagedResendLeft = 24
+        /// The countdown's tick: a second.
+        static let resendTick: Double = 1
     }
 
     // MARK: Sound: quiet, made on the fly, never louder than a page turning
@@ -591,6 +645,13 @@ enum OT {
         static let allowNotes: [Double] = [587.33]
     }
 
+    // MARK: The Review menu's stages (Oct 15 review)
+
+    enum Staging {
+        /// The address "Check your email" is staged with: never anyone's own.
+        static let email = "you@example.com"
+    }
+
     // MARK: Practice content
 
     enum Practice {
@@ -598,13 +659,14 @@ enum OT {
         /// The Home card's picture for a region (FoveaCaptures' `CaptureArt`).
         static let photoArt = "mountain-16x9"
         /// The chat the practice sends go to.
-        static let chat = "Fovea practice"
+        static var chat: String { L("Fovea practice") }
         /// The team chat beside the browser: Maya asks for the weekly update.
-        static let teamChat: [(name: String, time: String, text: String, color: Color)] = [
-            ("Maya Chen", "9:41", "Morning, all. Can someone post this week's update before noon? Signups, what shipped, and support.",
+        static var teamChat: [(name: String, time: String, text: String, color: Color)] { [
+            // Oct 18, Ryan: two parts, so the ask is for two.
+            ("Maya Chen", "9:41", L("Morning, all. Can someone post this week's update before noon? Signups and what shipped."),
              Color(.sRGB, red: 0.42, green: 0.36, blue: 0.86)),
-            ("Jordan", "9:44", "I'm in interviews till two, sorry.", Color(.sRGB, red: 0.22, green: 0.62, blue: 0.52)),
-        ]
+            ("Jordan", "9:44", L("I'm in interviews till two, sorry."), Color(.sRGB, red: 0.22, green: 0.62, blue: 0.52)),
+        ] }
         /// How much of a drag has to be on the part it's meant to take.
         static let partCover: CGFloat = 0.15
         /// The paragraph with the snow in it, for the packing list.

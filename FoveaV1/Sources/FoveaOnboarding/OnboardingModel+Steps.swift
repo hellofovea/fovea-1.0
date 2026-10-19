@@ -47,7 +47,7 @@ extension OnboardingModel {
         host.askMicrophoneAndSpeech { [weak self] allowed in
             guard let self else { return }
             guard allowed else {
-                self.say("Fovea needs the microphone to hear you. Allow it in System Settings, or skip for now.", hold: true)
+                self.say(L("Fovea needs the microphone to hear you. Allow it in System Settings, or skip for now."), hold: true)
                 return
             }
             self.grant(.microphone)
@@ -60,7 +60,7 @@ extension OnboardingModel {
         switch shown {
         case .microphone:
             guard allow else {
-                say("Fovea needs the microphone to hear you. Allow it in System Settings, or skip for now.", hold: true)
+                say(L("Fovea needs the microphone to hear you. Allow it in System Settings, or skip for now."), hold: true)
                 return
             }
             grant(.microphone)
@@ -91,32 +91,24 @@ extension OnboardingModel {
             startMicTest()
             return
         }
-        if step == .permissions {
-            if flow.isComplete {
-                sound.cue(.allow)
-                after(OT.Timing.autoAdvance, "advance") { [weak self] in
-                    guard let self else { return }
-                    self.animate(OT.Motion.calm) { self.settingsPane = nil }
-                    if let next = self.flow.advance() { self.enter(next) }
-                }
-            } else if permission == .accessibility {
-                // The first list done: System Settings turns to the second (Fovea opens it by its
-                // link), and the notch asks for one more drag.
-                sound.cue(.allow)
-                after(OT.Timing.nextList, "nextList") { [weak self] in
-                    guard let self else { return }
-                    self.animate(OT.Motion.calm) { self.settingsPane = .screenRecording }
-                }
-            }
-            return
-        }
-        if flow.isComplete {
-            sound.cue(.allow)
-            after(OT.Timing.autoAdvance, "advance") { [weak self] in
+        // Oct 17, Ryan (round 2): "the user should manually give access to each one … right now it
+        // just jumps over". Allowed shows on its row, with the check, and the page waits for the
+        // person's Continue: it never moves on by itself, not after the last Allow, nor with
+        // everything allowed at launch. (Input Monitoring, OB-01.5, is never waited on either.)
+        sound.cue(.allow)
+        if step == .permissions, permission == .accessibility, !flow.isComplete {
+            // The first list done: System Settings turns to the second (Fovea opens it by its link).
+            after(OT.Timing.nextList, "nextList") { [weak self] in
                 guard let self else { return }
-                if let next = self.flow.advance() { self.enter(next) }
+                self.animate(OT.Motion.calm) { self.settingsPane = .screenRecording }
             }
         }
+    }
+
+    /// Input Monitoring allowed, seen live on the permissions page (Oct 15 review, OB-01.5).
+    func inputMonitoringAllowed() {
+        guard !flow.allowed.contains(.inputMonitoring) else { return }
+        grant(.inputMonitoring)
     }
 
     // MARK: Your agents
@@ -144,15 +136,16 @@ extension OnboardingModel {
     func connectAgents() {
         sound.cue(.tick)
         let real = connectedAgents.contains(.claudeCode) && agentSignedIn != false
-        if !real { useRealAgent = false }
-        say(connectedAgents.isEmpty ? "The practice agent will answer for now."
-            : "\(connectedAgents.map(\.name).joined(separator: " and ")) connected.", hold: false)
+        // Connected again after Back (Oct 15 review, OB-01.7): as the agents are switched now.
+        useRealAgent = real && !options.harness && !options.practiceAgent
+        say(connectedAgents.isEmpty ? L("The practice agent will answer for now.")
+            : L("\(connectedAgents.map(\.name).joined(separator: L(" and "))) connected."), hold: false)
         beat(.agentsConnected)
     }
 
     // MARK: Sending
 
-    /// The way past a task: Fovea puts it together (the screen and the two parts, or the line and
+    /// The way past a task: Fovea puts it together (the two parts, or the line and
     /// the list) with the words, and it waits on the review card for return.
     func doItForMe() {
         cancelWaits(except: ["skip"])
@@ -161,14 +154,15 @@ extension OnboardingModel {
         marks = []
         switch step {
         case .weeklyUpdate:
-            let screen = TakenReferent(kind: .wholeScreen, tab: .analytics)
-            let prs = part("prs", in: .github)
-            let tickets = part("tickets", in: .support)
-            referents = [screen, TakenReferent(kind: .region(prs), tab: .github), TakenReferent(kind: .region(tickets), tab: .support)]
-            capture(referents[0].id, tab: .analytics, name: "screen-1.png")
-            capture(referents[1].id, region: prs, tab: .github, name: "part-2.png")
-            capture(referents[2].id, region: tickets, tab: .support, name: "part-3.png")
-            for beat in [Beat.requestKey, .wholeScreen, .prs, .tickets, .finish] { flow.record(beat) }
+            // Oct 17, Ryan (round 2): parts, one from each tab (no whole screen any more). Oct 18,
+            // Ryan: two of them, the numbers and the pull requests.
+            let parts = Self.weeklyParts.compactMap { beat -> (CGRect, PracticeTab)? in
+                guard let name = beat.part, let tab = beat.tab else { return nil }
+                return (part(name, in: tab), tab)
+            }
+            referents = parts.map { TakenReferent(kind: .region($0.0), tab: $0.1) }
+            for (i, item) in parts.enumerated() { capture(referents[i].id, region: item.0, tab: item.1, name: "part-\(i + 1).png") }
+            for beat in [Beat.requestKey] + Self.weeklyParts + [.finish] { flow.record(beat) }
         case .packList:
             let lines = paragraphLines[OT.Practice.snowParagraph] ?? []
             marks = lines.isEmpty ? [] : [HighlightMark(rects: lines)]
@@ -195,11 +189,11 @@ extension OnboardingModel {
                 if let shot {
                     referents[i].image = shot.image
                     referents[i].path = shot.path
-                    items.append(.picture(shot.image, source: "\(referents[i].tab?.title ?? "Desktop") · Fovea"))
+                    items.append(.picture(shot.image, source: "\(referents[i].tab?.title ?? L("Desktop")) · Fovea"))
                 }
             case .passage(let p):
                 items.append(.passage(paragraphTexts[p] ?? PracticePage.paragraphs[min(p, PracticePage.paragraphs.count - 1)],
-                                      source: "Trail report · Fovea"))
+                                      source: "\(L("Trail report")) · Fovea"))
             case .file(let file):
                 items.append(.file(practice.url(file.name)))
             }
@@ -219,19 +213,19 @@ extension OnboardingModel {
 
     func theme(of request: PracticeRequest) -> String {
         switch request.step {
-        case .weeklyUpdate: "This week's update"
-        case .packList: "Packing for the snow"
-        default: "What's on the page"
+        case .weeklyUpdate: L("This week's update")
+        case .packList: L("Packing for the snow")
+        default: L("What's on the page")
         }
     }
 
     func record(_ referent: TakenReferent) -> PracticeRecord.Referent {
         switch referent.kind {
-        case .region: .region(source: "\(referent.tab?.title ?? "Desktop") · Safari")
+        case .region: .region(source: "\(referent.tab?.title ?? L("Desktop")) · Safari")
         case .wholeScreen: .wholeScreen
         case .passage(let i): .passage(text: paragraphTexts[i] ?? PracticePage.paragraphs[min(i, PracticePage.paragraphs.count - 1)],
-                                       source: "Trail report · Safari")
-        case .file(let file): .file(name: file.name, type: file.type, folder: "Desktop")
+                                       source: "\(L("Trail report")) · Safari")
+        case .file(let file): .file(name: file.name, type: file.type, folder: L("Desktop"))
         }
     }
 

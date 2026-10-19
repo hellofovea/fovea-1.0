@@ -210,8 +210,9 @@ struct RoundGlassButton: View {
             hover = h
             if h { bumps += 1 }
         }
-        .help(help)
-        .accessibilityLabel(help)
+        // Oct 18, Ryan: in the primary language (a literal help is looked up as it's drawn).
+        .help(L(key: help))
+        .accessibilityLabel(L(key: help))
     }
 }
 
@@ -228,7 +229,7 @@ struct CapsuleGlassButton: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 if let symbol { Image(systemName: symbol).font(.system(size: 12, weight: .semibold)) }
-                Text(title).font(.system(size: 13, weight: .semibold))
+                Text(L(key: title)).font(.system(size: 13, weight: .semibold))
             }
             .foregroundStyle(prominent ? Color.white : palette.text)
             .padding(.horizontal, 14)

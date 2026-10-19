@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import FoveaCore
+import FoveaKit
 
 // Dispatch's Agent panel in the island (the states are in WorkbenchModel+Panel.swift): the
 // sessions Fovea sent requests to, grouped by project, five rows at most and scrolling past them,
@@ -92,12 +93,13 @@ extension AgentTaskItem {
 
     /// The line under the session: what it is doing, or how long it has been quiet.
     var line: String {
-        if stalled, let quiet = AgentBoard.duration(age) { return "No activity for \(quiet)" }
+        if stalled, let quiet = AgentBoard.duration(age) { return L("No activity for \(quiet)") }
         return activity
     }
 
     /// The state's word: Stopped (by the person) reads as itself, not as Failed.
-    var stateWord: String { stopped ? "Stopped" : state.label }
+    // Oct 18, Ryan: in the primary language (the state's English is Core's, looked up as a key).
+    var stateWord: String { stopped ? L("Stopped") : L(key: state.label) }
 }
 
 /// The Agent panel's content in the island.
@@ -566,10 +568,10 @@ struct AgentControls: View {
             if let ask = task.ask, task.state == .needsYou {
                 switch ask {
                 case .approval(let command):
-                    AgentPanelButton(title: "Deny", primary: false) { guarded { model.denyTask(task.id) } }
+                    AgentPanelButton(title: L("Deny"), primary: false) { guarded { model.denyTask(task.id) } }
                     // Native: the action's own verb (Run Tests), Allow in Original.
                     let verb = ApprovalVerb.of(command)
-                    AgentPanelButton(title: WorkbenchTokens.skin("Allow", short ? verb.short : verb.title), primary: true) {
+                    AgentPanelButton(title: WorkbenchTokens.skin(L("Allow"), short ? verb.short : verb.title), primary: true) {
                         guarded { model.allowTask(task.id) }
                     }
                 case .choice(let options):
@@ -580,11 +582,11 @@ struct AgentControls: View {
             } else if shown {
                 switch task.state {
                 case .working:
-                    AgentPanelButton(title: "Stop", symbol: "stop.fill", primary: false) { guarded { model.stopTask(task.id) } }
+                    AgentPanelButton(title: L("Stop"), symbol: "stop.fill", primary: false) { guarded { model.stopTask(task.id) } }
                 case .failed:
-                    AgentPanelButton(title: "Retry", symbol: "arrow.clockwise", primary: false) { guarded { model.retryTask(task.id) } }
+                    AgentPanelButton(title: L("Retry"), symbol: "arrow.clockwise", primary: false) { guarded { model.retryTask(task.id) } }
                 case .complete:
-                    AgentPanelButton(title: "Open", symbol: "arrow.up.forward", primary: false) { model.openTask(task.id) }
+                    AgentPanelButton(title: L("Open"), symbol: "arrow.up.forward", primary: false) { model.openTask(task.id) }
                 case .needsYou:
                     EmptyView()
                 }

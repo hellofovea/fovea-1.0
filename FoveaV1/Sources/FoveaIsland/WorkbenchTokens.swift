@@ -187,8 +187,10 @@ enum WorkbenchTokens {
         /// The island's raised black (Tokens.Island.Colors.surfaceElevated, #111114).
         static let removeFill = Color(.sRGB, red: 0x11 / 255.0, green: 0x11 / 255.0, blue: 0x14 / 255.0)
         static let removeFillHover = Color(.sRGB, red: 0x2A / 255.0, green: 0x2A / 255.0, blue: 0x2E / 255.0)
-        static var removeGlyphColor: Color { ink(0.9) }
-        static var removeRing: Color { ink(0.28) }
+        // White on the ✕'s own dark disc in either glass (the glass's ink drew it black on black in
+        // Light, Oct 11).
+        static let removeGlyphColor = Color.white.opacity(0.9)
+        static let removeRing = Color.white.opacity(0.28)
         static let removeAppear: Animation = .easeOut(duration: 0.12)
         static let removeHiddenScale: CGFloat = 0.8
         /// A removed card fades as the rest close the gap, then leaves.
@@ -579,7 +581,7 @@ enum WorkbenchTokens {
         /// (brighter under the pointer); the active agent's name after them.
         static let railHeight: CGFloat = 28
         static let railCell = CGSize(width: 34, height: 28)
-        /// App icons with dark tiles (Codex, Cursor, Grok Bot) need the size and the opacity to
+        /// App icons with dark tiles (Codex, Cursor) need the size and the opacity to
         /// stay findable on black when they are not the active one.
         static let railIcon: CGFloat = 18
         static let railSpacing: CGFloat = 2
@@ -911,10 +913,13 @@ enum WorkbenchTokens {
         static var inputHeight: CGFloat { pick(30, 34) }
         static var inputFill: Color { ink(0.07) }
         static var detachedRadius: CGFloat { pick(14, 16) }
-        /// How small and how big a pulled-out chat can be made, against its usual size; the corner
-        /// that scales it.
-        static let detachedScale: ClosedRange<CGFloat> = 0.7...1.6
+        /// How small and how big a pulled-out chat's window can be made, against its usual size (its
+        /// corner or a pinch). The window resizes; its words stay their size and reflow (Oct 11).
+        static let detachedResize: ClosedRange<CGFloat> = 0.7...1.6
         static let scaleGrip: CGFloat = 14
+        /// How long the pointer stays on another display before the pulled-out chats follow it there
+        /// (a pass across it on the way somewhere doesn't move them).
+        static let followDwell: Double = 0.6
         static var scaleGripColor: Color { ink(0.32) }
         /// The rail beside a chat with follow-ups (after Notion's outline): a short line per
         /// exchange, the one in view bright; on hover, the questions, each a way back to it.
@@ -933,7 +938,8 @@ enum WorkbenchTokens {
         /// A turn counts as the one in view once its top is this close to the top of the chat.
         static let railReadLine: CGFloat = 60
         static let turnGap: CGFloat = 18
-        static let movedOn = "Moved on to your next question."
+        // Oct 18, Ryan: in the primary language.
+        static var movedOn: String { L("Moved on to your next question.") }
         static let detachedFill = Color(white: 0.06)
         static var detachedBorder: Color { ink(0.12) }
         static let edgeSnap: CGFloat = 12
@@ -1323,6 +1329,10 @@ enum WorkbenchTokens {
         static var noticeWidth: CGFloat { pick(368, 400) }
         /// Inside the listening bar: wide enough for the words and one capsule.
         static let barNoticeWidth: CGFloat = 340
+        /// The largest picture a request carries (Image over 20 MB, not added).
+        static let imageLimit = 20 * 1024 * 1024
+        /// Where the words landed, lit a moment (#7, the real field's frame through Accessibility).
+        static let landMarkHold: Double = 0.9
         static var noticePaddingH: CGFloat { pick(14, 16) }
         static var noticePaddingTop: CGFloat { pick(8, 9) + Native.panelGap }
         static var noticePaddingBottom: CGFloat { pick(11, 12) }
@@ -1420,7 +1430,8 @@ enum WorkbenchTokens {
         /// Nothing running (the real Mac, Oct 9): the board greets the person instead, in two
         /// lines, the title's face over the line's.
         static var helloHeight: CGFloat { pick(50, 56) }
-        static let helloLead = "Start building here."
+        // Oct 18, Ryan: in the primary language.
+        static var helloLead: String { L("Start building here.") }
         static var bottomRadius: CGFloat { pick(19, 22) }
         static var row: CGFloat { pick(40, 46) }
         static let rowsVisible = 6

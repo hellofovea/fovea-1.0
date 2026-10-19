@@ -1,4 +1,5 @@
 import Foundation
+import FoveaKit
 
 /// The real send (Oct 8: no mock sendings). Fovea hands the request to the agent on this Mac:
 /// Claude Code's command-line tool, run in the practice folder, allowed to edit files there and
@@ -62,7 +63,7 @@ final class AgentRunner {
                     if status == 0, let text = self.lastText {
                         self.finish(.done(reply: text, session: self.session))
                     } else {
-                        let line = message.split(separator: "\n").last.map(String.init) ?? "It stopped (\(status))."
+                        let line = message.split(separator: "\n").last.map(String.init) ?? L("It stopped (\(String(status))).")
                         self.finish(.failed(line))
                     }
                 }
@@ -71,7 +72,7 @@ final class AgentRunner {
         do {
             try process.run()
         } catch {
-            finish(.failed("Couldn't start \(executable.lastPathComponent)."))
+            finish(.failed(L("Couldn't start \(executable.lastPathComponent).")))
             return
         }
         self.process = process
@@ -79,7 +80,7 @@ final class AgentRunner {
             MainActor.assumeIsolated {
                 guard let self, !self.finished else { return }
                 self.process?.terminate()
-                self.finish(.failed("It's taking too long."))
+                self.finish(.failed(L("It's taking too long.")))
             }
         }
         deadline = work
@@ -126,7 +127,7 @@ final class AgentRunner {
                 }
             }
         case "result":
-            let text = ((object["result"] as? String) ?? lastText ?? "Done.").trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = ((object["result"] as? String) ?? lastText ?? L("Done.")).trimmingCharacters(in: .whitespacesAndNewlines)
             let failed = (object["is_error"] as? Bool) == true || ((object["subtype"] as? String)?.hasPrefix("error") ?? false)
             finish(failed ? .failed(text) : .done(reply: text, session: session))
         default:
@@ -146,10 +147,11 @@ final class AgentRunner {
     /// One line of what the agent is doing, from the tool it reached for.
     static func describe(tool: String, file: String?) -> String {
         switch tool {
-        case "Read": file.map { "Looking at \($0)" } ?? "Reading"
-        case "Edit", "MultiEdit", "Write": file.map { "Editing \($0)" } ?? "Editing"
-        case "Glob", "Grep", "LS": "Looking around the folder"
-        default: "Working"
+        // Oct 18, Ryan: in the primary language (the island shows the line as it is).
+        case "Read": file.map { L("Looking at \($0)") } ?? L("Reading")
+        case "Edit", "MultiEdit", "Write": file.map { L("Editing \($0)") } ?? L("Editing")
+        case "Glob", "Grep", "LS": L("Looking around the folder")
+        default: L("Working on it")
         }
     }
 }

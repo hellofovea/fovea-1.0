@@ -1,4 +1,5 @@
 import Observation
+import FoveaKit
 
 // How much room the notch's open panels take (docs/island/SPACIOUS.md). Fovea 1.0, Oct 9: the
 // Workbench drew its Mac at about two thirds of its size, so on the real screen every panel read
@@ -11,7 +12,7 @@ import Observation
 enum PanelDensity: String, CaseIterable, Identifiable {
     case compact, spacious
     var id: String { rawValue }
-    var title: String { self == .compact ? "Compact" : "Spacious" }
+    var title: String { self == .compact ? L("Compact") : L("Spacious") }
 }
 
 /// The density in force. Observable, so a view or a layout that reads a token that follows the

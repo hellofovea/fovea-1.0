@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import FoveaCore
+import FoveaLook
 
 // The session expanded (Oct 7, docs/island/WHOLE_SESSION.md): the whole session, every exchange
 // in it, oldest first, each request with what the agent did folded and the answer it wrote, in one
@@ -181,8 +182,18 @@ struct V2SessionHistory: View {
                             // The person's request on its band, gone to by it (a short view, so
                             // the landing's margin holds however tall the exchange is); the
                             // agent's answer open on the black, its creature in the margin.
-                            V2PromptBlock(text: turn.question, width: layout.column)
-                                .id(V2Outline.turnID(turn.id))
+                            // Oct 15 review, QA07: the last request, editable once it's answered.
+                            Group {
+                                if turn.id == now {
+                                    V2EditableQuestion(model: model, task: task, lines: 3) {
+                                        V2PromptBlock(text: turn.question, width: layout.column)
+                                    }
+                                    .frame(width: layout.column)
+                                } else {
+                                    V2PromptBlock(text: turn.question, width: layout.column)
+                                }
+                            }
+                            .id(V2Outline.turnID(turn.id))
                             Group { if turn.id == now { current } else { past(turn) } }
                                 .overlay(alignment: .topLeading) { speaker(now: turn.id == now) }
                         }
@@ -246,6 +257,15 @@ struct V2SessionHistory: View {
     }
 
     @ViewBuilder private var current: some View {
+        // Oct 15 review: reopening, gone, not sure it arrived, what was decided.
+        if let kind = model.v2CaseBody(task) {
+            V2CaseBodyView(model: model, task: task, kind: kind, width: layout.column)
+        } else {
+            currentUsual
+        }
+    }
+
+    @ViewBuilder private var currentUsual: some View {
         switch task.state {
         case .working: V2WorkingLine(model: model, task: task).frame(width: layout.column)
         case .needsYou: V2Response(model: model, task: task, width: layout.column)
@@ -296,10 +316,14 @@ struct V2SessionHistory: View {
         let F = WorkbenchTokens.FeedbackV2.self
         var h = V2PromptBlock.height(turn.question, width: width) + V.historyQuestionGap
         if now {
-            switch task.state {
-            case .working: h += WorkbenchTokens.Board.workingLine
-            case .needsYou: h += V.needsYouBody
-            case .complete, .failed: h += V2Answer.height(model: model, task: task, width: width)
+            if let kind = model.v2CaseBody(task) {
+                h += V2CaseBodyView.height(model: model, task: task, kind: kind, width: width)
+            } else {
+                switch task.state {
+                case .working: h += WorkbenchTokens.Board.workingLine
+                case .needsYou: h += V2NeedsYouBody.height(model: model, task: task, width: width)
+                case .complete, .failed: h += V2Answer.height(model: model, task: task, width: width)
+                }
             }
         } else if let answer = turn.answer {
             if let work = turn.work {

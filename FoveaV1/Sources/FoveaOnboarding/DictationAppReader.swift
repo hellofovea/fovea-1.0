@@ -2,9 +2,8 @@ import Foundation
 import SQLite3
 import OnboardingCore
 
-/// Reads a dictation app's own words from where it keeps them on this Mac (Oct 9: Connect, as
-/// VoiceOS imports from Wispr Flow): `DictationApp.localStore` names the file and the query (the
-/// word, and what it replaces; deleted entries and snippets left behind). Opened read-only and
+/// Reads a dictation app's own words from where it keeps them on this Mac (Oct 9: Connect):
+/// `DictationApp.localStore` names the file and the query (the word, and what it replaces; deleted entries and snippets left behind). Opened read-only and
 /// immutable, so the app's file is never changed or locked; only when Connect is clicked. Nil when
 /// the file isn't there or can't be read.
 enum DictationAppReader {

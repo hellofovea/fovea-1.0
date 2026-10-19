@@ -50,7 +50,7 @@ enum AccentArrow {
 }
 
 extension View {
-    /// The pointer over the practice screen: the selection crosshair while ⌘ is armed, the accent
+    /// The pointer over the practice screen: the selection crosshair while ⌥ is armed, the accent
     /// arrow while the highlighter is on, the system's otherwise. One modifier decides, so the two
     /// never fight.
     @ViewBuilder

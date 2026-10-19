@@ -26,9 +26,9 @@ enum T {
     /// they are: proportions (a card's inset) or optical nudges.
     enum Layout {
         /// The window's one size, as Wispr Flow's and Typeless's are fixed: it can't be resized
-        /// or made full screen. 1112 × 784 is the size it had on Ryan's 13-inch Air; four columns
-        /// of cards fit in it.
-        static let window = CGSize(width: 1112, height: 784)
+        /// or made full screen. 1112 × 784 was the size it had on Ryan's 13-inch Air; Oct 13, "a
+        /// little bit smaller": 1024 × 720, the same shape at 92 %.
+        static let window = CGSize(width: 1024, height: 720)
 
         // The grid: one centered block, as wide as its columns.
         /// The least space either side of the grid.

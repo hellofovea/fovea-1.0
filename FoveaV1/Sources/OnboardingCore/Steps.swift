@@ -12,12 +12,12 @@ public enum Stage: Int, CaseIterable, Sendable {
 
     public var title: String {
         switch self {
-        case .arrive: "Hello"
-        case .turnOn: "Turn things on"
-        case .agents: "Your agents"
-        case .pointAndSay: "Point and send"
-        case .dictation: "Dictation"
-        case .home: "Finish"
+        case .arrive: L("Hello")
+        case .turnOn: L("Turn things on")
+        case .agents: L("Your agents")
+        case .pointAndSay: L("Point and send")
+        case .dictation: L("Dictation")
+        case .home: L("Finish")
         }
     }
 }
@@ -25,7 +25,7 @@ public enum Stage: Int, CaseIterable, Sendable {
 /// One screen's worth of the first run. Oct 9 merged Accessibility and Screen Recording into one
 /// step, put connecting the coding agents right after the permissions (the tasks send to them for
 /// real), and gave the practice two tasks that do something: the weekly update at work, gathered
-/// from three tabs and a chat, and your packing list. No sign-in after the agents, and no demo
+/// from two tabs and a chat (Oct 18, Ryan: two parts), and your packing list. No sign-in after the agents, and no demo
 /// before the tasks: you learn by doing (Oct 9, round two).
 public enum Step: String, CaseIterable, Sendable, Codable {
     /// Oct 9 (Fovea 1.0): the run starts with the name to be called by, then the email to sign up
@@ -36,7 +36,8 @@ public enum Step: String, CaseIterable, Sendable, Codable {
     case agents
     case weeklyUpdate, hover, packList, followUp
     case dictationIntro, dictation
-    case dictionary, home
+    /// Oct 15 review, OB-01.6: what Fovea remembers, read before the closing page.
+    case dictionary, memory, home
 
     public var stage: Stage {
         switch self {
@@ -45,7 +46,7 @@ public enum Step: String, CaseIterable, Sendable, Codable {
         case .agents: .agents
         case .weeklyUpdate, .hover, .packList, .followUp: .pointAndSay
         case .dictationIntro, .dictation: .dictation
-        case .dictionary, .home: .home
+        case .dictionary, .memory, .home: .home
         }
     }
 
@@ -53,7 +54,7 @@ public enum Step: String, CaseIterable, Sendable, Codable {
     /// does. Steps that wait for none move on with Continue.
     public var beats: [Set<Beat>] {
         switch self {
-        case .hello, .makeItYours, .dictationIntro, .dictionary, .home: []
+        case .hello, .makeItYours, .dictationIntro, .dictionary, .memory, .home: []
         case .signIn: [[.signedIn]]
         case .name: [[.named]]
         // Two lists, one drag each (Oct 9: granted together).
@@ -61,26 +62,28 @@ public enum Step: String, CaseIterable, Sendable, Codable {
         // Allowed, then heard: the person has to say the line before it counts (Oct 8).
         case .microphone: [[.allowedMicrophone], [.heard]]
         case .agents: [[.agentsConnected]]
-        // The weekly update: the whole screen (the ask and the chart), the merged pull requests from
-        // one tab and the open tickets from another, then the words, then return.
-        case .weeklyUpdate: [[.requestKey], [.wholeScreen], [.prs], [.tickets], [.finish], [.review], [.send]]
+        // The weekly update: this week's numbers from one tab and the merged pull requests from
+        // another, then the words, then return. Oct 17, Ryan (round 2): ⌥ twice brings up Claude,
+        // so no whole screen. Oct 18, Ryan: "only have two screenshot tasks": the tickets went.
+        case .weeklyUpdate: [[.requestKey], [.numbers], [.prs], [.finish], [.review], [.send]]
         // While the agent works: the notch, and its answer, in either order.
         case .hover: [[.hoverNotch], [.answer]]
         // The everyday task: the line about the snow and the packing list.
         case .packList: [[.requestKey], [.passage], [.file], [.finish], [.review], [.send], [.answer]]
         case .followUp: [[.followKey], [.followAnswer]]
-        // Two windows: the feedback first, then Messages (Oct 9).
-        case .dictation: [[.feedbackKey], [.feedbackLanded], [.replyKey], [.replyLanded]]
+        // Two windows: the feedback first, then Messages (Oct 9). Oct 17, Ryan: in the feedback,
+        // something taken while talking (⌥ and a drag), which lands after the words.
+        case .dictation: [[.feedbackKey], [.feedbackTaken], [.feedbackLanded], [.replyKey], [.replyLanded]]
         }
     }
 
     /// Beats a step takes in any order (they still all have to happen). The keyboard teaches them
-    /// in the order of `beats`: the whole screen (⌘ twice) before each part (⌘ once).
+    /// in the order of `beats`: the numbers, then the pull requests.
     public var anyOrder: Set<Beat> {
         switch self {
         // The lists are shown in turn, but either allowed first counts.
         case .permissions: [.allowedAccessibility, .allowedScreenRecording]
-        case .weeklyUpdate: [.wholeScreen, .prs, .tickets]
+        case .weeklyUpdate: [.numbers, .prs]
         case .hover: [.hoverNotch, .answer]
         case .packList: [.passage, .file]
         default: []
@@ -91,7 +94,7 @@ public enum Step: String, CaseIterable, Sendable, Codable {
     /// or at once where there's nothing to fail. Hello, Make it yours and Home always go on.
     public var skip: Skip {
         switch self {
-        case .signIn, .name, .hello, .makeItYours, .home: .never
+        case .signIn, .name, .hello, .makeItYours, .memory, .home: .never
         case .dictationIntro, .dictation, .dictionary: .now
         case .permissions, .agents: .after(8)
         case .microphone, .hover: .after(10)
@@ -104,8 +107,11 @@ public enum Step: String, CaseIterable, Sendable, Codable {
     public var keys: [KeyName] {
         switch self {
         case .weeklyUpdate: [.request, .screenshot, .send]
-        case .packList: [.request, .highlighter, .send]
-        case .followUp, .dictationIntro, .dictation: [.dictation]
+        // Oct 17, Ryan: words and files need no key; dictation takes pictures too, with ⌥.
+        case .packList: [.request, .send]
+        case .followUp: [.dictation]
+        // Oct 18, Ryan: and ⌘ twice for the whole screen.
+        case .dictationIntro, .dictation: [.dictation, .screenshot, .wholeScreen]
         default: []
         }
     }
@@ -121,7 +127,35 @@ public enum Step: String, CaseIterable, Sendable, Codable {
 
     /// Steps for reading, where the board holds the eye; the rest are for doing, and the screen is
     /// the person's.
-    public var isReading: Bool { [.signIn, .name, .hello, .makeItYours, .agents, .dictationIntro, .dictionary, .home].contains(self) }
+    public var isReading: Bool { [.signIn, .name, .hello, .makeItYours, .agents, .dictationIntro, .dictionary, .memory, .home].contains(self) }
+
+    /// Oct 15 review, OB-01.7 and FR-05: a quiet Back beside the progress line. Oct 17, Ryan: "a
+    /// back button for every stage": on every step after the first (the name has nothing before it),
+    /// the microphone's test, the practice tasks and the end included.
+    public var hasBack: Bool { self != Step.allCases.first }
+
+    /// Oct 17, Ryan: where Back lands for this step. A step that waits on an earlier one's session
+    /// starts again from the step that makes it, as Exit tour does: watching the update is the
+    /// weekly update, asking more is the packing list.
+    public var backLanding: Step {
+        switch self {
+        case .hover: .weeklyUpdate
+        case .followUp: .packList
+        default: self
+        }
+    }
+
+    /// Oct 17, Ryan: gone back to, it starts again from its beginning, cleanly (a practice task,
+    /// dictation's two windows), not as it was left.
+    public var restartsOnBack: Bool { stage == .pointAndSay || self == .dictation }
+
+    /// The step before this one in order: Back's way in a run picked up part way (after Exit tour,
+    /// or Screen Recording's Quit & Reopen), with no page seen before it in this run.
+    public var previous: Step? {
+        let all = Step.allCases
+        guard let i = all.firstIndex(of: self), i > 0 else { return nil }
+        return all[i - 1]
+    }
 
     /// The step after this one, before any skipping.
     public var next: Step? {
@@ -139,8 +173,8 @@ public enum Skip: Equatable, Sendable {
     public var allowed: Bool { self != .never }
 }
 
-/// Something the person did that a step can be waiting for. Pressing a capture key isn't one:
-/// ⌘ and ⌥ only arm what comes next (the first ⌘ of a double press would otherwise count early).
+/// Something the person did that a step can be waiting for. Pressing a capture key isn't one: ⌥
+/// only arms what comes next, a drag.
 public enum Beat: String, CaseIterable, Sendable, Codable {
     /// An email to sign in with, and a name to be called by.
     case signedIn, named
@@ -151,15 +185,15 @@ public enum Beat: String, CaseIterable, Sendable, Codable {
     case agentsConnected
     /// fn ⌃ opened the voice bar.
     case requestKey
-    /// ⌘ twice: the whole screen.
-    case wholeScreen
-    /// ⌘ once and a drag, in the GitHub tab: the pull requests merged this week.
+    /// ⌥ and a drag, in the Analytics tab: this week's numbers (Oct 17, Ryan: ⌥, not ⌘, which
+    /// Codex uses; once only, ⌥ twice is Claude's, so no whole screen).
+    case numbers
+    /// ⌥ once and a drag, in the GitHub tab: the pull requests merged this week.
     case prs
-    /// ⌘ once and a drag, in the Support tab: the open tickets.
-    case tickets
-    /// Left ⌥ and a drag across words.
+    /// Words selected while Fovea listens (Oct 17, Ryan: no key).
     case passage
-    /// Left ⌥ and a click on a file.
+    /// A file dragged onto the notch while Fovea listens (Oct 17, Ryan, round 2: no key; a click
+    /// may mean opening it).
     case file
     /// fn ⌃ pressed again: the words are being transcribed.
     case finish
@@ -170,15 +204,25 @@ public enum Beat: String, CaseIterable, Sendable, Codable {
     case hoverNotch
     case followKey
     case followAnswer
-    /// Dictation into the feedback window, then into Messages: fn, then the words landing.
-    case feedbackKey, feedbackLanded
+    /// Dictation into the feedback window, then into Messages: fn, then the words landing. Oct 17,
+    /// Ryan: between them, something taken while talking into the feedback (`feedbackTaken`).
+    case feedbackKey, feedbackTaken, feedbackLanded
     case replyKey, replyLanded
 
     /// The tab a part of the screen is taken from (Oct 9: gathering from different tabs).
     public var tab: PracticeTab? {
         switch self {
+        case .numbers: .analytics
         case .prs: .github
-        case .tickets: .support
+        default: nil
+        }
+    }
+
+    /// The part of its tab's page it takes (the page marks it `data-fovea`).
+    public var part: String? {
+        switch self {
+        case .numbers: "numbers"
+        case .prs: "prs"
         default: nil
         }
     }
@@ -186,14 +230,14 @@ public enum Beat: String, CaseIterable, Sendable, Codable {
 
 /// The browser's tabs in practice: the weekly update's three, and the trail report for the trip.
 public enum PracticeTab: String, CaseIterable, Sendable, Codable {
-    case analytics, github, support, trail
+    /// Oct 18, Ryan: two parts for the weekly update, so two work tabs (the Support tab went).
+    case analytics, github, trail
 
     public var title: String {
         switch self {
-        case .analytics: "Analytics"
-        case .github: "GitHub"
-        case .support: "Support"
-        case .trail: "Trail report"
+        case .analytics: L("Analytics")
+        case .github: L("GitHub")
+        case .trail: L("Trail report")
         }
     }
 
@@ -202,7 +246,6 @@ public enum PracticeTab: String, CaseIterable, Sendable, Codable {
         switch self {
         case .analytics: "insights.northwind.app"
         case .github: "github.com/northwind/app/pulls"
-        case .support: "support.northwind.app"
         case .trail: "trailreport.example/high-valleys"
         }
     }
@@ -210,48 +253,83 @@ public enum PracticeTab: String, CaseIterable, Sendable, Codable {
     /// The tabs open for a step: the work tabs, then the trip's added beside them.
     public static func open(for step: Step) -> [PracticeTab] {
         switch step {
-        case .packList, .followUp: [.analytics, .github, .support, .trail]
-        default: [.analytics, .github, .support]
+        case .packList, .followUp: [.analytics, .github, .trail]
+        default: [.analytics, .github]
         }
     }
 }
 
 /// The keys the first run teaches. Their labels come from `KeyMap`, so a change of keys changes
 /// the copy in one place.
+/// Oct 17, Ryan: the highlighter key is gone. While Fovea listens, words you select and a file you
+/// click are taken, with no key.
 public enum KeyName: String, CaseIterable, Sendable, Codable {
-    case request, screenshot, highlighter, send, dictation
+    /// Oct 18, Ryan: ⌘ twice takes the whole screen again (fixed: it isn't recorded).
+    case request, screenshot, wholeScreen, send, dictation
+
+    /// Said for a shortcut cleared in Settings › Shortcuts (Oct 15 review, ST-03.1).
+    public var unset: String {
+        switch self {
+        case .request: L("your Dispatch shortcut")
+        case .screenshot: L("your screenshot key")
+        case .wholeScreen: "⌘"
+        case .send: "return"
+        case .dictation: L("your Voice Flow shortcut")
+        }
+    }
 }
 
-/// The keys as the Notch Workbench has them after the Oct 6 decisions (round two): ⌘ takes a
-/// screenshot (twice, the whole screen), left ⌥ is the highlighter. Settings › Shortcuts in Fovea
-/// Captures and AMENDMENTS.md:75-77 still show round one; this table is the one place to change.
+/// The keys as FoveaKit's `FoveaKeys` has them after Oct 17 (Ryan): ⌥ takes part of the screen,
+/// not ⌘, which Codex uses, and once only (⌥ twice brings up Claude: no whole screen); words are
+/// selected and files dragged onto the notch, no key; fn is Voice Flow, fn ⌃ Dispatch. This table
+/// is the one place in the first run to change.
 public struct KeyMap: Equatable, Sendable {
     public var request: [String]
     public var screenshot: [String]
-    public var highlighter: [String]
+    /// Oct 18, Ryan: "double clicking command for full-screen screenshot": ⌘ twice, FoveaKeys' own.
+    public var wholeScreen: [String]
     public var send: [String]
     public var dictation: [String]
 
-    public init(request: [String] = ["fn", "⌃"], screenshot: [String] = ["⌘"], highlighter: [String] = ["⌥"],
+    public init(request: [String] = ["fn", "⌃"], screenshot: [String] = ["⌥"], wholeScreen: [String] = FoveaKeys.wholeScreen.keys,
                 send: [String] = ["return"], dictation: [String] = ["fn"]) {
-        self.request = request; self.screenshot = screenshot; self.highlighter = highlighter
+        self.request = request; self.screenshot = screenshot; self.wholeScreen = wholeScreen
         self.send = send; self.dictation = dictation
     }
 
     public static let current = KeyMap()
 
+    /// Oct 15 review, ST-03.1: the keys as the person recorded them in Settings › Shortcuts (the
+    /// defaults until they do), so every line in the first run that names a key names theirs. A
+    /// left-hand key is drawn as the keyboard labels it ("left ⌥" is ⌥); a cleared shortcut has no
+    /// caps, and is named instead (`spoken`).
+    public init(prefs: FoveaPrefs) {
+        func caps(_ id: String) -> [String] {
+            (FoveaKeys.chord(id, prefs)?.caps ?? []).map { $0.hasPrefix("left ") ? String($0.dropFirst("left ".count)) : $0 }
+        }
+        self.init(request: caps(FoveaKeys.dispatch.id), screenshot: caps(FoveaKeys.region.id),
+                  dictation: caps(FoveaKeys.voiceflow.id))
+    }
+
+    /// Some key in the map is fn (the 🌐 key's setting matters then).
+    public var usesFn: Bool { [request, screenshot, wholeScreen, dictation].contains { $0.contains("fn") } }
+
     public func caps(_ key: KeyName) -> [String] {
         switch key {
         case .request: request
         case .screenshot: screenshot
-        case .highlighter: highlighter
+        case .wholeScreen: wholeScreen
         case .send: send
         case .dictation: dictation
         }
     }
 
-    /// The key's name in a sentence: "fn ⌃", "⌘".
-    public func spoken(_ key: KeyName) -> String { caps(key).joined(separator: " ") }
+    /// The key's name in a sentence: "fn ⌃", "⌘". A shortcut cleared in Settings is named
+    /// ("your Dispatch shortcut"), never left blank (Oct 15 review, ST-03.1).
+    public func spoken(_ key: KeyName) -> String {
+        let caps = caps(key)
+        return caps.isEmpty ? key.unset : caps.joined(separator: " ")
+    }
 
     /// The keys to press for what a step waits on now, as the keyboard labels them: only these
     /// light, in turn (Oct 9). A capture key already armed is the app's to clear (then it's a drag
@@ -259,42 +337,85 @@ public struct KeyMap: Equatable, Sendable {
     public func keys(for beat: Beat) -> [String] {
         switch beat {
         case .requestKey, .finish: request
-        case .wholeScreen, .prs, .tickets: screenshot
-        case .passage, .file: highlighter
+        // Oct 17, Ryan: ⌥ for pictures, in dictation too; words and files light nothing (no key).
+        // Oct 18, Ryan: dictation's take may be the whole screen too, ⌘ twice.
+        case .numbers, .prs: screenshot
+        case .feedbackTaken: screenshot + wholeScreen
         case .send: send
         case .followKey, .followAnswer, .feedbackKey, .feedbackLanded, .replyKey, .replyLanded: dictation
         default: []
         }
     }
 
-    /// How many presses it takes: the whole screen is ⌘ twice, shown as "×2" on the key (Oct 9).
-    public func presses(for beat: Beat) -> Int {
-        beat == .wholeScreen ? 2 : 1
+    /// How many presses a beat takes: one (the weekly update's parts are ⌥ once each).
+    public func presses(for beat: Beat) -> Int { 1 }
+
+    /// How many presses a key takes: the whole screen is ⌘ twice (Oct 18, Ryan), the rest once.
+    public func presses(_ key: KeyName) -> Int { key == .wholeScreen ? FoveaKeys.wholeScreen.presses : 1 }
+
+    /// The "×2" on the keyboard for what a beat waits on: ⌘ where the whole screen is named.
+    public func badges(for beat: Beat) -> [String: String] {
+        guard beat == .feedbackTaken else { return [:] }
+        return Dictionary(wholeScreen.map { ($0, "×\(presses(.wholeScreen))") }, uniquingKeysWith: { a, _ in a })
     }
 }
 
 /// The permissions the first run asks for. Speech Recognition is gone and Automation joins
 /// (docs/window/FEEDBACK_2026-10-06.md, rows 3–5); Automation is only for handing words to Terminal.
 public enum Permission: String, CaseIterable, Sendable, Codable {
-    case accessibility, microphone, screenRecording, automation
+    /// Oct 15 review, OB-01.5 and FR-09: Input Monitoring, asked for on the permissions page. 1.0's
+    /// own key engine doesn't need it, so the page never waits on it.
+    case accessibility, microphone, screenRecording, automation, inputMonitoring
+
+    /// The ones the permissions page waits on (Input Monitoring is asked for, never waited on).
+    public static let required: [Permission] = [.accessibility, .screenRecording]
+    /// The rows on the permissions page, in order.
+    public static let page: [Permission] = [.accessibility, .screenRecording, .inputMonitoring]
 
     /// The pane's name as macOS 27 writes it.
     public var paneName: String {
         switch self {
-        case .accessibility: "Device Control and Data Access"
-        case .microphone: "Microphone"
-        case .screenRecording: "Screen & System Audio Recording"
-        case .automation: "Automation"
+        case .accessibility: L("Device Control and Data Access")
+        case .microphone: L("Microphone")
+        case .screenRecording: L("Screen & System Audio Recording")
+        case .automation: L("Automation")
+        case .inputMonitoring: L("Input Monitoring")
         }
     }
 
     /// What it's for, in a few words (Oct 9: "shorter terms").
     public var purpose: String {
         switch self {
-        case .accessibility: "Your hotkeys, in any app."
-        case .microphone: "So Fovea hears you."
-        case .screenRecording: "Only what you point at."
-        case .automation: "So Fovea can hand your words to Terminal."
+        case .accessibility: L("Your hotkeys, in any app.")
+        case .microphone: L("So Fovea hears you.")
+        case .screenRecording: L("Only what you point at.")
+        case .automation: L("So Fovea can hand your words to Terminal.")
+        case .inputMonitoring: L("So your shortcuts work in every app.")
+        }
+    }
+}
+
+/// Oct 15 review, OB-03.1: one practice again, from Home's Getting Started, the rest of the first
+/// run left as it is; Home again at its end.
+public enum PracticeAgain: String, CaseIterable, Sendable, Codable {
+    case weeklyUpdate, packingList, followUp, dictation
+
+    public var title: String {
+        switch self {
+        case .weeklyUpdate: L("The weekly update")
+        case .packingList: L("The packing list")
+        case .followUp: L("Asking more")
+        case .dictation: L("Dictation")
+        }
+    }
+
+    /// The steps it walks. Asking more needs a session to ask in, so the packing list goes first.
+    public var steps: [Step] {
+        switch self {
+        case .weeklyUpdate: [.weeklyUpdate, .hover]
+        case .packingList: [.packList]
+        case .followUp: [.packList, .followUp]
+        case .dictation: [.dictationIntro, .dictation]
         }
     }
 }
@@ -332,20 +453,19 @@ public enum Agent: String, CaseIterable, Sendable, Codable {
 }
 
 /// The dictation apps a dictionary can come from (Oct 9). Found by bundle ID or by name in
-/// /Applications. Wispr Flow and VoiceOS keep their words on this Mac, so Connect reads them
-/// straight from there, when it's clicked and not before (as VoiceOS itself imports from Wispr
-/// Flow); Typeless keeps them online, so for it, and the rest, it's a paste or a file.
+/// /Applications. Wispr Flow keeps its words on this Mac, so Connect reads them straight from
+/// there, when it's clicked and not before; Typeless keeps them online, so for it, and the rest,
+/// it's a paste or a file. Oct 18, Ryan: no VoiceOS in the list.
 public enum DictationApp: String, CaseIterable, Sendable {
-    case wisprFlow, typeless, voiceOS, superwhisper, macWhisper, textReplacements
+    case wisprFlow, typeless, superwhisper, macWhisper, textReplacements
 
     public var name: String {
         switch self {
         case .wisprFlow: "Wispr Flow"
         case .typeless: "Typeless"
-        case .voiceOS: "VoiceOS"
         case .superwhisper: "Superwhisper"
         case .macWhisper: "MacWhisper"
-        case .textReplacements: "Text Replacements"
+        case .textReplacements: L("Text Replacements")
         }
     }
 
@@ -353,7 +473,6 @@ public enum DictationApp: String, CaseIterable, Sendable {
         switch self {
         case .wisprFlow: ["com.electron.wispr-flow"]
         case .typeless: ["now.typeless.desktop"]
-        case .voiceOS: ["com.voiceos.app"]
         case .superwhisper: ["com.superduper.superwhisper"]
         case .macWhisper: ["com.goodsnooze.MacWhisper"]
         case .textReplacements: []
@@ -365,7 +484,6 @@ public enum DictationApp: String, CaseIterable, Sendable {
         switch self {
         case .wisprFlow: ["Wispr Flow.app"]
         case .typeless: ["Typeless.app"]
-        case .voiceOS: ["VoiceOS.app"]
         case .superwhisper: ["superwhisper.app", "Superwhisper.app"]
         case .macWhisper: ["MacWhisper.app"]
         case .textReplacements: []
@@ -375,16 +493,16 @@ public enum DictationApp: String, CaseIterable, Sendable {
     /// One line on getting the words out, where Connect can't.
     public var howTo: String {
         switch self {
-        case .wisprFlow, .voiceOS:
-            "Connect reads your words from it."
+        case .wisprFlow:
+            L("Connect reads your words from it.")
         case .typeless:
-            "Typeless keeps your words online. Copy them there, then paste."
+            L("Typeless keeps your words online. Copy them there, then paste.")
         case .superwhisper:
-            "Copy your vocabulary from Superwhisper's settings, then paste."
+            L("Copy your vocabulary from Superwhisper's settings, then paste.")
         case .macWhisper:
-            "Export your replacement list, then drop the file here."
+            L("Export your replacement list, then drop the file here.")
         case .textReplacements:
-            "Drag entries out of Keyboard › Text Replacements, then drop the file here."
+            L("Drag entries out of Keyboard › Text Replacements, then drop the file here.")
         }
     }
 
@@ -396,8 +514,6 @@ public enum DictationApp: String, CaseIterable, Sendable {
         case .wisprFlow:
             ("Wispr Flow/flow.sqlite",
              "SELECT phrase, replacement FROM Dictionary WHERE isDeleted = 0 AND isSnippet = 0")
-        case .voiceOS:
-            ("VoiceOS/voiceos.db", "SELECT text, NULL FROM dictionary WHERE deleted_at IS NULL")
         default:
             nil
         }
@@ -414,9 +530,9 @@ public enum DictationApp: String, CaseIterable, Sendable {
 /// one accent through Fovea. Chosen at the start. FoveaKit's, shared with Settings and the notch.
 public typealias AccentName = FoveaAccent
 
-/// The glow in the Dispatch voice bar, Fovea's aura (Settings › Notch): a palette to start from,
-/// turned round the color wheel, wandering as much as you like. Custom's spread stays in Settings;
-/// the first run offers the templates (`GlowPalette.templates`). FoveaKit's.
+/// The glow in the Dispatch voice bar, Fovea's aura (Settings › Notch). Oct 18, Ryan: the eight
+/// palettes are fixed (their hue and drift never change); Customize (`.custom`) is the ninth, and
+/// only it has a hue and a drift to set. FoveaKit's.
 public typealias AuraPalette = GlowPalette
 
 /// What the person made theirs at the start, carried to the real Home at the end.
@@ -434,4 +550,13 @@ public struct Personalization: Equatable, Sendable, Codable {
 
     /// Settings › Notch's defaults.
     public var isDefault: Bool { self == Personalization() }
+
+    /// Oct 18, Ryan: "changing the hue should not change the color scheme provided". The glow as
+    /// drawn: a palette at its own colors and the default drift; Customize at the person's hue and
+    /// drift. FoveaPrefs' `drawnGlowHue` and `drawnGlowDrift` keep the same rule (a test holds them).
+    public var drawnHue: Double { aura == .custom ? auraHue : 0 }
+    public var drawnDrift: Double { aura == .custom ? auraDrift : Personalization().auraDrift }
+
+    /// Make it yours' tiles: the eight palettes, then Customize.
+    public static let tiles: [AuraPalette] = GlowPalette.templates + [.custom]
 }

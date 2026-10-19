@@ -29,6 +29,41 @@ final class IslandLive {
     var sessionStart = Date()
     /// Set by the model while it listens: the level for the waveform and the glow.
     var level: Double = 0
+    /// Oct 15 review, ST-03.1: the shortcuts Settings › Shortcuts records (KeyMonitors.swift),
+    /// wired by the controller (IslandInput.swift).
+    let shortcuts = ShortcutMonitor()
+    /// Oct 15 review, NH-04: a Settings page opened from the notch ("voice", "account"…), set by
+    /// the app (`IslandController.onOpenSettings`).
+    var openSettings: ((String) -> Void)?
+    /// Oct 15 review, VF05: capture mode's surfaces on the other displays (IslandInput.swift).
+    var otherCapture: [NotchPanel] = []
+    /// Oct 15 review, VF04: the wheel over the opened stack (IslandInput.swift).
+    var scrollMonitor: Any?
+    /// Oct 17, Ryan: the mouse, watched while Fovea listens (never taken over), and where the
+    /// press under way began, in global top-left points (IslandInput.swift).
+    var mouseMonitors: [Any] = []
+    var pressAt: CGPoint?
+    /// Oct 17, Ryan: files dragged onto the notch. The drag pasteboard as the press began (a file
+    /// drag changes it), whether one is under way, and the drop target over the island meanwhile.
+    var dragBoardCount = 0
+    var fileDragging = false
+    var dropPanel: NotchPanel?
+    /// The drag pasteboard, asked a few times a second while the island takes drops: a drag Fovea's
+    /// own window starts (the first run's practice files) is seen by no event monitor.
+    var dragPoll: Timer?
+    /// Oct 18, Ryan: selections read off the main thread, as the cursor moves; the words already
+    /// selected where the press began, and the window it began in; the selection being made, drawn
+    /// over its window as it grows; and the windows drawing the marks, by the window they're over.
+    let selectionReader = SelectionReader()
+    var pressText: String?
+    var pressWindow: CGWindowID?
+    var lastDragRead = Date.distantPast
+    var draftMark: (window: CGWindowID, bounds: CGRect, rects: [CGRect])?
+    var markWindows: [CGWindowID: MarkWindow] = [:]
+    var markFollow: Timer?
+    var markObservers: [Any] = []
+    /// The controller's: the mark windows brought up to date (IslandMarks.swift).
+    var syncMarks: (() -> Void)?
 
     /// `--smoke` (LiveSmoke.swift): the real island with stand-ins at its edges, so nothing reaches
     /// the microphone, the app in front, the screen or Accessibility. Off otherwise.
@@ -37,10 +72,23 @@ final class IslandLive {
         var words: [String] = []
         /// A text field to paste into, or none (Paste not found).
         var canPaste = false
+        /// Oct 18, Ryan: a field under the pointer when the words land, and where each paste went
+        /// ("pointer", "focused").
+        var fieldUnderPointer = false
+        var landedOn: [String] = []
         var pasted: [String] = []
-        /// What a click with the highlighter finds there.
+        /// What a click finds there (a Finder file).
         var file: (url: URL, rect: CGRect)?
         var run: (rects: [CGRect], text: String)?
+        /// Oct 17, Ryan: what the app says the person selected (after a drag, a double or a triple
+        /// click), in the island's points, and whether it sits in the field the words paste into.
+        var selection: (text: String, rects: [CGRect], editable: Bool)?
+        /// What the last dictation would have pasted, piece by piece (the words, then what was taken).
+        var pastedPieces: [Paster.Piece] = []
+        /// Real pictures of the screen for what's taken (`--design-shots`), not stand-ins.
+        var realImages = false
+        /// What a picture taken is said to come from (`--design-shots`: its scene's document).
+        var source: String?
     }
     var smoke: Smoke?
 
@@ -71,7 +119,9 @@ final class IslandLive {
         sessionStart = Date()
         if sessionApp == nil { sessionApp = AXReader.frontmostApp }
         do {
-            try await voice.start(locale: prefs.prefs.language.speechLocale, contextual: dictionary.contextualStrings)
+            // Oct 15 review, ST-04.2/3: with Tidy my words off, speech recognition adds no punctuation.
+            try await voice.start(locale: prefs.prefs.language.speechLocale, contextual: dictionary.contextualStrings,
+                                  punctuates: tidiesWords)
             return nil
         } catch let failure as VoiceFailure {
             return failure
@@ -80,11 +130,22 @@ final class IslandLive {
         }
     }
 
-    /// The words, once the person stops: cleaned, the dictionary's corrections made.
+    /// Oct 15 review, ST-04.2/3: Voice & Capture's "Tidy my words". On, Fovea takes the ums out and
+    /// adds a capital and a full stop; off, the words go exactly as they were said.
+    var tidiesWords: Bool { prefs.prefs.tidyWords }
+
+    /// The words as they'll go: tidied, or (Tidy my words off) exactly as said.
+    func written(_ said: String) -> String {
+        guard !said.isEmpty else { return "" }
+        return tidiesWords ? TranscriptCleaner.clean(said) : said.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The words, once the person stops: the dictionary's corrections made, tidied unless the
+    /// person said not to.
     func finishWords() async -> VoiceResult {
         if smoke != nil {
             let said = smoke?.words.isEmpty == false ? smoke!.words.removeFirst() : ""
-            return VoiceResult(text: said.isEmpty ? "" : TranscriptCleaner.clean(said), failure: nil, seconds: 1)
+            return VoiceResult(text: written(said), failure: nil, seconds: 1)
         }
         var result = await voice.finish()
         level = 0
@@ -92,7 +153,7 @@ final class IslandLive {
         for (heard, word) in dictionary.replacements where !heard.isEmpty {
             text = text.replacingOccurrences(of: heard, with: word, options: [.caseInsensitive])
         }
-        result.text = text.isEmpty ? "" : TranscriptCleaner.clean(text)
+        result.text = written(text)
         return result
     }
 
@@ -108,10 +169,38 @@ final class IslandLive {
 
     /// Somewhere to paste: the onboarding's own windows, or a text field in the app in front.
     var canPaste: Bool {
-        if let smoke { return smoke.canPaste }
-        if director?.pasteTarget() == true { return true }
-        guard !Paster.secureInput else { return false }
-        return AXReader.focusedTextInput() != nil
+        landing = findLanding()
+        return landing != nil
+    }
+
+    /// Oct 18, Ryan: where the words land, found the moment they're pasted ("where the user's mouse
+    /// is hovering at the very last moment before sending, not the last moment before the
+    /// transcription starts"): the first run's practice window under the pointer; a field under
+    /// the pointer (brought forward and focused); else the focused field; else nowhere (Paste not
+    /// found).
+    enum Landing {
+        case practice, focused
+        case pointer(AXReader.TextField?)
+    }
+
+    /// What the last `canPaste` found, for the paste right after it.
+    var landing: Landing?
+
+    func findLanding() -> Landing? {
+        if let smoke { return smoke.fieldUnderPointer ? .pointer(nil) : (smoke.canPaste ? .focused : nil) }
+        if director?.pasteTarget() == true { return .practice }
+        guard !Paster.secureInput else { return nil }
+        let p = NSEvent.mouseLocation
+        if let field = AXReader.textField(at: CGPoint(x: p.x, y: Screens.primaryHeight - p.y)) {
+            return field.focused ? .focused : .pointer(field)
+        }
+        return AXReader.focusedTextInput() != nil ? .focused : nil
+    }
+
+    /// Where the words are about to land, global top-left points (to light it a moment).
+    var landingFrame: CGRect? {
+        if case .pointer(let field?)? = landing { return field.frame }
+        return AXReader.focusedTextInput()?.frame
     }
 
     func paste(_ text: String) {
@@ -120,35 +209,99 @@ final class IslandLive {
         Paster.paste(text)
     }
 
+    /// Oct 17, Ryan ("paste them after the words"): the words, then what was taken, in turn into the
+    /// same field (`Paster`). The first run's practice windows take the words alone.
+    func paste(_ pieces: [Paster.Piece]) {
+        let words = pieces.compactMap { piece -> String? in
+            if case .text(let text) = piece { return text } else { return nil }
+        }.joined()
+        let landing = self.landing ?? findLanding()
+        self.landing = nil
+        if smoke != nil {
+            smoke?.pastedPieces = pieces
+            smoke?.pasted.append(words)
+            if case .pointer? = landing { smoke?.landedOn.append("pointer") } else { smoke?.landedOn.append("focused") }
+            return
+        }
+        if director?.paste(words) == true { return }
+        // Oct 18, Ryan: a field under the pointer that isn't the focused one: brought forward and
+        // focused (never a click), then the paste once it has the keyboard.
+        if case .pointer(let field?)? = landing {
+            AXReader.focus(field)
+            Task {
+                try? await Task.sleep(for: Self.focusSettle)
+                await Paster.paste(pieces)
+            }
+            return
+        }
+        Task { await Paster.paste(pieces) }
+    }
+
+    /// How long a field brought forward gets to take the keyboard before the paste.
+    static let focusSettle: Duration = .milliseconds(180)
     // MARK: Pictures
 
-    /// A part of the screen, as it is under Fovea's own marks.
-    func image(of rect: CGRect) async -> NSImage? {
-        if smoke != nil {
+    /// A part of the screen, as it is under Fovea's own marks. `on`: another display than the
+    /// island's (Oct 15 review, VF05), in that display's own top-down points.
+    func image(of rect: CGRect, on other: NSScreen? = nil) async -> NSImage? {
+        if let smoke, !smoke.realImages {
             return NSImage(size: NSSize(width: max(rect.width, 1), height: max(rect.height, 1)), flipped: false) { r in
                 NSColor.systemTeal.setFill(); r.fill(); return true
             }
         }
-        let windows = [panel?.windowNumber].compactMap { $0 }
-        guard let cg = try? await ScreenCapturer.capture(rect, on: screen, excluding: windows) else {
-            return director?.image(of: rect)
+        let windows = ([panel].compactMap { $0 } + otherCapture).map(\.windowNumber)
+        guard let cg = try? await ScreenCapturer.capture(rect, on: other ?? screen, excluding: windows) else {
+            return other == nil ? director?.image(of: rect) : nil
         }
         return NSImage(cgImage: cg, size: rect.size)
     }
 
+    /// Where something at a global point was taken from: the window there, by app and title.
+    func source(atGlobal p: CGPoint) -> String {
+        if let name = smoke?.source { return name }
+        guard let w = WindowList.window(at: p) else { return L("Desktop") }
+        if let title = w.title, !title.isEmpty { return "\(title) · \(w.owner)" }
+        return w.owner
+    }
+
     /// Where a part of the screen was taken from: the window under it, by app and title.
-    func source(of rect: CGRect) -> String {
-        let center = global(CGPoint(x: rect.midX, y: rect.midY))
+    func source(of rect: CGRect, on other: NSScreen? = nil) -> String {
+        // `--design-shots`: its own scene, never a window of the person's behind it.
+        if let name = smoke?.source { return name }
+        let center = Screens.global(CGPoint(x: rect.midX, y: rect.midY), on: other ?? screen)
         if let w = WindowList.window(at: center) {
             if let title = w.title, !title.isEmpty { return "\(title) · \(w.owner)" }
             return w.owner
         }
         // Fovea's own windows (the first run's practice windows).
         if let name = director?.source(of: rect) { return name }
-        return "Desktop"
+        return L("Desktop")
     }
 
-    // MARK: The highlighter
+    // MARK: Oct 17, Ryan: words and files with no key
+
+    /// A global top-left point in the island's own points.
+    func localPoint(_ p: CGPoint) -> CGPoint { local(CGRect(origin: p, size: .zero)).origin }
+
+    /// Whether a rect in the island's points is on the island's display.
+    func onIslandDisplay(_ r: CGRect) -> Bool { CGRect(origin: .zero, size: screen.frame.size).intersects(r) }
+
+    /// What the person selected with a press from `a` to `b` (global top-left points), where it's
+    /// known at once: the smoke's stand-in, or the first run's practice windows; its lines in the
+    /// island's points. Another app's selection is read off the main thread (`selectionReader`).
+    func selectionMade(from a: CGPoint, to b: CGPoint, clicks: Int) -> (text: String, rects: [CGRect], editable: Bool)? {
+        if let smoke { return smoke.selection }
+        if let director {
+            let own = clicks >= 2 ? director.paragraph(at: localPoint(b)) : director.textRun(from: localPoint(a), to: localPoint(b))
+            if let own { return (own.text, own.rects, director.pasteTarget()) }
+        }
+        return nil
+    }
+
+    /// The smoke and the first run answer at once; everywhere else, Accessibility off the main thread.
+    var readsSelectionAtOnce: Bool { smoke != nil || director != nil }
+
+    // MARK: The highlighter (the Workbench's; the real Mac's has no key since Oct 17)
 
     /// The words between two points of a drag, line by line, in the island's points.
     func textRun(from a: CGPoint, to b: CGPoint) -> (rects: [CGRect], text: String)? {
@@ -204,7 +357,7 @@ final class IslandLive {
                                               fileType: (name as NSString).pathExtension.lowercased(), source: r.source))
             }
         }
-        let app = sessionApp ?? AXReader.frontmostApp ?? ("Desktop", "com.apple.finder")
+        let app = sessionApp ?? AXReader.frontmostApp ?? (L("Desktop"), "com.apple.finder")
         var capture = Capture(id: id, kind: kind, time: Date(), app: AppRef(app.name, app.bundleID), text: text,
                               attachments: attachments, destination: destination,
                               theme: title ?? TitleNamer.title(for: text, maxWords: 4),

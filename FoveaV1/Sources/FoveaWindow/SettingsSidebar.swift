@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import CapturesCore
 import FoveaKit
+import FoveaLook
 
 /// Settings as System Settings shows its own (Ryan's call, October): a sidebar at the left, on
 /// the window's material, each section a tile of color with a white symbol (as System Settings'
@@ -29,8 +30,11 @@ struct SettingsSidebar: View {
                     ForEach(group) { category in
                         let chosen = category == model.settingsCategory
                         Label {
-                            Text(category.title)
-                                .foregroundStyle(chosen && front ? Color.white : Color.primary)
+                            HStack(spacing: 4) {
+                                Text(category.title)
+                                    .foregroundStyle(chosen && front ? Color.white : Color.primary)
+                                Spacer(minLength: 0)
+                            }
                         } icon: {
                             SettingsIcon(category: category, size: 20)
                         }
@@ -215,12 +219,16 @@ struct NativeSettingsPage: View {
         case .notch: NotchPane()
         case .voice: VoicePane()
         case .language: LanguagePane()
-        case .memory:
-            DictionarySection()
-            MemorySection()
+        // Oct 15 review, MW-04: the dictionary is a section of its own again (its page is the
+        // other window builder's `DictionaryPane`, DI-01).
+        case .dictionary: DictionaryPane()
+        case .memory: MemorySection()
         case .shortcuts: ShortcutsPane()
         case .connectors: ConnectorsPane()
         case .eyeTracking: EyeTrackingPane()
+        // Oct 15 review: Getting Started (OB-03.1, OB-03.2) and About (ST-10, MW-04c), new.
+        case .gettingStarted: GettingStartedPane()
+        case .about: AboutPane()
         }
     }
 }

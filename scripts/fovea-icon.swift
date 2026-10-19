@@ -1,10 +1,12 @@
 #!/usr/bin/env swift
-// Fovea's app icon. Since Oct 6 it's Ryan's serif f, its hook curling into the o: traced from his
-// artwork (Brand/Source/fovea-serif-f.png), not drawn, so the mark is his to the curve. The
-// geometric "fo" it replaced (the o an eye, the dot in it the fovea, the point the eye sees
-// sharpest) is still drawn from measurements, for the variants and the menu bar's eye. One
-// outline drives every export, so the SVG masters, the PNGs, the layered macOS 26 icon and the
-// variants never drift.
+// Fovea's app icon. Since Oct 13 it's the pressed loop: the highlighter loop and its dot pressed
+// blind into cotton paper, deeper where the pen closes the loop over its start (the top center,
+// where the notch is), and black ink only there. It's rendered, not drawn, since it's the light on a
+// press: scripts/fovea-pressed-loop.py writes the artwork into Brand/Source (one square for 64 px
+// and up, one drawn for 16 and 32), and this script builds every export from it. The flat loop
+// (Oct 10, yellow), Ryan's serif f (Oct 6, traced from Brand/Source/fovea-serif-f.png) and the
+// geometric "fo" before it (the o an eye, the dot in it the fovea) stay as variants; the loop's
+// outline is the one-color mark, and the fo's eye stays the menu bar's mark.
 //
 //   swift scripts/fovea-icon.swift            write the brand assets, AppIcon.png and the variants
 //   swift scripts/fovea-icon.swift --check <drawing.png>   compare the as-drawn fo with a drawing
@@ -428,13 +430,106 @@ enum Serif {
     }
 }
 
+// MARK: - The highlighter loop (drawn)
+
+/// Shapes in the drawing's units, each with its color, painted in order.
+typealias Paint = [(path: CGPath, color: NSColor)]
+
+/// A design painted in its own colors on its own field, rather than one ink on the look's field.
+struct Art {
+    var field: NSColor
+    var large: Paint
+    /// Drawn for 16 and 32 pixels: larger, heavier, deeper.
+    var small: Paint
+}
+
+func srgb(_ hex: UInt32) -> NSColor {
+    NSColor(srgbRed: CGFloat(hex >> 16 & 0xFF) / 255, green: CGFloat(hex >> 8 & 0xFF) / 255, blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+}
+
+/// The loop as sketched and picked (Oct 10): a highlighter stroke laid once around, its closing
+/// pass laid over its start along the top, and a dot inside toward the lower right. Where the
+/// marker passes twice the ink is deeper (#ECCE6A over #EFD993): along the top center, where the
+/// notch is, and in the dot. The colors are the picked image's, measured; the field is the window's
+/// ivory (Tokens' Macula canvas).
+enum Loop {
+    /// The sketch's units: a 160 square, its tile 144 square at (8, 8), mapped onto the drawing's tile.
+    static let fromSketch: CGAffineTransform = {
+        let k = tile.width / 144
+        return CGAffineTransform(translationX: tile.minX - 8 * k, y: tile.minY - 8 * k).scaledBy(x: k, y: k)
+    }()
+
+    static func curves(_ start: CGPoint, _ cs: [(CGFloat, CGFloat, CGFloat, CGFloat, CGFloat, CGFloat)]) -> CGPath {
+        let p = CGMutablePath()
+        p.move(to: start)
+        for c in cs { p.addCurve(to: CGPoint(x: c.4, y: c.5), control1: CGPoint(x: c.0, y: c.1), control2: CGPoint(x: c.2, y: c.3)) }
+        return p
+    }
+    /// Once around, from the top left, clockwise.
+    static let around = curves(CGPoint(x: 56, y: 45), [(70, 37.5, 92, 36, 108, 41), (123, 47, 131, 63, 128, 85),
+                                                       (126, 106, 109, 124, 84, 127), (60, 130, 39, 115, 36, 92),
+                                                       (33, 71, 42, 54, 58, 47)])
+    /// The closing pass, over the start along the top.
+    static let closing = curves(CGPoint(x: 58, y: 47), [(72, 41.5, 90, 41, 104, 44.5)])
+
+    static let field = srgb(0xF8F6EF)
+
+    static func paint(width: CGFloat, scale: CGFloat, dots: [(CGPoint, CGFloat)], base: NSColor, ink: NSColor) -> Paint {
+        // The marker's flat tip: square ends, round where it turns.
+        func band(_ p: CGPath) -> CGPath { p.copy(strokingWithWidth: width, lineCap: .butt, lineJoin: .round, miterLimit: 10).normalized() }
+        let first = band(around), last = band(closing)
+        let circles = dots.map { CGPath(ellipseIn: CGRect(x: $0.0.x - $0.1, y: $0.0.y - $0.1, width: 2 * $0.1, height: 2 * $0.1), transform: nil) }
+        var shapes: Paint = [(first.union(last), base), (circles.dropFirst().reduce(circles[0]) { $0.union($1) }, base),
+                             (last.intersection(first), ink)]
+        if circles.count > 1 { shapes.append((circles.dropFirst().reduce(circles[0]) { $0.intersection($1) }, ink)) }
+        // Grown about the loop's middle, then into the drawing's units.
+        var t = CGAffineTransform(translationX: 82, y: 85).scaledBy(x: scale, y: scale).translatedBy(x: -82, y: -85)
+            .concatenating(fromSketch)
+        return shapes.map { ($0.path.copy(using: &t)!, $0.color) }
+    }
+
+    static let art = Art(
+        field: field,
+        // As sketched: a 16-unit stroke; the dot laid twice, a hair apart, so its middle is the deeper ink.
+        large: paint(width: 16, scale: 1, dots: [(CGPoint(x: 97, y: 99), 8), (CGPoint(x: 97.6, y: 98.6), 7.6)],
+                     base: srgb(0xEFD993), ink: srgb(0xECCE6A)),
+        // At 16 and 32 pixels the pale yellow fades into the ivory: a heavier stroke, a larger loop and
+        // dot, and the yellows a step deeper.
+        small: paint(width: 22, scale: 1.08, dots: [(CGPoint(x: 97, y: 99), 9)],
+                     base: srgb(0xE9C55A), ink: srgb(0xD9A92E)))
+}
+
+extension Array where Element == (path: CGPath, color: NSColor) {
+    /// Every shape as one, for one-color uses.
+    var outline: CGPath { dropFirst().reduce(self[0].path) { $0.union($1.path) } }
+}
+
+// MARK: - The pressed loop (rendered)
+
+/// A rendered design: full-bleed artwork squares, the tile's content filling them, for 64 px and up
+/// and for 16 and 32.
+struct Raster {
+    var large: CGImage
+    var small: CGImage
+    var field: NSColor
+
+    static func load(_ url: URL) -> CGImage {
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil), let img = CGImageSourceCreateImageAtIndex(src, 0, nil) else {
+            fatalError("missing \(url.path): run python3 scripts/fovea-pressed-loop.py")
+        }
+        return img
+    }
+}
+
 /// One design the generator exports: its outline in the drawing's units, and the outline drawn
-/// for 16 and 32 pixels.
+/// for 16 and 32 pixels; or, for a painted design, its art; or, for a rendered one, its artwork.
 struct Design {
     var name: String
     var title: String
     var glyph: CGPath
     var smallGlyph: CGPath
+    var art: Art? = nil
+    var raster: Raster? = nil
 
     /// A geometric fo, with the small-size master shaped as the mark is (its o round or not, its
     /// eye looking where the mark's does, a little less).
@@ -449,6 +544,24 @@ struct Design {
     /// A traced mark: one outline at every size.
     init(name: String, title: String, glyph: CGPath) {
         self.name = name; self.title = title; self.glyph = glyph; smallGlyph = glyph
+    }
+
+    /// A rendered design: its artwork, whatever the look. Its outline is the loop's, for marks.
+    init(name: String, title: String, raster: Raster) {
+        self.name = name; self.title = title; self.raster = raster
+        glyph = Loop.art.large.outline; smallGlyph = Loop.art.small.outline
+    }
+
+    /// A painted design: its own colors and field, whatever the look.
+    init(name: String, title: String, art: Art) {
+        self.name = name; self.title = title; self.art = art
+        glyph = art.large.outline; smallGlyph = art.small.outline
+    }
+
+    /// What's painted on the tile, its small drawing or not, and the tile's field.
+    func paint(_ look: Look, small: Bool) -> (Paint, NSColor) {
+        if let art { return (small ? art.small : art.large, art.field) }
+        return ([(small ? smallGlyph : glyph, look.ink)], look.field)
     }
 }
 
@@ -493,6 +606,45 @@ func writePNG(_ rep: NSBitmapImageRep, _ url: URL) {
 
 /// A full macOS app icon at `px` pixels: the body with its shadow, the mark on it.
 func renderIcon(_ outline: CGPath, _ look: Look, px: Int) -> NSBitmapImageRep {
+    renderIcon([(outline, look.ink)], field: look.field, edge: look.edge, px: px)
+}
+
+/// A design's icon at `px` pixels: its small drawing at 32 and below (or as `small` says, for a
+/// sheet drawn at twice the size).
+func renderIcon(_ design: Design, _ look: Look, px: Int, small: Bool? = nil) -> NSBitmapImageRep {
+    if let r = design.raster {
+        return renderIcon(image: small ?? (px <= 32) ? r.small : r.large, field: r.field, edge: look.edge, px: px)
+    }
+    let (paint, field) = design.paint(look, small: small ?? (px <= 32))
+    return renderIcon(paint, field: field, edge: look.edge, px: px)
+}
+
+/// Rendered artwork on the icon's body: the same shadow and hairline as a drawn design, the artwork
+/// filling the body inside its corners.
+func renderIcon(image: CGImage, field: NSColor, edge: NSColor, px: Int) -> NSBitmapImageRep {
+    bitmap(px, px) { ctx in
+        let k = CGFloat(px) / 1024
+        ctx.scaleBy(x: k, y: k)
+        ctx.interpolationQuality = .high
+        let body = squircle(iconBody, radius: iconBodyRadius, smoothing: 0.6)
+        ctx.saveGState()
+        ctx.setShadow(offset: CGSize(width: 0, height: -10 * k), blur: 22 * k, color: NSColor(white: 0, alpha: 0.28).cgColor)
+        ctx.addPath(body); ctx.setFillColor(field.cgColor); ctx.fillPath()
+        ctx.restoreGState()
+        ctx.saveGState()
+        ctx.addPath(body); ctx.clip()
+        // The context is y down; an image draws y up, so it's flipped back about the body.
+        ctx.translateBy(x: 0, y: iconBody.minY + iconBody.maxY); ctx.scaleBy(x: 1, y: -1)
+        ctx.draw(image, in: iconBody)
+        ctx.restoreGState()
+        ctx.saveGState()
+        ctx.addPath(body); ctx.clip()
+        ctx.addPath(body); ctx.setStrokeColor(edge.cgColor); ctx.setLineWidth(3); ctx.strokePath()
+        ctx.restoreGState()
+    }
+}
+
+func renderIcon(_ paint: Paint, field: NSColor, edge: NSColor, px: Int) -> NSBitmapImageRep {
     bitmap(px, px) { ctx in
         let k = CGFloat(px) / 1024
         ctx.scaleBy(x: k, y: k)
@@ -501,16 +653,17 @@ func renderIcon(_ outline: CGPath, _ look: Look, px: Int) -> NSBitmapImageRep {
         // given in the bitmap's own (y up) space.
         ctx.saveGState()
         ctx.setShadow(offset: CGSize(width: 0, height: -10 * k), blur: 22 * k, color: NSColor(white: 0, alpha: 0.28).cgColor)
-        ctx.addPath(body); ctx.setFillColor(look.field.cgColor); ctx.fillPath()
+        ctx.addPath(body); ctx.setFillColor(field.cgColor); ctx.fillPath()
         ctx.restoreGState()
         // A hairline inside the edge, so the white field holds its shape on a white desktop.
         ctx.saveGState()
         ctx.addPath(body); ctx.clip()
-        ctx.addPath(body); ctx.setStrokeColor(look.edge.cgColor); ctx.setLineWidth(3); ctx.strokePath()
+        ctx.addPath(body); ctx.setStrokeColor(edge.cgColor); ctx.setLineWidth(3); ctx.strokePath()
         ctx.restoreGState()
         var t = placing(onto: iconBody)
-        let glyph = outline.copy(using: &t)!
-        ctx.addPath(glyph); ctx.setFillColor(look.ink.cgColor); ctx.fillPath()
+        for shape in paint {
+            ctx.addPath(shape.path.copy(using: &t)!); ctx.setFillColor(shape.color.cgColor); ctx.fillPath()
+        }
     }
 }
 
@@ -559,19 +712,6 @@ func writeSVG(_ text: String, _ url: URL) {
     try! text.write(to: url, atomically: true, encoding: .utf8)
 }
 
-func iconSVG(_ outline: CGPath, _ look: Look) -> String {
-    var t = placing(onto: iconBody)
-    let glyph = outline.copy(using: &t)!
-    let body = squircle(iconBody, radius: iconBodyRadius, smoothing: 0.6)
-    return """
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Fovea app icon">
-      <path d="\(svgPath(body))" fill="\(hex(look.field))"/>
-      <path d="\(svgPath(glyph))" fill="\(hex(look.ink))"/>
-    </svg>
-
-    """
-}
-
 /// The mark on transparency, in a viewBox fitted to it.
 func markSVG(_ path: CGPath, _ color: NSColor, label: String) -> String {
     let b = path.boundingBoxOfPath.insetBy(dx: -2, dy: -2)
@@ -587,40 +727,29 @@ func markSVG(_ path: CGPath, _ color: NSColor, label: String) -> String {
 
 // MARK: - The layered icon (Icon Composer's .icon, for macOS 26 and later)
 
-/// One layer, the mark, on a solid white field: white as the other apps' white tiles are, not the
-/// system's light fill, which shades to grey toward the foot (#EFEFEF, Oct 9). macOS gives it the
-/// glass edge and shadow, and renders the dark, clear and tinted appearances: in dark the field
-/// goes black and the mark light.
-func writeLayeredIcon(_ outline: CGPath, to dir: URL) {
+/// A rendered design as one layer: the artwork, full bleed, as Icon Composer takes a picture, on a
+/// solid field of its paper: solid, not the system's light fill, which shades toward the foot
+/// (Oct 9). macOS gives it the glass edge and shadow, and renders the dark, clear and tinted
+/// appearances from the layer (a dark fill specialization is dropped by actool, checked Oct 10).
+/// The layered icon has one image for every size, so the small-size artwork reaches only the .icns
+/// and the PNGs.
+func writeLayeredIcon(_ raster: Raster, artwork: URL, to dir: URL) {
     let fm = FileManager.default
     try? fm.removeItem(at: dir)
     try! fm.createDirectory(at: dir.appendingPathComponent("Assets"), withIntermediateDirectories: true)
-    // The layer is the full 1024 canvas, so it needs no scale or offset.
-    var t = placing(onto: CGRect(x: 0, y: 0, width: 1024, height: 1024))
-    let glyph = outline.copy(using: &t)!
-    writeSVG("""
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Fovea mark">
-      <path d="\(svgPath(glyph))" fill="\(hex(ink))"/>
-    </svg>
-
-    """, dir.appendingPathComponent("Assets/fovea-mark.svg"))
+    try! fm.copyItem(at: artwork, to: dir.appendingPathComponent("Assets/\(artwork.lastPathComponent)"))
+    let f = raster.field.usingColorSpace(.sRGB)!
+    let fill = String(format: "srgb:%.5f,%.5f,%.5f,1.00000", f.redComponent, f.greenComponent, f.blueComponent)
     let json = """
     {
-      "fill" : { "solid" : "srgb:1.00000,1.00000,1.00000,1.00000" },
-      "fill-specializations" : [
-        { "appearance" : "dark", "value" : { "solid" : "srgb:0.00000,0.00000,0.00000,1.00000" } }
-      ],
+      "fill" : { "solid" : "\(fill)" },
       "groups" : [
         {
           "layers" : [
             {
-              "fill-specializations" : [
-                { "appearance" : "dark", "value" : "system-light" },
-                { "appearance" : "tinted", "value" : "system-light" }
-              ],
               "glass" : false,
-              "image-name" : "fovea-mark.svg",
-              "name" : "fovea-mark",
+              "image-name" : "\(artwork.lastPathComponent)",
+              "name" : "pressed-loop",
               "opacity" : 1,
               "position" : { "scale" : 1, "translation-in-points" : [ 0, 0 ] }
             }
@@ -672,7 +801,7 @@ func comparisonSheet(_ variants: [(Design, Look)], small: Mark) -> NSBitmapImage
         drawTextFlipped("\(design.title) · \(look.name)", at: CGPoint(x: 40, y: y0), size: 17, color: .black, weight: .semibold)
         var x: CGFloat = 40
         for s in sizes {
-            let r = renderIcon(s <= 32 ? design.smallGlyph : design.glyph, look, px: Int(s * scale))
+            let r = renderIcon(design, look, px: Int(s * scale), small: s <= 32)
             r.size = NSSize(width: s, height: s)
             image(r).draw(in: NSRect(x: x, y: y0 + 30, width: s, height: s), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
             x += s + 34
@@ -680,7 +809,7 @@ func comparisonSheet(_ variants: [(Design, Look)], small: Mark) -> NSBitmapImage
         // The same small sizes again, on the dark desktop.
         var xd: CGFloat = 950
         for s in [64, 32, 16] as [CGFloat] {
-            let r = renderIcon(s <= 32 ? design.smallGlyph : design.glyph, look, px: Int(s * scale))
+            let r = renderIcon(design, look, px: Int(s * scale), small: s <= 32)
             r.size = NSSize(width: s, height: s)
             image(r).draw(in: NSRect(x: xd, y: y0 + 30, width: s, height: s), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
             xd += s + 34
@@ -751,29 +880,41 @@ if CommandLine.arguments.contains("--check") {
     exit(0)
 }
 
-// The app's icon: Ryan's serif f (Oct 6), traced from his artwork. The geometric fo stays as
-// variants, for the window's Variants menu and the comparison sheet, and its eye stays the menu
-// bar's mark.
-let main = Design(name: "serif", title: "Serif f", glyph: Serif.glyph(from: brand.appendingPathComponent("Source/fovea-serif-f.png")))
+// The app's icon: the pressed loop (Oct 13), rendered by scripts/fovea-pressed-loop.py. The flat
+// yellow loop (Oct 10), Ryan's serif f (Oct 6) and the geometric fo stay as variants, for the
+// window's Variants menu and the comparison sheet, and the fo's eye stays the menu bar's mark.
+let pressedArtwork = brand.appendingPathComponent("Source/fovea-pressed-loop.png")
+let pressed = Raster(large: Raster.load(pressedArtwork), small: Raster.load(brand.appendingPathComponent("Source/fovea-pressed-loop-small.png")),
+                     field: srgb(0xEEEAE2))
+let main = Design(name: "pressed", title: "Pressed loop", raster: pressed)
+let loop = Design(name: "loop", title: "Highlighter loop, yellow", art: Loop.art)
+let serif = Design(name: "serif", title: "Serif f", glyph: Serif.glyph(from: brand.appendingPathComponent("Source/fovea-serif-f.png")))
 let small = Mark.small
 
 // The app icon: the PNG the apps show in the Dock at runtime, and the full iconset the bundle's
 // .icns is made from.
-writePNG(renderIcon(main.glyph, lightLook, px: 1024), resources.appendingPathComponent("AppIcon.png"))
+writePNG(renderIcon(main, lightLook, px: 1024), resources.appendingPathComponent("AppIcon.png"))
 let iconset = brand.appendingPathComponent("AppIcon.iconset")
 try? FileManager.default.removeItem(at: iconset)
 for base in [16, 32, 128, 256, 512] {
     for scale in [1, 2] {
         let px = base * scale
         let suffix = scale == 2 ? "@2x" : ""
-        writePNG(renderIcon(px <= 32 ? main.smallGlyph : main.glyph, lightLook, px: px), iconset.appendingPathComponent("icon_\(base)x\(base)\(suffix).png"))
+        writePNG(renderIcon(main, lightLook, px: px), iconset.appendingPathComponent("icon_\(base)x\(base)\(suffix).png"))
     }
 }
-writePNG(renderIcon(main.glyph, darkLook, px: 1024), brand.appendingPathComponent("fovea-app-icon-dark-1024.png"))
 
-// SVG masters.
-writeSVG(iconSVG(main.glyph, lightLook), brand.appendingPathComponent("fovea-app-icon.svg"))
-writeSVG(iconSVG(main.glyph, darkLook), brand.appendingPathComponent("fovea-app-icon-dark.svg"))
+// Fovea's own mark among the agents (the default agent's sessions, Quick answers), in 1.0 and in
+// the Workbench: the icon at 256.
+for dir in ["FoveaV1/Sources/FoveaIsland/Resources/Agents", "Prototypes/FoveaWorkbench/Resources/Agents"] {
+    writePNG(renderIcon(main, lightLook, px: 256), root.appendingPathComponent("\(dir)/fovea.png"))
+}
+
+// Masters. The icon is rendered, so its master is AppIcon.png and the artwork in Brand/Source;
+// there's no SVG of it, and no dark one. The mark is the loop's outline, in ink and in white.
+for stale in ["fovea-app-icon.svg", "fovea-app-icon-dark.svg", "fovea-app-icon-dark-1024.png"] {
+    try? FileManager.default.removeItem(at: brand.appendingPathComponent(stale))
+}
 writeSVG(markSVG(main.glyph, ink, label: "Fovea mark"), brand.appendingPathComponent("fovea-mark.svg"))
 writeSVG(markSVG(main.glyph, .white, label: "Fovea mark"), brand.appendingPathComponent("fovea-mark-reversed.svg"))
 writeSVG(markSVG(small.eye, ink, label: "Fovea eye"), brand.appendingPathComponent("fovea-eye.svg"))
@@ -785,16 +926,16 @@ for px in [16, 18, 32, 36] {
 }
 
 // The layered icon for macOS 26 and later.
-writeLayeredIcon(main.glyph, to: brand.appendingPathComponent("AppIcon.icon"))
+writeLayeredIcon(pressed, artwork: pressedArtwork, to: brand.appendingPathComponent("AppIcon.icon"))
 
 // Variants, at Dock size, for the window's Variants menu and the comparison sheet.
 let variants: [(Design, Look)] = [
-    (main, lightLook), (main, darkLook),
+    (main, lightLook), (loop, lightLook), (serif, lightLook), (serif, darkLook),
     (Design(.asDrawn), lightLook), (Design(.balanced), lightLook), (Design(.looking), lightLook), (Design(.round), lightLook),
     (Design(.balanced), darkLook),
 ]
 for (design, look) in variants {
-    writePNG(renderIcon(design.glyph, look, px: 1024), brand.appendingPathComponent("Variants/icon-\(design.name)-\(look.name).png"))
+    writePNG(renderIcon(design, look, px: 1024), brand.appendingPathComponent("Variants/icon-\(design.name)-\(look.name).png"))
 }
 let sheet = comparisonSheet(variants, small: small)
 writePNG(sheet, root.appendingPathComponent("Prototypes/shots/captures/icon-variants.png"))

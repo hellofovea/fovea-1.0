@@ -17,6 +17,6 @@ Why app icons and not one-colour marks: the Codex mark is a cloud with a cut-out
 blob at 16 pt (and lobe-icons' SVG of it renders wrongly in CoreSVG); the app icons are what each
 agent looks like in the Dock and the menu bar, and fovea-mac chose the same (its `Brand/README.md`).
 The PRD lets destination icons keep their brand colours (§2).
-- `fovea.png`: Fovea's own app icon for dark surfaces, `Sources/FoveaCore/Resources/Brand/fovea-app-icon-dark-1024.png`
-  scaled to 256×256. The mark for the default agent's sessions (Quick answers), which never show a
+- `fovea.png`: Fovea's own app icon (the pressed loop, Oct 13) at 256×256, written by
+  `scripts/fovea-icon.swift`. The mark for the default agent's sessions (Quick answers), which never show a
   provider's icon (AGENTS.md).

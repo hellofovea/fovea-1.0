@@ -1,5 +1,7 @@
 import SwiftUI
 import FoveaCore
+import FoveaLook
+import FoveaKit
 
 /// Fovea's surface at the notch, drawn for the chosen state with Core's geometry, so every
 /// state meets the Mac the same way: concave ears fuse the top corners into the menu bar,
@@ -7,8 +9,8 @@ import FoveaCore
 ///
 /// Voice flow is the Listening Flowing Bar. Captures stack at its left and the waveform
 /// moves right to make room; hovering the stack fans it to the right, clicking it opens the
-/// island to lay every capture out in rows, flowing right from the first
-/// (docs/island/REFERENT_STACK.md).
+/// island to lay every capture out in one row, flowing right from the first, numbered, swiped
+/// sideways past the island's width (docs/island/REFERENT_STACK.md; Oct 15 review, VF04).
 ///
 /// Everything keeps one identity and is placed by `StackLayout`: the waveform, each card,
 /// the stack's control and the close pill. Each animatable part carries its own animation,
@@ -58,7 +60,9 @@ struct MockIsland: View {
         // The waveform: Voiceflow's, and on Dispatch's bar too, a new request or asking more in a
         // session (Oct 9, evening: talking to the notch looks the same every time, the bar flowing
         // as you speak; the aura stays Dispatch's).
-        let voice = (state == .voiceFlow || state == .v2Voice) && model.barNotice == nil
+        // Oct 17, Ryan: a file dragged over the bar: its drop state in place of the waveform.
+        let dropping = model.fileDropTargeted && !model.stackExpanded
+        let voice = (state == .voiceFlow || state == .v2Voice) && model.barNotice == nil && !dropping
         let layout = model.stackLayout
         let maxH = WorkbenchTokens.Island.waveformMaxHeight
         let T = WorkbenchTokens.Referents.self
@@ -112,17 +116,21 @@ struct MockIsland: View {
                     let looking = model.inspectedId
                     let reachable = model.stackExpanded && isLive && (looking == nil || looking == referent.id)
                     let hovered = reachable && model.hoveredReferent == referent.id
+                    // Oct 15 review, VF04/QA02: its number in the order taken (what "the second one" binds to).
+                    let number = (liveIndex[referent.id] ?? fullIndex) + 1
                     ReferentCard(referent: referent)
                         .modifier(CardPlacement(vector: card.vector,
                                                 hoverScale: hovered && looking == nil ? T.hoverScale : 1,
                                                 hoverAnimation: model.cardMotion.hover,
                                                 remove: reachable ? { model.removeReferent(referent.id) } : nil,
-                                                removeVisible: hovered))
+                                                removeVisible: hovered,
+                                                number: number, otherDisplay: referent.otherDisplay,
+                                                badgesVisible: model.stackExpanded && isLive))
                         .animation(model.cardAnimation(index: liveIndex[referent.id] ?? fullIndex, count: live.count,
                                                        departing: !isLive,
                                                        inspected: referent.id == model.inspectTransitionId),
                                    value: card)
-                        .opacity(model.landing.contains(referent.id) || (model.barNotice != nil && !model.stackExpanded) ? 0 : 1)
+                        .opacity(model.landing.contains(referent.id) || ((model.barNotice != nil || dropping) && !model.stackExpanded) ? 0 : 1)
                         .allowsHitTesting(reachable)
                         .onHover { inside in
                             if inside { model.hoveredReferent = referent.id }
@@ -130,9 +138,9 @@ struct MockIsland: View {
                         }
                         // A click looks closer; on the one being looked at, it goes back.
                         .onTapGesture { model.inspect(looking == referent.id ? nil : referent.id) }
-                        .help(referent.source)
+                        .help(referent.whereTaken)
                         .zIndex(card.z + (hovered ? 100 : 0))
-                        .accessibilityLabel("Screenshot from \(referent.source)")
+                        .accessibilityLabel("\(referent.kind.label) \(number), from \(referent.whereTaken)")
                         .accessibilityAddTraits(.isButton)
                         .accessibilityAction(named: "Remove") { model.removeReferent(referent.id) }
                 }
@@ -154,6 +162,28 @@ struct MockIsland: View {
                     .accessibilityAction { model.setExpanded(true) }
             }
 
+            // Oct 15 review, VF04: "+N" on the stack, the referents hidden behind the three that show.
+            if let more = layout.more {
+                ReferentMoreChip(count: layout.moreCount)
+                    .offset(x: more.midX, y: more.minY)
+                    .animation(model.cardAnimation(index: T.maxLayers - 1, count: T.maxLayers), value: more)
+                    .opacity(model.barNotice == nil && !dropping ? 1 : 0)
+                    .allowsHitTesting(false)
+                    .transition(.opacity.animation(T.numberFade))
+            }
+
+            // Oct 15 review, VF04: the opened row scrolls sideways; its thumb says where it is.
+            if let thumb = layout.scrollThumb {
+                ReferentScrollThumb()
+                    .frame(width: thumb.width, height: thumb.height)
+                    .panelScheme()
+                    .offset(x: thumb.midX, y: thumb.minY)
+                    .animation(model.islandAnimation, value: thumb)
+                    .allowsHitTesting(false)
+                    .transition(.asymmetric(insertion: .opacity.animation(T.closeIn),
+                                            removal: .opacity.animation(T.closeOut)))
+            }
+
             if let close = layout.close {
                 let back = model.inspectedId != nil
                 StackCloseButton(back: back) { back ? model.inspect(nil) : model.setExpanded(false) }
@@ -168,7 +198,9 @@ struct MockIsland: View {
 
             if let caption = layout.caption, let id = model.inspectedId,
                let referent = model.referents.first(where: { $0.id == id }) {
-                Text(referent.source)
+                // Oct 15 review, VF04/VF05: the close look names its number, and the other display.
+                let number = (model.liveReferents.firstIndex { $0.id == id } ?? 0) + 1
+                Text("\(number) · \(referent.whereTaken)")
                     .font(T.caption)
                     .foregroundStyle(T.captionColor)
                     .panelScheme()
@@ -305,7 +337,7 @@ struct MockIsland: View {
         // Dispatch Version 2 transcribing: the words, over the aura filling the bar's edge.
         .overlay(alignment: .top) {
             let shown = state == .v2Transcribing
-            ThinkingText(still: reduceMotion || model.snapshotMode, label: "Transcribing")
+            ThinkingText(still: reduceMotion || model.snapshotMode, label: L("Transcribing"))
                 .frame(width: model.metrics.notchWidth ?? WorkbenchTokens.Island.spec.softwareIslandWidth,
                        height: WorkbenchTokens.Island.spec.voiceBelow)
                 .offset(y: model.metrics.safeAreaTop)
@@ -315,7 +347,8 @@ struct MockIsland: View {
                 .accessibilityHidden(!shown)
         }
         .overlay(alignment: .top) {
-            let shown = state == .v2Send
+            // Oct 17, Ryan: a file dragged over Choose chat: its drop state in place of the request.
+            let shown = state == .v2Send && !model.fileDropTargeted
             V2SendContent(model: model, layout: model.v2SendLayout)
                 .modifier(VoiceContentTransition(progress: shown ? 1 : 0))
                 .animation(v2Content(shown), value: shown)
@@ -340,6 +373,23 @@ struct MockIsland: View {
                 .modifier(VoiceContentTransition(progress: shown ? 1 : 0))
                 .animation(v2Content(shown), value: shown)
                 .allowsHitTesting(shown)
+                .accessibilityHidden(!shown)
+        }
+        // Oct 17, Ryan: a file dragged over the notch, listening or on Choose chat: the bar (or the
+        // panel) lights as a well and says what letting go does.
+        .overlay(alignment: .top) {
+            let shown = model.fileDropTargeted && (state.collects || state == .v2Send)
+            let F = WorkbenchTokens.Feedback.self
+            let outline = layout.outline
+            let notch = NotchGeometry.notchRect(metrics: model.metrics, spec: WorkbenchTokens.Island.spec)
+            let gap = model.notchSurface == .panel ? WorkbenchTokens.Native.panelGap : 0
+            FileDropWell(model: model)
+                .frame(width: max(0, outline.size.width - 2 * outline.topRadius - 2 * F.dropWellInset),
+                       height: max(0, outline.size.height - notch.height - gap - 2 * F.dropWellInset))
+                .offset(y: notch.height + gap + F.dropWellInset)
+                .opacity(shown ? 1 : 0)
+                .animation(F.dropIn, value: shown)
+                .allowsHitTesting(false)
                 .accessibilityHidden(!shown)
         }
         .background(alignment: .top) {

@@ -1,4 +1,5 @@
 import SwiftUI
+import FoveaKit
 
 /// The whole keyboard (Oct 8), up the whole time keys are taught (Oct 9), so it's plain where fn,
 /// ⌃, ⌥ and ⌘ sit: the keys to press now are ringed in the accent, in turn; the keys held light
@@ -13,7 +14,7 @@ struct KeyboardView: View {
     /// What to do with the ringed keys, said above them ("Press fn ⌃ to start."). The board's own
     /// keyboard has none: its instruction is typed beside it.
     var caption: String? = nil
-    /// A word on a ringed key: "×2" on ⌘ for the whole screen.
+    /// A word on a ringed key ("×2" for a key pressed twice).
     var badges: [String: String] = [:]
 
     @State private var pulse = false
@@ -48,7 +49,7 @@ struct KeyboardView: View {
             .strokeBorder(dark ? OT.Colors.islandHairline : OT.Colors.ink(0.08)))
         .onAppear { withAnimation(OT.Motion.keyPulse) { pulse = true } }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Keyboard, \(pressed.isEmpty ? "no keys held" : pressed.sorted().joined(separator: " ") + " held")")
+        .accessibilityLabel(pressed.isEmpty ? L("Keyboard, no keys held") : L("Keyboard, \(pressed.sorted().joined(separator: " ")) held"))
     }
 
     private func cap(_ key: Key, short: Bool) -> some View {

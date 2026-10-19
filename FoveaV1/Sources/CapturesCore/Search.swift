@@ -1,4 +1,5 @@
 import Foundation
+import FoveaKit
 
 /// The search field's contents: typed words, plus the filters the field holds as chips
 /// (picked from its menu, never typed as syntax).
@@ -7,10 +8,11 @@ public struct CaptureQuery: Hashable, Sendable {
         case today, threeDays, week, month
         public var title: String {
             switch self {
-            case .today: return "Today"
-            case .threeDays: return "Last 3 days"
-            case .week: return "This week"
-            case .month: return "This month"
+            // Oct 18, Ryan: in the primary language.
+            case .today: return L("Today")
+            case .threeDays: return L("Last 3 days")
+            case .week: return L("This week")
+            case .month: return L("This month")
             }
         }
     }

@@ -40,15 +40,36 @@ variations (`Feedback/*.swift`, `stageFeedback`; docs/island/FEEDBACK_2026-10-06
 
 All are wired in `WorkbenchModel.init`; the monitors are in `KeyMonitors.swift`.
 
+**Oct 15 (the dev team's review, ST-03.1):** Voiceflow, Dispatch, the region and the highlighter
+can be recorded in Settings › Shortcuts. The keys below are their defaults; the live island answers
+to `FoveaKeys.chord(id, prefs)` through `ShortcutMonitor` (modifiers alone, or modifiers with a key
+such as ⌥ Space through `KeyboardTap.shortcutHandler`), and a cleared shortcut does nothing. Each
+press opens the island on the display with the pointer and it stays there until the session rests
+(IS05).
+
+**Oct 17 (Ryan), Fovea 1.0:** ⌥ (either side) takes the screen instead of ⌘, which Codex uses: once
+for a region, held while held, twice for the whole screen; ⌥ used with another key is never a press,
+and ⌘ does nothing special. There is no highlighter key: while Fovea listens, words selected in any
+app (a drag, a double or triple click) and a file clicked in Finder or on the desktop are taken by
+themselves (`startSelectionWatch` → `autoTake`), the press reaching the app as always; in Voiceflow a
+selection inside the field the words paste into stays there. A dictation pastes the words, then what
+was taken, in order (`pastePieces`). The Workbench's mock keeps ⌘ and left ⌥ below.
+
+**Oct 17, round 2 (Ryan):** ⌥ is one press only: twice is the Claude app's shortcut, so a second
+press only turns capture off, never takes the whole screen. Files are dragged onto the notch (a drop
+target over the island while a file drag is under way, `FileDropView`, "Drop to take it"; on Choose
+chat too), never taken by a click; taken words keep an accent highlight over their lines until the
+session ends or the referent leaves the stack.
+
 | Key | Where | Does | Code |
 |---|---|---|---|
 | fn | at rest, or on Voiceflow | Voiceflow: start, then transcribe | `toggleVoiceFlow` |
 | fn⌃ | anywhere | Dispatch Version 2: start; on its voice bar, end (Transcribing, then Choose chat); on Choose chat, send | `v2FunctionKey` |
 | fn | on Dispatch Version 2's expanded chat or board, focused on one of your sessions | ask more in that session | `v2FunctionKey` → `startV2Voice(continuing:)` |
-| ⌘ (either side), press | on either voice bar | capture mode on for one region (a drag takes it and capture ends); another press, off | `commandDown` / `commandUp(click:)`, `finishSelection` |
-| ⌘, held | on either voice bar | capture mode while held | `commandDown` / `commandUp(click:)` |
-| ⌘, pressed twice | on either voice bar | the whole screen as a referent | `captureWholeScreen` |
-| Left Option, press (or held) | on either voice bar | the highlighter, in the accent color: a drag marks words, a click a paragraph or a file; one highlight, then it is put down | `optionDown` / `optionUp(click:)`, `highlightDrag`, `finishHighlight` |
+| ⌥ (either side; ⌘ in the Workbench), press | on either voice bar | capture mode on for one region (a drag takes it and capture ends); another press, off | `regionDown` / `regionUp(click:)`, `finishSelection` |
+| ⌥ (⌘ in the Workbench), held | on either voice bar | capture mode while held | `regionDown` / `regionUp(click:)` |
+| ⌥ (⌘ in the Workbench), pressed twice | on either voice bar | the whole screen as a referent | `captureWholeScreen` |
+| No key (Fovea 1.0, Oct 17); left Option in the Workbench | on either voice bar | words selected and a file clicked are taken (1.0); the Workbench's highlighter: a drag marks words, a click a paragraph or a file | `autoTake`; Workbench: `optionDown` / `optionUp(click:)`, `highlightDrag`, `finishHighlight` |
 | Left ⌃ alone | Choose chat | every chat, and folded again | `toggleV2Browse` |
 | ↑↓ / Return | Choose chat; board | step the pill / send; move focus / open | `v2Key` |
 | Esc | anywhere | steps out one level | `escape()` |
@@ -156,7 +177,8 @@ The main path:
   questions to jump to.
 - A window's box asks more, whenever: done or still at work, the session takes the new
   message at once (`askMoreV2(id, text:, inWindow: true)`). fn asks more by voice the same way.
-- Its ✕ closes it and stops a working session: `closeDetachedV2`.
+- Its ✕ closes it; a working session goes back on the board and keeps working (Oct 15 review,
+  QA21/QA23: closing never stops; only Stop does): `closeDetachedV2`.
 
 **What a session shows** (Oct 6 feedback, `Feedback/V2Board.swift`, `V2FeedbackViews.swift`):
 - **At work:** one line: the ring, Working, the time (`V2WorkingLine`).

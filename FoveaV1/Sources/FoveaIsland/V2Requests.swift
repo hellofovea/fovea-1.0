@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import FoveaCore
+import FoveaKit
 
 // Dispatch Version 2's sample requests (the flow is in WorkbenchModel+DispatchV2.swift): what is
 // said, what is taken, where it could go, and what the agent does, beat by beat, with its screen.
@@ -52,21 +53,22 @@ enum V2Request: String, CaseIterable, Identifiable {
     /// Where it could go, best first, with the plain reason. Until routing exists these come
     /// from simple signals: what is open, where the last request went, what is active.
     var suggestions: [V2Suggestion] {
-        let newHere = V2Suggestion(agent: "claude-code", chat: nil, project: "app-ui-v1", reason: "Open in your editor")
+        let newHere = V2Suggestion(agent: "claude-code", chat: nil, project: "app-ui-v1", reason: L("Open in your editor"))
+        // Oct 18, Ryan: only Codex and Claude Code (the second suggestion was Grok Bot's).
         switch self {
         case .formula:
-            return [V2Suggestion(agent: ChatAgent.fovea.id, chat: nil, project: nil, reason: "Nothing open to work in"),
-                    V2Suggestion(agent: "grok-bot", chat: "Gaze tracking papers", project: "FoveaGaze", reason: "Papers, last week"), newHere]
+            return [V2Suggestion(agent: ChatAgent.fovea.id, chat: nil, project: nil, reason: L("Nothing open to work in")),
+                    V2Suggestion(agent: "claude-code", chat: L("Gaze tracking papers"), project: "FoveaGaze", reason: L("Papers, last week")), newHere]
         case .calendar:
-            return [V2Suggestion(agent: ChatAgent.fovea.id, chat: nil, project: nil, reason: "A question about your day"),
-                    V2Suggestion(agent: "grok-bot", chat: "Investor update", project: "Futuro", reason: "Active today"), newHere]
+            return [V2Suggestion(agent: ChatAgent.fovea.id, chat: nil, project: nil, reason: L("A question about your day")),
+                    V2Suggestion(agent: "codex", chat: L("Investor update"), project: "Futuro", reason: L("Active today")), newHere]
         case .draft:
-            return [V2Suggestion(agent: ChatAgent.fovea.id, chat: nil, project: nil, reason: "A draft to take"),
-                    V2Suggestion(agent: "grok-bot", chat: "Launch thread", project: "Futuro", reason: "Writing, yesterday"), newHere]
+            return [V2Suggestion(agent: ChatAgent.fovea.id, chat: nil, project: nil, reason: L("A draft to take")),
+                    V2Suggestion(agent: "claude-code", chat: L("Launch thread"), project: "Futuro", reason: L("Writing, yesterday")), newHere]
         case .code:
-            return [V2Suggestion(agent: "claude-code", chat: "Notch ears match the menu bar", project: "app-ui-v1", reason: "Last sent here, 4m ago"),
-                    V2Suggestion(agent: "codex", chat: "Island geometry tests", project: "app-ui-v1", reason: "Same files"),
-                    V2Suggestion(agent: "claude-code", chat: nil, project: "app-ui-v1", reason: "Open in your editor")]
+            return [V2Suggestion(agent: "claude-code", chat: L("Notch ears match the menu bar"), project: "app-ui-v1", reason: L("Last sent here, 4m ago")),
+                    V2Suggestion(agent: "codex", chat: L("Island geometry tests"), project: "app-ui-v1", reason: L("Same files")),
+                    V2Suggestion(agent: "claude-code", chat: nil, project: "app-ui-v1", reason: L("Open in your editor"))]
         }
     }
 
@@ -79,49 +81,50 @@ enum V2Request: String, CaseIterable, Identifiable {
         ScreenEvent(start: 14, end: 14.75, title: "Design review with Mia", place: "Zoom"),
         ScreenEvent(start: 16.5, end: 17.5, title: "Dentist", place: "18 Grove St"),
     ]
-    static let draftText = "Hi Sam,\n\nThursday at 3 works for me. I'll send an invite this afternoon.\n\nBest,"
+    // Oct 18, Ryan: the scripted agent writes in the primary language too.
+    static var draftText: String { L("Hi Sam,\n\nThursday at 3 works for me. I'll send an invite this afternoon.\n\nBest,") }
 
     /// What the agent does, beat by beat, each with its screen; the last beat is its result.
     var script: [AgentBeat] {
         switch self {
         case .formula:
             return [
-                AgentBeat(activity: "Reading the formula", work: .reading, object: "the formula",
+                AgentBeat(activity: L("Reading the formula"), work: .reading, object: L("the formula"),
                           screen: .paper(title: Self.paper, note: nil)),
-                AgentBeat(activity: "Working out each term", work: .thinking, screen: .paper(title: Self.paper, note: nil)),
-                AgentBeat(activity: "Explained the formula", work: .done, state: .complete,
-                          screen: .paper(title: Self.paper, note: "Each word becomes a weighted mix of the other words' values."),
+                AgentBeat(activity: L("Working out each term"), work: .thinking, screen: .paper(title: Self.paper, note: nil)),
+                AgentBeat(activity: L("Explained the formula"), work: .done, state: .complete,
+                          screen: .paper(title: Self.paper, note: L("Each word becomes a weighted mix of the other words' values.")),
                           result: AgentResult(
-                    outcome: "Each word becomes a weighted mix of the other words' values.",
+                    outcome: L("Each word becomes a weighted mix of the other words' values."),
                     terms: [
-                        AgentResultTerm(term: "Q, K, V", meaning: "Queries, keys, values"),
-                        AgentResultTerm(term: "QKᵀ", meaning: "How well they match"),
-                        AgentResultTerm(term: "√dₖ", meaning: "Keeps the scores small"),
-                        AgentResultTerm(term: "softmax", meaning: "Scores into weights"),
+                        AgentResultTerm(term: "Q, K, V", meaning: L("Queries, keys, values")),
+                        AgentResultTerm(term: "QKᵀ", meaning: L("How well they match")),
+                        AgentResultTerm(term: "√dₖ", meaning: L("Keeps the scores small")),
+                        AgentResultTerm(term: "softmax", meaning: L("Scores into weights")),
                     ],
                     anchored: true)),
             ]
         case .calendar:
             return [
-                AgentBeat(activity: "Checking your calendar", work: .reading, object: "Calendar",
+                AgentBeat(activity: L("Checking your calendar"), work: .reading, object: L("Calendar"),
                           screen: .calendar(day: Self.calendarDay, events: [])),
-                AgentBeat(activity: "Two things this afternoon", work: .done, state: .complete,
+                AgentBeat(activity: L("Two things this afternoon"), work: .done, state: .complete,
                           screen: .calendar(day: Self.calendarDay, events: Self.events), result: AgentResult(
-                    outcome: "Two things this afternoon.",
+                    outcome: L("Two things this afternoon."),
                     rows: [
-                        AgentResultRow(lead: "2:00 PM", text: "Design review with Mia", detail: "Zoom", action: "Join"),
-                        AgentResultRow(lead: "4:30 PM", text: "Dentist", detail: "18 Grove St"),
+                        AgentResultRow(lead: L("2:00 PM"), text: L("Design review with Mia"), detail: "Zoom", action: L("Join")),
+                        AgentResultRow(lead: L("4:30 PM"), text: L("Dentist"), detail: "18 Grove St"),
                     ])),
             ]
         case .draft:
             return [
-                AgentBeat(activity: "Reading Sam's email", work: .reading,
+                AgentBeat(activity: L("Reading Sam's email"), work: .reading,
                           screen: .mail(to: "Sam Lee", subject: "Re: Thursday?", body: "")),
-                AgentBeat(activity: "Drafting the reply", work: .editing,
+                AgentBeat(activity: L("Drafting the reply"), work: .editing,
                           screen: .mail(to: "Sam Lee", subject: "Re: Thursday?", body: "Hi Sam,\n\nThursday at 3 works for me.")),
-                AgentBeat(activity: "Drafted a reply", work: .done, state: .complete,
+                AgentBeat(activity: L("Drafted a reply"), work: .done, state: .complete,
                           screen: .mail(to: "Sam Lee", subject: "Re: Thursday?", body: Self.draftText), result: AgentResult(
-                    outcome: "A short yes, with the invite to follow.", draft: Self.draftText)),
+                    outcome: L("A short yes, with the invite to follow."), draft: Self.draftText)),
             ]
         case .code:
             let shape: [AgentCodeLine] = [
@@ -134,38 +137,46 @@ enum V2Request: String, CaseIterable, Identifiable {
             var done = shape
             done[2] = AgentCodeLine(number: 42, text: "let earHeight = metrics.menuBarHeight", change: .added)
             return [
-                AgentBeat(activity: "Reading your request", work: .reading, object: "2 screenshots", screen: .terminal(
+                AgentBeat(activity: L("Reading your request"), work: .reading, object: L("2 screenshots"), screen: .terminal(
                     title: "app-ui-v1 — Claude Code", lines: [
                         ScreenLine(text: "> Make the ears on this one match the menu bar's height…", tone: .prompt),
                         ScreenLine(text: "⏺ Reading 2 screenshots", tone: .dim),
                     ])),
-                AgentBeat(activity: "Editing IslandShape.swift", work: .editing, object: "IslandShape.swift",
+                AgentBeat(activity: L("Editing IslandShape.swift"), work: .editing, object: "IslandShape.swift",
                           screen: .editor(file: "IslandShape.swift", lines: shape)),
-                AgentBeat(activity: "Editing NotchGeometry.swift", work: .editing, object: "NotchGeometry.swift",
+                AgentBeat(activity: L("Editing NotchGeometry.swift"), work: .editing, object: "NotchGeometry.swift",
                           screen: .editor(file: "NotchGeometry.swift", lines: [
                     AgentCodeLine(number: 118, text: "// The spacing from the second screenshot"),
                     AgentCodeLine(number: 119, text: "let spacing: CGFloat = 8", change: .removed),
                     AgentCodeLine(number: 119, text: "let spacing = referents[1].spacing", change: .typing),
                     AgentCodeLine(number: 120, text: "return frames.inset(by: spacing)"),
                 ])),
-                AgentBeat(activity: "Running swift build", work: .running, object: "swift build", screen: .terminal(
+                AgentBeat(activity: L("Running swift build"), work: .running, object: "swift build", screen: .terminal(
                     title: "app-ui-v1 — swift build", lines: [
                         ScreenLine(text: "❯ swift build", tone: .prompt),
                         ScreenLine(text: "Compiling NotchGeometry.swift", tone: .normal),
                     ])),
-                AgentBeat(activity: "Running swift test", work: .running, object: "swift test", screen: .terminal(
+                // It asks before running the tests, as Claude Code does: the session waits on the
+                // person (Needs you), its queue held, until Run Tests or Deny (Oct 11).
+                AgentBeat(activity: L("Run swift test --filter NotchGeometry?"), work: .asking,
+                          object: "swift test --filter NotchGeometry", state: .needsYou,
+                          ask: .approval("swift test --filter NotchGeometry"), screen: .terminal(
+                    title: "app-ui-v1 — Claude Code", lines: [
+                        ScreenLine(text: "⏺ Run swift test --filter NotchGeometry?", tone: .prompt),
+                    ])),
+                AgentBeat(activity: L("Running swift test"), work: .running, object: "swift test", screen: .terminal(
                     title: "app-ui-v1 — swift test", lines: [
                         ScreenLine(text: "❯ swift test", tone: .prompt),
                         ScreenLine(text: "✓ NotchGeometryTests.earsMatchTheMenuBar", tone: .ok),
                     ])),
-                AgentBeat(activity: "The ears match the menu bar", work: .done, state: .complete,
+                AgentBeat(activity: L("The ears match the menu bar"), work: .done, state: .complete,
                           screen: .editor(file: "IslandShape.swift", lines: done), result: AgentResult(
-                    outcome: "The ears match the menu bar now.",
-                    points: ["Height follows the menu bar",
-                             "Spacing from screenshot 2",
-                             "Full screen keeps the band"],
+                    outcome: L("The ears match the menu bar now."),
+                    points: [L("Height follows the menu bar"),
+                             L("Spacing from screenshot 2"),
+                             L("Full screen keeps the band")],
                     artifacts: ["IslandShape.swift", "NotchGeometry.swift"],
-                    attention: ["Not checked on an external display"])),
+                    attention: [L("Not checked on an external display")])),
             ]
         }
     }
@@ -175,51 +186,51 @@ enum V2Request: String, CaseIterable, Identifiable {
         switch self {
         case .formula:
             return ("Why divide by the square root?", [
-                AgentBeat(activity: "Thinking it through", work: .thinking, screen: .paper(title: Self.paper, note: nil)),
-                AgentBeat(activity: "Explained the scaling", work: .done, state: .complete,
+                AgentBeat(activity: L("Thinking it through"), work: .thinking, screen: .paper(title: Self.paper, note: nil)),
+                AgentBeat(activity: L("Explained the scaling"), work: .done, state: .complete,
                           screen: .paper(title: Self.paper, note: "Without √dₖ the scores grow with the key size and softmax saturates."),
                           result: AgentResult(
-                    outcome: "Without it, the scores grow with the key size and softmax saturates.",
-                    points: ["A dot product of two d-long vectors grows about as √d.",
-                             "Dividing by √dₖ keeps the scores near 1, so the weights stay soft."],
+                    outcome: L("Without it, the scores grow with the key size and softmax saturates."),
+                    points: [L("A dot product of two d-long vectors grows about as √d."),
+                             L("Dividing by √dₖ keeps the scores near 1, so the weights stay soft.")],
                     anchored: true)),
             ])
         case .calendar:
             return ("When am I free tomorrow?", [
-                AgentBeat(activity: "Checking tomorrow", work: .reading, object: "Calendar",
+                AgentBeat(activity: L("Checking tomorrow"), work: .reading, object: L("Calendar"),
                           screen: .calendar(day: "Friday, Oct 9", events: [])),
-                AgentBeat(activity: "Free after one tomorrow", work: .done, state: .complete,
+                AgentBeat(activity: L("Free after one tomorrow"), work: .done, state: .complete,
                           screen: .calendar(day: "Friday, Oct 9", events: [
-                    ScreenEvent(start: 12, end: 12.5, title: "Lunch with Ana", place: "Tartine"),
+                    ScreenEvent(start: 12, end: 12.5, title: L("Lunch with Ana"), place: "Tartine"),
                 ]), result: AgentResult(
-                    outcome: "Free from 1:00 tomorrow.",
-                    rows: [AgentResultRow(lead: "12:00 PM", text: "Lunch with Ana", detail: "Tartine"),
-                           AgentResultRow(lead: "1:00 PM", text: "Free until 6:00")])),
+                    outcome: L("Free from 1:00 tomorrow."),
+                    rows: [AgentResultRow(lead: L("12:00 PM"), text: L("Lunch with Ana"), detail: "Tartine"),
+                           AgentResultRow(lead: L("1:00 PM"), text: L("Free until 6:00"))])),
             ])
         case .draft:
-            let warmer = "Hi Sam,\n\nThursday at 3 is perfect, looking forward to it. I'll send an invite this afternoon.\n\nBest,"
+            let warmer = L("Hi Sam,\n\nThursday at 3 is perfect, looking forward to it. I'll send an invite this afternoon.\n\nBest,")
             return ("Make it a little warmer.", [
-                AgentBeat(activity: "Rewriting the draft", work: .editing,
+                AgentBeat(activity: L("Rewriting the draft"), work: .editing,
                           screen: .mail(to: "Sam Lee", subject: "Re: Thursday?", body: "Hi Sam,\n\nThursday at 3 is perfect,")),
-                AgentBeat(activity: "Rewrote the draft", work: .done, state: .complete,
+                AgentBeat(activity: L("Rewrote the draft"), work: .done, state: .complete,
                           screen: .mail(to: "Sam Lee", subject: "Re: Thursday?", body: warmer), result: AgentResult(
-                    outcome: "The same yes, a little warmer.", draft: warmer)),
+                    outcome: L("The same yes, a little warmer."), draft: warmer)),
             ])
         case .code:
             return ("Check it on an external display too.", [
-                AgentBeat(activity: "Running swift test", work: .running, object: "swift test", screen: .terminal(
+                AgentBeat(activity: L("Running swift test"), work: .running, object: "swift test", screen: .terminal(
                     title: "app-ui-v1 — swift test", lines: [
                         ScreenLine(text: "❯ swift test --filter External", tone: .prompt),
                         ScreenLine(text: "✓ NotchGeometryTests.softwareIslandEars", tone: .ok),
                     ])),
-                AgentBeat(activity: "It holds on an external display", work: .done, state: .complete, screen: .terminal(
+                AgentBeat(activity: L("It holds on an external display"), work: .done, state: .complete, screen: .terminal(
                     title: "app-ui-v1 — swift test", lines: [
                         ScreenLine(text: "❯ swift test --filter External", tone: .prompt),
                         ScreenLine(text: "✓ NotchGeometryTests.softwareIslandEars", tone: .ok),
                         ScreenLine(text: "⏺ It holds on an external display too.", tone: .ok),
                     ]), result: AgentResult(
-                    outcome: "It holds on an external display too.",
-                    points: ["The software island takes the same ear height there."],
+                    outcome: L("It holds on an external display too."),
+                    points: [L("The software island takes the same ear height there.")],
                     artifacts: ["NotchGeometryTests.swift"])),
             ])
         }
@@ -242,7 +253,8 @@ struct V2Suggestion: Equatable, Identifiable {
     let reason: String
     var id: String { "\(agent)|\(chat ?? "new")|\(project ?? "")" }
     var quick: Bool { agent == ChatAgent.fovea.id }
-    var title: String { quick ? "Quick answer" : (chat ?? "New chat") }
+    // Oct 18, Ryan: in the primary language.
+    var title: String { quick ? L("Quick answer") : (chat ?? L("New chat")) }
 }
 
 /// What the person did with the suggestions: the data routing learns from.
@@ -292,17 +304,29 @@ enum DispatchV2 {
                                          "t-docs", "t-tokens"]
 }
 
+/// A row of the chat browser that isn't a chat (Oct 15 review, QA04): the list on its way, a list
+/// that couldn't load, or a search with nothing in it.
+enum V2BrowseStatus: Equatable {
+    case loading, failed
+    case noMatch(String)
+}
+
 /// A row of the chat browser.
 enum V2BrowseRow: Identifiable, Equatable {
     case project(ChatProject)
     case back(String)
     case chat(AgentChat)
+    /// Oct 15 review, QA04: the rest of a long list, this many more.
+    case more(Int)
+    case status(V2BrowseStatus)
 
     var id: String {
         switch self {
         case .project(let p): return "p|" + p.id
         case .back(let folder): return "b|" + folder
         case .chat(let c): return "c|" + c.id
+        case .more: return "m|more"
+        case .status(let s): return "s|\(s)"
         }
     }
 

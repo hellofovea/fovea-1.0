@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import FoveaCore
+import FoveaLook
 import FoveaKit
 
 // Dispatch Version 2 in the island (the flow is in WorkbenchModel+DispatchV2.swift): Choose chat
@@ -58,15 +59,15 @@ struct V2SendLayout: Equatable {
     var browser: CGFloat
 
     static func make(request: String, attachments: Int, browsing: Bool, browseRows: Int, sheet: Bool = false,
-                     metrics: ScreenMetrics) -> V2SendLayout {
+                     sheetNotes: Int = 0, metrics: ScreenMetrics) -> V2SendLayout {
         let V = WorkbenchTokens.V2.self
         let text = V2Geometry.measure(request, size: V.requestSize, weight: V.requestMeasureWeight, width: V2Geometry.contentWidth,
                                       spacing: V.requestSpacing, lines: 2)
-        let rows = CGFloat(min(browseRows, V.browseRowsVisible)) * V.browseRow
         // As the browser draws it: its top, its rule, the rail, the rows (Compact measured 1 short).
         let browser = browsing ? V2RouteSheet.browserHeight(rows: browseRows) : 0
-        // Feedback #1: the model and effort's sheet, under the suggestions.
-        let modelSheet = sheet ? V.gap + V2ModelSheet.height(chats: false) : 0
+        // Feedback #1: the model and effort's sheet, under the suggestions (Oct 15 review, QA08/QA09:
+        // with the approvals, and a line of notes when a model can't be picked).
+        let modelSheet = sheet ? V.gap + V2ModelSheet.height(chats: false, notes: sheetNotes) : 0
         let content = text + V.gap + V.attachRow + V.attachBottom + V.chipRow + browser + modelSheet
         return V2SendLayout(outline: V2Geometry.outline(content: content, metrics: metrics), text: text, browser: browser)
     }
@@ -150,10 +151,11 @@ struct V2StateLine: View {
 
     private var words: String {
         switch task.state {
-        case .complete: return model.v2Checked.contains(task.id) ? "Complete" : "Ready for review"
-        case .working: return task.stalled ? task.line : "Working · \(model.v2Line(task))"
-        case .needsYou: return "Needs you · \(task.line)"
-        case .failed: return task.stopped ? "Stopped" : "Failed · \(task.line)"
+        // Oct 18, Ryan: in the primary language.
+        case .complete: return model.v2Checked.contains(task.id) ? L("Complete") : L("Ready for review")
+        case .working: return task.stalled ? task.line : L("Working · \(model.v2Line(task))")
+        case .needsYou: return L("Needs you · \(task.line)")
+        case .failed: return task.stopped ? L("Stopped") : L("Failed · \(task.line)")
         }
     }
 
@@ -189,7 +191,7 @@ struct V2SessionHeader: View {
                         .truncationMode(.tail)
                         .id(model.v2Title(task))
                         .transition(.opacity)
-                    V2Badge(text: quick ? "Quick answer" : task.project)
+                    V2Badge(text: quick ? L("Quick answer") : task.project)
                 }
                 V2StateLine(model: model, task: task)
             }
@@ -232,16 +234,24 @@ struct V2SendContent: View {
                 .frame(height: V.attachRow)
                 .zIndex(5)
                 .padding(.bottom, V.attachBottom)
-                // The suggestions: one click puts one in the pill.
-                HStack(spacing: V.chipGap) {
-                    Text("Suggested").font(V.labelFont).foregroundStyle(V.labelColor)
-                        .padding(.trailing, V.labelTrailing)
-                    ForEach(model.v2Suggestions) { pick in
-                        V2SuggestionChip(model: model, pick: pick, chosen: model.v2Pick == pick)
+                // The suggestions: one click puts one in the pill. Oct 15 review, QA06/QA10: after
+                // Send, where it's going (the chat locked), or why it didn't go, in their place.
+                Group {
+                    if let sending = model.cases.sending {
+                        V2SendStatusRow(model: model, sending: sending)
+                    } else {
+                        HStack(spacing: V.chipGap) {
+                            Text("Suggested").font(V.labelFont).foregroundStyle(V.labelColor)
+                                .padding(.trailing, V.labelTrailing)
+                            ForEach(model.v2Suggestions) { pick in
+                                V2SuggestionChip(model: model, pick: pick, chosen: model.v2Pick == pick)
+                            }
+                            Spacer(minLength: 0)
+                        }
                     }
-                    Spacer(minLength: 0)
                 }
                 .frame(height: V.chipRow)
+                .animation(WorkbenchTokens.Cases.change, value: model.cases.sending)
                 if model.v2Browsing {
                     V2ChatBrowser(model: model)
                         .frame(height: layout.browser, alignment: .top)
@@ -279,6 +289,8 @@ struct V2ChatPill: View {
         let V = WorkbenchTokens.V2.self
         let C = WorkbenchTokens.Chat.self
         let pick = model.v2Pick
+        // Oct 15 review, QA06: while it's sending, the chat is locked.
+        let locked = model.cases.sending?.isSending == true
         Button { model.toggleV2Browse() } label: {
             HStack(spacing: 8) {
                 ChatAgentIcon(agent: ChatAgent.named(pick.agent), size: V.pillIcon)
@@ -287,7 +299,7 @@ struct V2ChatPill: View {
                     .foregroundStyle(V.titleColor)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                Image(systemName: model.v2Browsing ? "chevron.up" : "chevron.down")
+                Image(systemName: locked ? "lock.fill" : (model.v2Browsing ? "chevron.up" : "chevron.down"))
                     .font(V.pillChevron)
                     .foregroundStyle(V.subColor)
             }
@@ -299,8 +311,9 @@ struct V2ChatPill: View {
             .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
+        .disabled(locked)
         .onHover { hovering = $0 }
-        .help("\(ChatAgent.named(pick.agent).name) · \(pick.project ?? "Quick answer"). Every chat: ⌃")
+        .help(locked ? "Sending to \(pick.title)" : "\(ChatAgent.named(pick.agent).name) · \(pick.project ?? L("Quick answer")). Every chat: ⌃")
         .accessibilityLabel("Sends to \(pick.title)")
         .accessibilityHint("Shows every chat")
     }
@@ -313,15 +326,22 @@ struct V2SendButton: View {
 
     var body: some View {
         let V = WorkbenchTokens.V2.self
+        // Oct 15 review, QA06: on its way, the disc turns; not sent or declined, it waits.
+        let sending = model.cases.sending
         Button { model.sendV2Now() } label: {
             ZStack {
-                Circle().fill(WorkbenchTokens.Panel.buttonPrimary.opacity(hovering ? V.sendHoverOpacity : 1))
-                Image(systemName: "arrow.up").font(V.sendGlyph).foregroundStyle(WorkbenchTokens.Panel.buttonPrimaryText)
+                Circle().fill(WorkbenchTokens.Panel.buttonPrimary.opacity(sending != nil ? 0.45 : (hovering ? V.sendHoverOpacity : 1)))
+                if sending?.isSending == true {
+                    ProgressView().controlSize(.small).tint(WorkbenchTokens.Panel.buttonPrimaryText)
+                } else {
+                    Image(systemName: "arrow.up").font(V.sendGlyph).foregroundStyle(WorkbenchTokens.Panel.buttonPrimaryText)
+                }
             }
             .frame(width: V.sendSize, height: V.sendSize)
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .disabled(sending != nil)
         .onHover { hovering = $0 }
         .help("Send (fn⌃, Return)")
         .accessibilityLabel("Send")
@@ -465,6 +485,9 @@ struct V2ChatBrowser: View {
                     .buttonStyle(.plain)
                     .help(agent.name)
                 }
+                // Oct 15 review, QA04: the agent's chats by title or project.
+                V2BrowseSearchField(model: model)
+                    .padding(.leading, V.railGap)
                 Spacer()
                 Text(active.name).font(V.railName).foregroundStyle(V.titleColor)
                     .padding(.trailing, 10)
@@ -491,9 +514,22 @@ struct V2BrowseRowView: View {
 
     var body: some View {
         let V = WorkbenchTokens.V2.self
+        if case .status(let status) = row {
+            // Oct 15 review, QA04: the list on its way, one that couldn't load, nothing matching.
+            V2BrowseStatusRow(model: model, status: status)
+        } else {
+            button(V)
+        }
+    }
+
+    private func button(_ V: WorkbenchTokens.V2.Type) -> some View {
         Button { model.pickV2Browse(row) } label: {
             HStack(spacing: 10) {
                 switch row {
+                case .status:
+                    EmptyView()
+                case .more(let count):
+                    V2BrowseMoreLabel(count: count)
                 case .project(let project):
                     Text(project.folder).font(V.browseFont).foregroundStyle(V.titleColor)
                     if project.folder == ChatBook.project {
@@ -510,21 +546,36 @@ struct V2BrowseRowView: View {
                     Text(folder).font(V.browseFont).foregroundStyle(V.subColor)
                     Spacer()
                 case .chat(let chat):
+                    // Oct 15 review, QA05: one that can't take the request is dimmed and says why.
+                    let blocked = model.v2ChatBlock(chat)
                     Image(systemName: chat.isNew ? "plus" : "bubble.left").font(V.browseGlyph).foregroundStyle(V.subColor).frame(width: 14)
-                    Text(chat.title).font(V.browseFont).foregroundStyle(V.titleColor).lineLimit(1)
+                    Text(chat.title).font(V.browseFont)
+                        .foregroundStyle(blocked == nil ? V.titleColor : WorkbenchTokens.Cases.blockedTitle).lineLimit(1)
+                    // A search spans projects: each chat says which.
+                    if !model.cases.browseQuery.isEmpty {
+                        Text(chat.folder).font(V.reasonFont).foregroundStyle(V.subColor).lineLimit(1)
+                    }
                     Spacer(minLength: 6)
-                    if !chat.isNew {
+                    if let blocked {
+                        V2BlockedReason(reason: blocked, chat: chat)
+                    } else if !chat.isNew {
                         Text(chat.age).font(V.reasonFont).foregroundStyle(V.subColor).monospacedDigit()
                     }
                 }
             }
             .padding(.horizontal, V.browsePaddingH)
             .frame(maxHeight: .infinity)
-            .background(RoundedRectangle(cornerRadius: V.rowRadius, style: .continuous).fill(hovering ? V.hoverFill : .clear))
+            .background(RoundedRectangle(cornerRadius: V.rowRadius, style: .continuous)
+                .fill(hovering && !isBlocked ? V.hoverFill : .clear))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
+    }
+
+    private var isBlocked: Bool {
+        if case .chat(let chat) = row { return model.v2ChatBlock(chat) != nil }
+        return false
     }
 }
 
@@ -616,6 +667,9 @@ struct V2Response: View {
                     .font(.system(size: 12.5))
                     .foregroundStyle(WorkbenchTokens.Panel.needsYouColor)
                 }
+            } else if task.state == .needsYou {
+                // Oct 15 review, QA14/QA15: what it asks, in full, and how to answer.
+                V2NeedsYouBody(model: model, task: task, width: width)
             } else {
                 // At work: what it is doing now; it comes back here when it is done.
                 Text(task.state == .needsYou ? task.activity : task.line)
@@ -634,47 +688,53 @@ struct V2Response: View {
 // MARK: Pulled out of the notch
 
 /// The chats pulled out of the notch: small windows anywhere on the screen, or tabs tucked into
-/// its sides; and the one being pulled, following the pointer.
+/// its sides; and the one being pulled, following the pointer. On the real Mac the pulled-out
+/// chats have a layer of their own, which follows the pointer to the display in use (Oct 11): the
+/// island's layer draws only the one being pulled (`chats: false`), theirs only the chats.
 struct V2DetachedLayer: View {
     let model: WorkbenchModel
+    var chats = true
+    var pulling = true
 
     var body: some View {
         let size = V2DetachedLayout.size
+        let area = chats ? model.detachedArea : model.display.frame.size
         ZStack(alignment: .topLeading) {
-            ForEach(model.v2Detached) { item in
-                if let side = item.docked {
-                    V2DockedTab(model: model, item: item, side: side)
-                } else {
-                    // Laid out at its usual size, drawn at its scale, its top-left where it is.
-                    V2DetachedWindow(model: model, item: item)
-                        .scaleEffect(item.scale)
-                        .frame(width: item.size.width, height: item.size.height)
-                        .position(x: item.origin.x + item.size.width / 2, y: item.origin.y + item.size.height / 2)
+            if chats {
+                ForEach(model.v2Detached) { item in
+                    if let side = item.docked {
+                        V2DockedTab(model: model, item: item, side: side)
+                    } else {
+                        // At its own size, its top-left where it is.
+                        V2DetachedWindow(model: model, item: item)
+                            .frame(width: item.size.width, height: item.size.height)
+                            .position(x: item.origin.x + item.size.width / 2, y: item.origin.y + item.size.height / 2)
+                    }
                 }
             }
-            if let drag = model.v2DragOut {
+            if pulling, let drag = model.v2DragOut {
                 V2DetachedWindow(model: model, item: V2Detached(id: drag.id, origin: .zero, docked: nil, dockY: 0), ghost: true)
                     .position(x: drag.point.x, y: drag.point.y - V2DetachedLayout.grip + size.height / 2)
                     .allowsHitTesting(false)
             }
         }
-        .frame(width: model.display.frame.width, height: model.display.frame.height, alignment: .topLeading)
+        .frame(width: area.width, height: area.height, alignment: .topLeading)
     }
 }
 
 /// A chat as a small window: its header (drag it anywhere; to a side, it tucks in; ✕ closes),
 /// the conversation (the request, the screen, the response, and every follow-up), the box to ask
-/// more, and a corner that scales it (a pinch does too).
+/// more, and a corner that resizes it (a pinch does too): the window changes, never its words.
 struct V2DetachedWindow: View {
     let model: WorkbenchModel
     let item: V2Detached
     var ghost = false
     @State private var dragStart: CGPoint?
-    @State private var pinchStart: CGFloat?
+    @State private var pinchStart: CGSize?
 
     var body: some View {
         let V = WorkbenchTokens.V2.self
-        let size = V2DetachedLayout.size
+        let size = ghost ? V2DetachedLayout.size : item.size
         let inner = size.width - 2 * V.detachedPadding
         let shape = RoundedRectangle(cornerRadius: V.detachedRadius, style: .continuous)
         VStack(alignment: .leading, spacing: V.detachedSpacing) {
@@ -684,9 +744,12 @@ struct V2DetachedWindow: View {
                     Text(model.v2Title(task))
                         .font(V.detachedTitle).foregroundStyle(V.titleColor).lineLimit(1)
                     Spacer(minLength: 4)
-                    // ✕ only: it closes the chat, and a session still at work is stopped with it.
+                    // Oct 15 review, QA16/QA25: the connection, or read only, when it isn't fine.
+                    if V2HeaderPill.shown(model, task) { V2HeaderPill(model: model, task: task) }
+                    // ✕ only: it closes the chat. Oct 15 review, QA21: a session still at work goes
+                    // back on the board and keeps working (only Stop stops).
                     NotchIconButton(symbol: "xmark", glyph: V.detachedCloseGlyph, size: V.detachedClose,
-                                    help: task.state == .working ? "Stop and close" : "Close") {
+                                    help: task.state == .working ? L("Close (it keeps working, on the board)") : L("Close")) {
                         model.closeDetachedV2(item.id)
                     }
                 }
@@ -700,7 +763,12 @@ struct V2DetachedWindow: View {
                 }
                 V2SessionBar(model: model, task: task)
                     .frame(height: WorkbenchTokens.Board.actionRow)
-                V2FollowUpField(model: model, id: item.id)
+                // Oct 15 review, QA25: read only, or gone: a line where the box was.
+                if model.cases.readOnly.contains(item.id) || model.cases.gone.contains(item.id) {
+                    V2ReadOnlyLine(model: model, task: task)
+                } else {
+                    V2FollowUpField(model: model, id: item.id)
+                }
             }
         }
         .padding(V.detachedPadding)
@@ -720,13 +788,14 @@ struct V2DetachedWindow: View {
         .accessibilityLabel("Pulled-out chat")
     }
 
-    /// A pinch on the trackpad scales the window, as its corner does.
+    /// A pinch on the trackpad resizes the window, as its corner does; the words keep their size.
     private var pinch: some Gesture {
         MagnifyGesture()
             .onChanged { value in
-                let start = pinchStart ?? item.scale
-                if pinchStart == nil { pinchStart = item.scale }
-                model.scaleDetachedV2(item.id, to: start * value.magnification)
+                let start = pinchStart ?? item.size
+                if pinchStart == nil { pinchStart = item.size }
+                model.resizeDetachedV2(item.id, to: CGSize(width: start.width * value.magnification,
+                                                           height: start.height * value.magnification))
             }
             .onEnded { _ in pinchStart = nil }
     }
@@ -747,11 +816,11 @@ struct V2DetachedWindow: View {
 }
 
 /// The bottom-right corner of a pulled-out chat: dragged out, the window grows; in, it shrinks.
-/// Everything in it scales with it, and its top-left stays where it is.
+/// The window resizes, its top-left where it is; its words keep their size and reflow (Oct 11).
 struct V2ScaleGrip: View {
     let model: WorkbenchModel
     let item: V2Detached
-    @State private var start: CGFloat?
+    @State private var start: CGSize?
 
     var body: some View {
         let V = WorkbenchTokens.V2.self
@@ -769,24 +838,21 @@ struct V2ScaleGrip: View {
         .gesture(
             DragGesture(minimumDistance: 1, coordinateSpace: .named(ScreenSpace.name))
                 .onChanged { value in
-                    // The corner follows the pointer: the size grows by the pointer's travel.
-                    let base = V2DetachedLayout.size
-                    let from = start ?? item.scale
-                    if start == nil { start = item.scale }
-                    model.scaleDetachedV2(item.id, to: from + (value.translation.width + value.translation.height) / (base.width + base.height))
+                    // The corner follows the pointer: the window grows by the pointer's travel.
+                    let from = start ?? item.size
+                    if start == nil { start = item.size }
+                    model.resizeDetachedV2(item.id, to: CGSize(width: from.width + value.translation.width,
+                                                               height: from.height + value.translation.height))
                 }
                 .onEnded { _ in start = nil }
         )
         .help("Drag to make it bigger or smaller (or pinch)")
         .accessibilityElement()
         .accessibilityLabel("Size")
-        .accessibilityValue("\(Int((item.scale * 100).rounded())) percent")
+        .accessibilityValue("\(Int(item.size.width)) by \(Int(item.size.height)) points")
         .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment: model.scaleDetachedV2(item.id, to: item.scale + 0.1)
-            case .decrement: model.scaleDetachedV2(item.id, to: item.scale - 0.1)
-            @unknown default: break
-            }
+            let step: CGFloat = direction == .increment ? 40 : -40
+            model.resizeDetachedV2(item.id, to: CGSize(width: item.size.width + step, height: item.size.height + step))
         }
     }
 }
@@ -814,12 +880,25 @@ struct V2Conversation: View {
                     ForEach(turns) { turn in
                         VStack(alignment: .leading, spacing: V.turnSpacing) {
                             if turn.id > 0 { Rectangle().fill(V.rule).frame(width: column, height: 0.5) }
-                            Text(turn.question)
-                                .font(V.turnQuestion).foregroundStyle(V.bodyColor)
-                                .fixedSize(horizontal: false, vertical: true)
                             if turn.id == now {
-                                // At work, one quiet line; done, the answer as written.
-                                if task.state == .working {
+                                // Oct 15 review, QA07: the last request, editable once answered.
+                                V2EditableQuestion(model: model, task: task, lines: 3) {
+                                    Text(turn.question)
+                                        .font(V.turnQuestion).foregroundStyle(V.bodyColor)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(width: column, alignment: .leading)
+                                }
+                            } else {
+                                Text(turn.question)
+                                    .font(V.turnQuestion).foregroundStyle(V.bodyColor)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            if turn.id == now {
+                                // At work, one quiet line; done, the answer as written. Oct 15
+                                // review: reopening, gone, not sure it arrived, what was decided.
+                                if let kind = model.v2CaseBody(task) {
+                                    V2CaseBodyView(model: model, task: task, kind: kind, width: column)
+                                } else if task.state == .working {
                                     V2WorkingLine(model: model, task: task)
                                 } else if task.state == .needsYou {
                                     V2Response(model: model, task: task, width: column)
@@ -1016,7 +1095,7 @@ struct V2DockedTab: View {
         .gesture(DragGesture(minimumDistance: 6).onEnded { _ in withAnimation(WorkbenchTokens.V2.resize) { model.undockV2(item.id) } })
         .help("Pull the chat back out")
         .position(x: side == .left ? (size.width + (hovering ? 6 : 0)) / 2
-                                   : model.display.frame.width - (size.width + (hovering ? 6 : 0)) / 2,
+                                   : model.detachedArea.width - (size.width + (hovering ? 6 : 0)) / 2,
                   y: item.dockY + size.height / 2)
         .accessibilityLabel("Tucked chat")
         .accessibilityAddTraits(.isButton)

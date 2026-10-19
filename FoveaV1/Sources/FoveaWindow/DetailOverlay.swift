@@ -3,9 +3,10 @@ import SwiftUI
 import CapturesCore
 import FoveaKit
 
-/// The expanded card: your full words, the recording, what you took (large, each opening larger),
-/// its tags and, for a dispatch, the chat it went to with a way back there (the App UI review,
-/// Oct 6, rows 25, 27 and 28). A recording that failed says so first and can be tried again.
+/// The expanded card: your full words, what you took (large, each opening larger), its tags and,
+/// for a dispatch, the chat it went to with a way back there at the notch (the App UI review,
+/// Oct 6, rows 25, 27 and 28; Oct 15 review, HI-01.3). Words that haven't come back say so first,
+/// while Fovea tries again on its own (VF13).
 ///
 /// How it moves (Quick Look's zoom, and the container transform Material documents):
 /// - One value, `progress`, drives everything, 0 at the card and 1 open, so nothing can show
@@ -294,8 +295,8 @@ struct DetailMetrics {
     }
 }
 
-/// The words (or, if they never came back, why, and Transcribe Again), what you took, and the
-/// foot: the tags, the recording, and for a dispatch the way back to its chat.
+/// The words (or, if they haven't come back, why, while Fovea tries again), what you took, and the
+/// foot: the tags, and for a dispatch where it went and the way back to it at the notch.
 struct DetailBody: View {
     @Environment(CapturesModel.self) private var model
     @Environment(\.palette) private var palette
@@ -311,6 +312,8 @@ struct DetailBody: View {
             if c.failed {
                 FailedNotice(capture: c)
             } else {
+                // Oct 15 review, QA25: a Dispatch that didn't go says why, with Send Again.
+                if c.notSent { NotSentNotice(capture: c) }
                 // Held to about 75 characters a line, however wide the card.
                 InlineText.make(c, hits: match.ranges[.text] ?? [], size: T.Text.detailBody, palette: palette, hitStyle: model.hitStyle,
                                 thumbnails: true)
@@ -382,7 +385,7 @@ struct DetailAttachments: View {
             ForEach(others, id: \.index) { a in
                 switch a.kind {
                 case .passage: PassageRow(attachment: a)
-                case .file: FileRow(attachment: a, save: { model.save(capture, .file(a.text)) })
+                case .file: FileRow(attachment: a, save: { model.saveToDisk(capture, .file(a.index)) })
                 case .region: EmptyView()
                 }
             }

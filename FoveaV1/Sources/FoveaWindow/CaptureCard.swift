@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import CapturesCore
 import FoveaKit
+import FoveaLook
 
 /// Where each card sits in the window, so the expanded card can grow out of it and shrink back.
 struct CardFramesKey: PreferenceKey {
@@ -51,7 +52,25 @@ struct CaptureCard: View {
         .id(c.id)
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isButton)
-        .accessibilityLabel("\(Lines.label(c)), \(Lines.relative(c.time, now: model.now)), \(c.kind == .dispatch ? "to \(c.destination?.agent ?? "an agent")" : "in \(c.app.name)"). \(Lines.spoken(c))")
+        .accessibilityLabel(spoken(c))
+    }
+
+    /// What VoiceOver reads: "Dispatch, 3 minutes ago, to Claude Code, 2 requests. …". Oct 18,
+    /// Ryan: in the primary language, each part a phrase of its own so Chinese can order them.
+    private func spoken(_ c: Capture) -> String {
+        let kind = Lines.label(c)
+        let when = Lines.relative(c.time, now: model.now)
+        let place: String
+        if c.kind == .dispatch {
+            place = c.destination.map { L("to \($0.agent)") } ?? L("to an agent")
+        } else {
+            place = L("in \(c.app.name)")
+        }
+        let words = c.failed ? L("Not transcribed yet.") : Lines.spoken(c)
+        let n = model.requests(c)
+        guard n > 1 else { return L("\(kind), \(when), \(place). \(words)") }
+        let requests = L("\(n) requests")
+        return L("\(kind), \(when), \(place), \(requests). \(words)")
     }
 }
 
@@ -169,22 +188,27 @@ struct CardHeader: View {
             if twoLines {
                 VStack(alignment: .leading, spacing: spacing.metrics.headerLineGap) {
                     HStack(spacing: 5) {
-                        if capture.failed { FailedMark() }
+                        if capture.failed || capture.notSent { FailedMark(capture: capture) }
                         Text(title).font(T.Text.cardTitle).foregroundStyle(palette.text)
                     }
                     HStack(spacing: 5) {
                         KindMark(kind: capture.kind)
-                        Text("\(capture.kind.title) · \(when)")
-                            .font(T.Text.cardTime).foregroundStyle(palette.secondary).monospacedDigit()
+                        // Oct 15 review, MW-05.3: where "Dispatch · 28m · 2 requests" won't fit
+                        // beside the icon, the mark alone says Dispatch.
+                        ViewThatFits(in: .horizontal) {
+                            Text("\(capture.kind.title) · \(when)\(requests)")
+                            Text(requests.isEmpty ? "\(capture.kind.title) · \(when)" : "\(when)\(requests)")
+                        }
+                        .font(T.Text.cardTime).foregroundStyle(palette.secondary).monospacedDigit()
                     }
                 }
             } else {
                 if model.headerStyle == .type {
                     KindMark(kind: capture.kind).alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 3.5 }
                 }
-                if capture.failed { FailedMark() }
+                if capture.failed || capture.notSent { FailedMark(capture: capture) }
                 Text(title).font(T.Text.cardTitle).foregroundStyle(palette.text)
-                Text(when)
+                Text(when + requests)
                     .font(.system(size: 11, design: .monospaced)).foregroundStyle(palette.tertiary)
                     .layoutPriority(1)
             }
@@ -214,12 +238,12 @@ struct CardHeader: View {
         let margin = (iconFrame - h) / 2
         return VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 5) {
-                if capture.failed { FailedMark() }
+                if capture.failed || capture.notSent { FailedMark(capture: capture) }
                 Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(palette.text)
             }
             Text(model.headerStyle == .themeAndType
-                 ? "\(capture.kind.title) · \(Lines.relative(capture.time, now: model.now))"
-                 : Lines.relative(capture.time, now: model.now))
+                 ? "\(capture.kind.title) · \(Lines.relative(capture.time, now: model.now))\(requests)"
+                 : Lines.relative(capture.time, now: model.now) + requests)
                 .font(T.Text.cardTime).foregroundStyle(palette.secondary)
         }
         .lineLimit(1)
@@ -249,9 +273,16 @@ struct CardHeader: View {
 
     /// The icon's tooltip: the app, or the agent a dispatch went to.
     static func whereItWent(_ c: Capture) -> String {
-        if c.kind == .dispatch, let d = c.destination { return "Sent to \(d.agent)" }
+        if c.kind == .dispatch, let d = c.destination { return L("Sent to \(d.agent)") }
         // A browser names the site too (row 38): "Chrome · chatgpt.com".
         return c.target
+    }
+
+    /// Oct 15 review, MW-05.3: a Dispatch session that had more than one request says how many
+    /// ("Dispatch · 2h · 4 requests").
+    private var requests: String {
+        let n = model.requests(capture)
+        return n > 1 ? " · " + L("\(n) requests") : ""
     }
 
     /// This week: how long ago ("3m", "2d"). Before it, under a day's name: the time of day.
@@ -264,7 +295,8 @@ struct CardHeader: View {
     private var title: String {
         switch model.headerStyle {
         case .type: return Lines.label(capture)
-        case .theme, .themeAndType: return capture.theme
+        // Oct 18, Ryan: a recording whose words haven't come back is titled in the primary language.
+        case .theme, .themeAndType: return capture.failed ? L("Not transcribed yet") : capture.theme
         }
     }
 }
@@ -384,7 +416,7 @@ struct AttachmentTile: View {
         }
         .clipped()
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Lines.name(a) + (a.kind == .file ? ", \(a.text)" : ""))
+        .accessibilityLabel(a.kind == .file ? L("\(Lines.name(a)), \(a.text)") : Lines.name(a))
     }
 }
 
@@ -443,14 +475,24 @@ struct KindMark: View {
 }
 
 
-/// A recording whose words never came back, beside its title: Messages' red exclamation mark.
+/// Beside the title: a recording whose words haven't come back, quietly (Fovea is trying again,
+/// Oct 15 review, VF13); a Dispatch that wasn't sent, Messages' red exclamation mark (QA25).
 struct FailedMark: View {
     @Environment(\.palette) private var palette
+    let capture: Capture
     var body: some View {
-        Image(systemName: "exclamationmark.circle.fill")
-            .font(.system(size: 12))
-            .foregroundStyle(palette.danger)
-            .help("Not transcribed: the recording is kept")
-            .accessibilityLabel("Not transcribed")
+        if capture.notSent {
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(palette.danger)
+                .help("Not sent: open it to send it again")
+                .accessibilityLabel("Not sent")
+        } else {
+            Image(systemName: "arrow.clockwise.circle.fill")
+                .font(.system(size: 12))
+                .foregroundStyle(palette.tertiary)
+                .help("Not transcribed yet: Fovea is trying again")
+                .accessibilityLabel("Not transcribed yet")
+        }
     }
 }

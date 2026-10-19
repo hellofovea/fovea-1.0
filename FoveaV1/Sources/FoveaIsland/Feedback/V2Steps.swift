@@ -1,5 +1,6 @@
 import SwiftUI
 import FoveaCore
+import FoveaKit
 
 // Oct 7 (docs/island/FEEDBACK_2026-10-06.md, #16 revisited): while an agent works, its session shows
 // what it is doing, one step at a time, the step and the thing it acts on, as Claude Code and Codex
@@ -24,20 +25,20 @@ enum StepKind: Equatable {
 
     var verb: String {
         switch self {
-        case .read, .fetch: return "Reading"
-        case .search: return "Searching for"
-        case .list: return "Listing"
-        case .edit: return "Editing"
-        case .create: return "Creating"
-        case .run: return "Running"
-        case .build: return "Building with"
-        case .test: return "Testing with"
-        case .web: return "Searching the web for"
-        case .plan: return "Planning"
-        case .subagent: return "Subagent"
-        case .tool: return "Using"
-        case .think: return "Thinking"
-        case .answer: return "Writing the answer"
+        case .read, .fetch: return L("Reading")
+        case .search: return L("Searching for")
+        case .list: return L("Listing")
+        case .edit: return L("Editing")
+        case .create: return L("Creating")
+        case .run: return L("island.step.running", english: "Running")
+        case .build: return L("Building with")
+        case .test: return L("Testing with")
+        case .web: return L("Searching the web for")
+        case .plan: return L("Planning")
+        case .subagent: return L("Subagent")
+        case .tool: return L("Using")
+        case .think: return L("island.thinking", english: "Thinking")
+        case .answer: return L("Writing the answer")
         }
     }
 
@@ -64,20 +65,20 @@ enum StepKind: Equatable {
     /// Done, as the list of what it did says it (V2Work).
     var pastVerb: String {
         switch self {
-        case .read, .fetch: return "Read"
-        case .search: return "Searched for"
-        case .list: return "Listed"
-        case .edit: return "Edited"
-        case .create: return "Created"
-        case .run: return "Ran"
-        case .build: return "Built with"
-        case .test: return "Tested with"
-        case .web: return "Searched the web for"
-        case .plan: return "Planned"
-        case .subagent: return "Subagent"
-        case .tool: return "Used"
-        case .think: return "Thought"
-        case .answer: return "Wrote the answer"
+        case .read, .fetch: return L("Read")
+        case .search: return L("Searched for")
+        case .list: return L("Listed")
+        case .edit: return L("Edited")
+        case .create: return L("Created")
+        case .run: return L("Ran")
+        case .build: return L("Built with")
+        case .test: return L("Tested with")
+        case .web: return L("Searched the web for")
+        case .plan: return L("Planned")
+        case .subagent: return L("Subagent")
+        case .tool: return L("Used")
+        case .think: return L("Thought")
+        case .answer: return L("Wrote the answer")
         }
     }
 
@@ -120,14 +121,16 @@ struct V2Work: Equatable {
 
     /// The folded line: how long it worked, and what it edited.
     func summary(seconds measured: Int? = nil) -> String {
-        var line = "Worked for \(Self.duration(measured ?? seconds))"
+        // Oct 18, Ryan: in the primary language.
+        var line = L("Worked for \(Self.duration(measured ?? seconds))")
         let files = editedFiles
-        if !files.isEmpty { line += " · Edited \(files.count == 1 ? files[0] : "\(files.count) files")" }
+        if !files.isEmpty { line += L(" · Edited \(files.count == 1 ? files[0] : L("\(files.count) files"))") }
         return line
     }
 
     static func duration(_ s: Int) -> String {
-        s < 60 ? "\(s) s" : (s % 60 == 0 ? "\(s / 60) m" : "\(s / 60) m \(s % 60) s")
+        // Oct 18, Ryan: in the primary language.
+        s < 60 ? L("\(s) s") : (s % 60 == 0 ? L("\(s / 60) m") : L("\(s / 60) m \(s % 60) s"))
     }
 
     /// Whose fold is open: the session's id for the exchange now, this for an earlier one.
@@ -150,7 +153,7 @@ extension V2Request {
                 AgentLiveStep(kind: .read, object: "IslandShape.swift"),
                 AgentLiveStep(kind: .search, object: "menuBarHeight"),
                 AgentLiveStep(kind: .read, object: "NotchGeometry.swift"),
-                AgentLiveStep(kind: .plan, object: "Match the ears to the menu bar", done: 1, total: 4),
+                AgentLiveStep(kind: .plan, object: L("Match the ears to the menu bar"), done: 1, total: 4),
                 AgentLiveStep(kind: .edit, object: "IslandShape.swift", added: 3, removed: 1),
                 AgentLiveStep(kind: .edit, object: "NotchGeometry.swift", added: 2, removed: 1),
                 AgentLiveStep(kind: .build, object: "swift build", passed: true),
@@ -159,7 +162,7 @@ extension V2Request {
                 AgentLiveStep(kind: .answer),
             ]
         case .formula:
-            return [AgentLiveStep(kind: .read, object: "your screenshot"), AgentLiveStep(kind: .think), AgentLiveStep(kind: .answer)]
+            return [AgentLiveStep(kind: .read, object: L("your screenshot")), AgentLiveStep(kind: .think), AgentLiveStep(kind: .answer)]
         case .calendar:
             return [AgentLiveStep(kind: .tool, object: "calendar · list_events"), AgentLiveStep(kind: .think), AgentLiveStep(kind: .answer)]
         case .draft:

@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import FoveaCore
 import OnboardingCore
+import FoveaLook
 
 // The practice windows (Oct 9). For the tasks: the browser, its tabs real local pages
 // (PracticeSite.swift), and the team chat beside it. For dictation: Fovea's own feedback window
@@ -168,8 +169,12 @@ struct ChatWindow: View {
 /// words land in it when spoken to, and it goes only when Send is clicked.
 struct FeedbackWindow: View {
     let model: OnboardingModel
+    /// Drawn for a picture of the screen (ImageRenderer can't draw an editable box): the words as
+    /// text.
+    var picture = false
 
-    private var targeted: Bool { model.dictationTarget == .feedback || (model.dictationTarget == nil && model.pointerOver == .feedback) }
+    /// Oct 18, Ryan: the words go to the window under the pointer when they land.
+    private var targeted: Bool { model.dictationLanding == .feedback }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -199,9 +204,31 @@ struct FeedbackWindow: View {
                     RoundedRectangle(cornerRadius: 10, style: .continuous).fill(OT.Colors.ink(0.03))
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .strokeBorder(targeted ? model.accentColor.opacity(0.75) : OT.Colors.ink(0.1), lineWidth: targeted ? 2 : 1)
-                    DictatedText(text: model.feedbackText, placeholder: Copy.feedbackPlaceholder, caret: targeted, accent: model.accentColor,
-                                 ink: OT.Colors.ink, placeholderInk: OT.Colors.ink(0.35))
-                        .padding(14)
+                    VStack(alignment: .leading, spacing: 10) {
+                        if picture {
+                            DictatedText(text: model.feedbackText, placeholder: Copy.feedbackPlaceholder(keys: model.keys), caret: targeted,
+                                         accent: model.accentColor, ink: OT.Colors.ink, placeholderInk: OT.Colors.ink(0.35))
+                        } else {
+                            // Oct 18, Ryan: "the users should be able to delete what they have put
+                            // here": the words are the person's to change before Send.
+                            EditableDictation(text: Binding(get: { model.feedbackText }, set: { model.feedbackText = $0 }),
+                                              placeholder: Copy.feedbackPlaceholder(keys: model.keys), caret: targeted,
+                                              accent: model.accentColor)
+                                .disabled(model.feedbackSent)
+                        }
+                        // Oct 17, Ryan: what was taken while talking, after the words; Oct 18: each
+                        // can be taken off again.
+                        if !model.feedbackTaken.isEmpty {
+                            HStack(spacing: 8) {
+                                ForEach(model.feedbackTaken) { taken in
+                                    TakenPicture(referent: taken, height: OT.Layout.takenInFeedback,
+                                                 onRemove: picture || model.feedbackSent ? nil : { model.removeTaken(taken.id, from: .feedback) })
+                                }
+                            }
+                            .transition(.opacity)
+                        }
+                    }
+                    .padding(14)
                 }
                 .frame(maxHeight: .infinity)
                 HStack {
@@ -230,11 +257,16 @@ struct FeedbackWindow: View {
     }
 }
 
-/// Messages, with Lin asking to move the call; the reply box takes the words.
+/// Messages, with Lin asking to move the call; the reply box takes the words. Oct 18, Ryan: the box
+/// is the person's to change before it's sent (Return, or the arrow); what was taken sits above it,
+/// each with ✕, and goes with the words.
 struct MessagesWindow: View {
     let model: OnboardingModel
+    /// Drawn for a picture of the screen: the box as text (ImageRenderer can't draw a field).
+    var picture = false
 
-    private var targeted: Bool { model.dictationTarget == .messages || (model.dictationTarget == nil && model.pointerOver == .messages) }
+    /// Oct 18, Ryan: the words go to the window under the pointer when they land.
+    private var targeted: Bool { model.dictationLanding == .messages }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -252,20 +284,58 @@ struct MessagesWindow: View {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Today 9:12 AM").font(.system(size: 11)).foregroundStyle(OT.Colors.pageSecondary).frame(maxWidth: .infinity)
                 ForEach(Copy.linMessages, id: \.self) { bubble($0, mine: false) }
-                if !model.replyText.isEmpty {
-                    bubble(model.replyText, mine: true)
+                if let sent = model.sentReply {
+                    bubble(sent, mine: true)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
+                // Oct 17, Ryan: taken while answering, after the words, as Messages sends a picture.
+                ForEach(model.sentReplyTaken) { taken in
+                    HStack {
+                        Spacer(minLength: 100)
+                        TakenPicture(referent: taken, height: OT.Layout.takenInMessages)
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
                 Spacer(minLength: 0)
             }
             .padding(20)
+            // What's taken waits above the box until it's sent, each with ✕ (Oct 18, Ryan).
+            if !model.replyTaken.isEmpty {
+                HStack(spacing: 8) {
+                    Spacer()
+                    ForEach(model.replyTaken) { taken in
+                        TakenPicture(referent: taken, height: OT.Layout.takenInFeedback,
+                                     onRemove: picture ? nil : { model.removeTaken(taken.id, from: .messages) })
+                    }
+                }
+                .padding(.horizontal, 16)
+                .transition(.opacity)
+            }
             HStack(spacing: 10) {
                 Image(systemName: "plus.circle.fill").font(.system(size: 22)).foregroundStyle(OT.Colors.messagesGlyph)
-                HStack(spacing: 0) {
-                    if targeted { Caret(accent: model.accentColor) }
-                    Text(targeted ? "" : Copy.replyPlaceholder).foregroundStyle(OT.Colors.pageSecondary)
-                    Spacer()
-                    Image(systemName: "mic").foregroundStyle(OT.Colors.pageSecondary)
+                HStack(spacing: 6) {
+                    if picture || model.replyText.isEmpty && !targeted {
+                        Text(model.replyText.isEmpty ? Copy.replyPlaceholder : model.replyText)
+                            .foregroundStyle(model.replyText.isEmpty ? OT.Colors.pageSecondary : OT.Colors.messageText)
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                    } else {
+                        if targeted, model.replyText.isEmpty { Caret(accent: model.accentColor) }
+                        TextField("", text: Binding(get: { model.replyText }, set: { model.replyText = $0 }))
+                            .textFieldStyle(.plain)
+                            .foregroundStyle(OT.Colors.messageText)
+                            .onSubmit { model.sendReply() }
+                    }
+                    if model.canSendReply, !picture {
+                        Button(action: { model.sendReply() }) {
+                            Image(systemName: "arrow.up.circle.fill").font(.system(size: 20)).foregroundStyle(OT.Colors.messageMine)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Send")
+                        .accessibilityLabel("Send")
+                    } else {
+                        Image(systemName: "mic").foregroundStyle(OT.Colors.pageSecondary)
+                    }
                 }
                 .font(.system(size: 14))
                 .padding(.horizontal, 12)
@@ -295,6 +365,87 @@ struct MessagesWindow: View {
                 .fixedSize(horizontal: false, vertical: true)
             if !mine { Spacer(minLength: 100) }
         }
+    }
+}
+
+/// A picture taken while dictating, as it lands after the words (Oct 17, Ryan). Oct 18, Ryan: it
+/// can be taken off again, with its ✕, or selected and Delete.
+struct TakenPicture: View {
+    let referent: TakenReferent
+    let height: CGFloat
+    var onRemove: (() -> Void)? = nil
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        if let onRemove {
+            picture
+                .overlay(RoundedRectangle(cornerRadius: OT.Layout.takenRadius, style: .continuous)
+                    .strokeBorder(focused ? OT.Colors.ink(0.5) : .clear, lineWidth: 2))
+                .overlay(alignment: .topTrailing) {
+                    Button(action: onRemove) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: OT.Layout.takenRemove))
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(OT.Colors.white(0.95), OT.Colors.ink(0.6))
+                    }
+                    .buttonStyle(.plain)
+                    .offset(x: 6, y: -6)
+                    .help("Remove")
+                    .accessibilityLabel("Remove the picture")
+                }
+                .focusable()
+                .focused($focused)
+                .onTapGesture { focused = true }
+                .onDeleteCommand(perform: onRemove)
+        } else {
+            picture
+        }
+    }
+
+    private var picture: some View {
+        Group {
+            if let image = referent.image {
+                Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
+            } else {
+                Image(systemName: "photo").font(.system(size: height / 3)).foregroundStyle(OT.Colors.ink(0.3))
+                    .frame(width: height * 1.4, height: height)
+                    .background(OT.Colors.ink(0.05))
+            }
+        }
+        .frame(maxHeight: height)
+        .clipShape(RoundedRectangle(cornerRadius: OT.Layout.takenRadius, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: OT.Layout.takenRadius, style: .continuous).strokeBorder(OT.Colors.practiceEdge))
+        .accessibilityLabel("A picture of part of the screen")
+    }
+}
+
+/// The feedback's words, the person's to change (Oct 18, Ryan): a plain text box, the hint and the
+/// accent caret where the words will land while it's empty.
+struct EditableDictation: View {
+    @Binding var text: String
+    let placeholder: String
+    let caret: Bool
+    let accent: Color
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            TextEditor(text: $text)
+                .font(.system(size: 15))
+                .foregroundStyle(OT.Colors.ink)
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
+                .lineSpacing(3)
+            if text.isEmpty {
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    if caret { Caret(accent: accent) }
+                    Text(placeholder).foregroundStyle(OT.Colors.ink(0.35))
+                }
+                .font(.system(size: 15))
+                .padding(.leading, 5)
+                .allowsHitTesting(false)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: OT.Layout.feedbackBoxMin, alignment: .topLeading)
     }
 }
 

@@ -1,12 +1,13 @@
 import SwiftUI
 import AppKit
 import FoveaCore
+import FoveaKit
 
 /// What the island and its cards are doing, so each change moves on its own curve.
 enum CardChange {
     /// The bar opening or closing.
     case state
-    /// The stack opening into rows, or folding back.
+    /// The stack opening into its row, or folding back.
     case expand, collapse
     /// The pointer fanning the collapsed stack, or leaving it.
     case peek(Bool)
@@ -16,6 +17,8 @@ enum CardChange {
     case remove
     /// A capture joining, or the shape changing.
     case settle
+    /// Oct 15 review, VF04: the opened row scrolled sideways under the fingers.
+    case scroll
 }
 
 /// A capture on its way from the region it was taken from into its place in the stack.
@@ -45,7 +48,8 @@ extension WorkbenchModel {
         let live = liveReferents
         var layout = StackLayout.make(state: notchState, aspects: live.map(\.aspect), shape: referentShape,
                                       expanded: stackExpanded, peek: stackHovered && !stackExpanded,
-                                      inspecting: inspectedId.flatMap { id in live.firstIndex { $0.id == id } }, metrics: metrics)
+                                      inspecting: inspectedId.flatMap { id in live.firstIndex { $0.id == id } },
+                                      scroll: stackScroll, metrics: metrics)
         // Paste not found and Thinking are the island's own shapes.
         if notchState == .pasteNotFound { layout.outline = pasteLayout.outline }
         if notchState == .quickThinking { layout.outline = agentLayout.outline }
@@ -86,7 +90,9 @@ extension WorkbenchModel {
                 let F = WorkbenchTokens.Feedback.self
                 let T = WorkbenchTokens.Referents.self
                 let half = NotchGeometry.notchRect(metrics: metrics, spec: WorkbenchTokens.Island.spec).width / 2
-                let stackRight = layout.cards.filter { $0.opacity > 0.01 }.map { $0.cx + $0.width / 2 }.max()
+                // Oct 15 review, VF04: the "+N" chip is part of the stack.
+                let stackRight = (layout.cards.filter { $0.opacity > 0.01 }.map { $0.cx + $0.width / 2 }
+                    + [layout.more?.maxX].compactMap { $0 }).max()
                 let left = stackRight.map { $0 + T.waveformGap } ?? (-half + T.inset)
                 let right = half - F.countdownInset - F.countdownWidth - T.waveformGap / 2
                 layout.waveform.x = (left + right) / 2
@@ -99,7 +105,7 @@ extension WorkbenchModel {
     /// The layout with the fading captures still in it: where they were, for their exit.
     var departingLayout: StackLayout {
         StackLayout.make(state: notchState, aspects: referents.map(\.aspect), shape: referentShape,
-                         expanded: stackExpanded, peek: false, metrics: metrics)
+                         expanded: stackExpanded, peek: false, scroll: stackScroll, metrics: metrics)
     }
 
     /// The Notch list: silent, the voice bar, or the voice bar capturing.
@@ -326,10 +332,12 @@ extension WorkbenchModel {
         return true
     }
 
-    func add(image: NSImage, from rect: CGRect, animated: Bool, kind: ReferentKind = .screenshot, source given: String? = nil) {
-        let source = given ?? (screenContent == .fullScreenApp ? tabs[selectedTab].title : "Desktop")
+    func add(image: NSImage, from rect: CGRect, animated: Bool, kind: ReferentKind = .screenshot, source given: String? = nil,
+             otherDisplay: Bool = false, fileURL: URL? = nil) {
+        let source = given ?? (screenContent == .fullScreenApp ? tabs[selectedTab].title : L("Desktop"))
+        // Oct 15 review, VF05: taken on another display than the island's. Oct 17: a file's URL.
         let referent = CapturedReferent(id: UUID(), image: image, aspect: image.size.width / max(1, image.size.height),
-                                        source: source, kind: kind)
+                                        source: source, kind: kind, otherDisplay: otherDisplay, fileURL: fileURL)
         islandAnimation = WorkbenchTokens.Referents.settle
         cardChange = .settle
         referents.append(referent)
@@ -372,6 +380,7 @@ extension WorkbenchModel {
         islandAnimation = WorkbenchTokens.Referents.settle
         cardChange = .settle
         stackExpanded = false
+        stackScroll = 0
         stackHovered = false
         inspectedId = nil
         hoveredReferent = nil
@@ -423,7 +432,25 @@ extension WorkbenchModel {
         stackHovered = false
         hoveredReferent = nil
         inspectedId = nil
+        // Oct 15 review, VF04: the row opens at its first referent.
+        stackScroll = 0
         stackExpanded = open
+    }
+
+    /// Oct 15 review, VF04: the opened row, scrolled sideways by `delta` points (a swipe right
+    /// brings the first ones back), within its ends. Returns whether it could move.
+    @discardableResult
+    func scrollStack(by delta: CGFloat) -> Bool {
+        guard stackExpanded, inspectedId == nil else { return false }
+        let layout = stackLayout
+        guard layout.scrollMax > 0.5 else { return false }
+        let next = min(max(0, layout.scroll + delta), layout.scrollMax)
+        guard abs(next - layout.scroll) > 0.01 else { return false }
+        islandAnimation = reduceMotion ? .easeOut(duration: WorkbenchTokens.Motion.reduceMotionFade) : WorkbenchTokens.Referents.scrollFollow
+        cardChange = .scroll
+        hoveredReferent = nil
+        stackScroll = next
+        return true
     }
 
     func setStackHovered(_ inside: Bool) {
@@ -455,6 +482,8 @@ extension WorkbenchModel {
             return inside ? cardMotion.fan : cardMotion.fold
         case .settle:
             return T.settle
+        case .scroll:
+            return T.scrollFollow
         }
     }
 

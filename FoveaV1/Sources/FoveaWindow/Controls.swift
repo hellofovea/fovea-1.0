@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import CapturesCore
 import FoveaKit
+import FoveaKit
 
 /// Fovea's controls, built the way Aside builds its own (heyaside.com's CSS, which rebuilds the
 /// app's views at its point sizes, and the app on macOS 27):
@@ -91,7 +92,7 @@ struct SlidingSegments<Value: Hashable>: View {
         return HStack(spacing: 5) {
                 if let kind = s.kind { KindMark(kind: kind, size: 8) }
                 if let symbol = s.symbol { Image(systemName: symbol).font(.system(size: fontSize - 1, weight: .medium)) }
-                Text(s.title).font(.system(size: fontSize, weight: on ? .semibold : .medium))
+                Text(L(key: s.title)).font(.system(size: fontSize, weight: on ? .semibold : .medium))
         }
         .foregroundStyle(ink)
         .padding(.horizontal, padding)
@@ -110,9 +111,10 @@ struct SlidingSegments<Value: Hashable>: View {
         .onHover { h in
             withAnimation(motion.animation(.hover)) { if h { hovered = i } else if hovered == i { hovered = nil } }
         }
-        .help(s.help ?? "")
+        // Oct 18, Ryan: in the primary language (a literal help is looked up as it's drawn).
+        .help(L(key: s.help ?? ""))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(s.title)
+        .accessibilityLabel(L(key: s.title))
         .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
         .accessibilityAction { press(s.value) }
     }
@@ -212,7 +214,9 @@ struct PillButton: View {
                         .font(.system(size: large ? 13 : 11, weight: .semibold))
                         .symbolEffect(.bounce, value: bumps)
                 }
-                Text(title).font(.system(size: large ? 13.5 : 12.5, weight: kind == .prominent ? .semibold : .medium))
+                // Oct 18, Ryan: a pill is never cut short ("发送采集" came out "发…").
+                Text(L(key: title)).font(.system(size: large ? 13.5 : 12.5, weight: kind == .prominent ? .semibold : .medium))
+                    .lineLimit(1).fixedSize()
             }
             .padding(.horizontal, large ? 16 : 11)
             .frame(height: large ? 34 : 26)
@@ -336,8 +340,9 @@ struct IconButton: View {
         }
         .buttonStyle(IconButtonStyle(confirmed: confirmed, destructive: role == .destructive))
         .onHover { if $0 { bumps += 1 } }
-        .help(help)
-        .accessibilityLabel(help)
+        // Oct 18, Ryan: in the primary language (a literal help is looked up as it's drawn).
+        .help(L(key: help))
+        .accessibilityLabel(L(key: help))
     }
 }
 
@@ -416,7 +421,7 @@ struct ShortcutRecorder: View {
                         HStack(spacing: 5) {
                             ForEach(Array(keys.enumerated()), id: \.offset) { _, key in
                                 if key.hasPrefix("~") {
-                                    Text(String(key.dropFirst())).foregroundStyle(palette.tertiary)
+                                    Text(L(key: String(key.dropFirst()))).foregroundStyle(palette.tertiary)
                                 } else {
                                     Text(key).foregroundStyle(palette.text)
                                 }
@@ -446,7 +451,7 @@ struct ShortcutRecorder: View {
         .onExitCommand { recording = false }
         .help("Click, then press the new keys")
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(keys.map { $0.hasPrefix("~") ? String($0.dropFirst()) : $0 }.joined(separator: " "))
+        .accessibilityLabel(keys.map { $0.hasPrefix("~") ? L(key: String($0.dropFirst())) : $0 }.joined(separator: " "))
     }
 
     private func record() {

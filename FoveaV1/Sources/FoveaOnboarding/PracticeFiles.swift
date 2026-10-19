@@ -11,11 +11,15 @@ import FoveaKit
 /// in a folder of its own, which the mock desktop shows, and deletes it.
 @MainActor
 final class PracticeFiles {
-    nonisolated static let list = "Packing list.txt"
-    nonisolated static let map = "Trail map.pdf"
+    // Oct 18, Ryan: the files are named, and written, in the primary language (made again when it
+    // changes on the hello page).
+    nonisolated static var list: String { L("Packing list.txt") }
+    nonisolated static var map: String { L("Trail map.pdf") }
     /// What the agent writes for the weekly update.
-    nonisolated static let update = "weekly-update.md"
-    nonisolated static let listStart = "Packing list\n\n- Tent\n- Sleeping bag\n- Headlamp\n- Stove\n"
+    nonisolated static var update: String { L("weekly-update.md") }
+    nonisolated static var listStart: String {
+        "\(L("Packing list"))\n\n" + [L("Tent"), L("Sleeping bag"), L("Headlamp"), L("Stove")].map { "- \($0)\n" }.joined()
+    }
     /// The tabs' pages, in a folder of their own.
     nonisolated static let pagesFolder = "pages"
     nonisolated static let photo = "valley.jpg"
@@ -77,9 +81,9 @@ final class PracticeFiles {
         context.beginPDFPage(nil)
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
-        NSAttributedString(string: "High valley loop", attributes: [.font: NSFont.systemFont(ofSize: 20, weight: .semibold)])
+        NSAttributedString(string: L("High valley loop"), attributes: [.font: NSFont.systemFont(ofSize: 20, weight: .semibold)])
             .draw(at: CGPoint(x: 28, y: 250))
-        NSAttributedString(string: "6.2 km · 480 m up · trailhead at the lodges", attributes: [.font: NSFont.systemFont(ofSize: 12)])
+        NSAttributedString(string: L("6.2 km · 480 m up · trailhead at the lodges"), attributes: [.font: NSFont.systemFont(ofSize: 12)])
             .draw(at: CGPoint(x: 28, y: 228))
         let path = NSBezierPath()
         path.move(to: CGPoint(x: 40, y: 60))
@@ -99,50 +103,35 @@ final class PracticeFiles {
     nonisolated static func html(_ tab: PracticeTab) -> String {
         let body: String
         switch tab {
+        // Oct 18, Ryan: the pages people read, in the primary language.
         case .analytics:
-            let days = [("Mon", 44), ("Tue", 58), ("Wed", 61), ("Thu", 72), ("Fri", 80), ("Sat", 52), ("Sun", 66)]
+            let days = [(L("Mon"), 44), (L("Tue"), 58), (L("Wed"), 61), (L("Thu"), 72), (L("Fri"), 80), (L("Sat"), 52), (L("Sun"), 66)]
             let bars = days.map { "<div class=\"day\"><div class=\"bar\" style=\"height:\($0.1)%\"></div><span>\($0.0)</span></div>" }.joined()
             body = """
-            <div class="top"><b>Northwind Insights</b><span class="on">Overview</span><span>Funnels</span><span>Retention</span><span class="right">This week ▾</span></div>
+            <div class="top"><b>Northwind Insights</b><span class="on">\(L("Overview"))</span><span>\(L("Funnels"))</span><span>\(L("Retention"))</span><span class="right">\(L("This week ▾"))</span></div>
             <main>
-              <h1>This week</h1>
+              <h1>\(L("This week"))</h1>
               <div class="cards" data-fovea="numbers">
-                <div class="card"><div class="label">Signups</div><div class="num">1,284</div><div class="up">▲ 18% on last week</div></div>
-                <div class="card"><div class="label">Activation</div><div class="num">41%</div><div class="flat">No change</div></div>
-                <div class="card"><div class="label">Churned</div><div class="num">23</div><div class="up">▼ 4 on last week</div></div>
+                <div class="card"><div class="label">\(L("Signups"))</div><div class="num">1,284</div><div class="up">\(L("▲ \("18%") on last week"))</div></div>
+                <div class="card"><div class="label">\(L("Activation"))</div><div class="num">41%</div><div class="flat">\(L("No change"))</div></div>
+                <div class="card"><div class="label">\(L("Churned"))</div><div class="num">23</div><div class="up">\(L("▼ 4 on last week"))</div></div>
               </div>
-              <div class="chart" data-fovea="chart"><div class="label">Signups by day</div><div class="bars">\(bars)</div></div>
+              <div class="chart" data-fovea="chart"><div class="label">\(L("Signups by day"))</div><div class="bars">\(bars)</div></div>
             </main>
             """
         case .github:
-            let prs = [("#423", "Update dependencies", "today"), ("#421", "Retry failed uploads", "Wed"),
-                       ("#420", "Dark mode for Settings", "Tue"), ("#418", "Onboarding: permissions in one step", "Tue"),
-                       ("#415", "Fix crash when closing a window", "Mon"), ("#412", "Faster search on large libraries", "Mon")]
-            let rows = prs.map { "<div class=\"pr\"><span class=\"merged\">⑂</span><b>\($0.1)</b><span class=\"meta\">\($0.0) · merged \($0.2)</span></div>" }.joined(separator: "\n    ")
+            let prs = [("#423", L("Update dependencies"), L("today")), ("#421", L("Retry failed uploads"), L("Wed")),
+                       ("#420", L("Dark mode for Settings"), L("Tue")), ("#418", L("Onboarding: permissions in one step"), L("Tue")),
+                       ("#415", L("Fix crash when closing a window"), L("Mon")), ("#412", L("Faster search on large libraries"), L("Mon"))]
+            let rows = prs.map { pr in
+                "<div class=\"pr\"><span class=\"merged\">⑂</span><b>\(pr.1)</b><span class=\"meta\">\(L("\(pr.0) · merged \(pr.2)"))</span></div>"
+            }.joined(separator: "\n    ")
             body = """
-            <div class="top"><b>northwind / app</b><span>Code</span><span class="on">Pull requests</span><span>Issues</span><span>Actions</span></div>
+            <div class="top"><b>northwind / app</b><span>\(L("Code"))</span><span class="on">\(L("Pull requests"))</span><span>\(L("Issues"))</span><span>\(L("Actions"))</span></div>
             <main>
               <div class="filter">is:pr is:merged merged:this-week</div>
               <div class="list" data-fovea="prs">
-                <div class="head">6 merged this week</div>
-                \(rows)
-              </div>
-            </main>
-            """
-        case .support:
-            let tickets = [("Can't sign in with Okta", "SSO", "3 days"), ("Invoice shows the wrong seat count", "Billing", "1 day"),
-                           ("SSO login loops back to the start", "SSO", "1 day"), ("Export to CSV is empty", "Exports", "5 hours")]
-            let rows = tickets.map { "<div class=\"ticket\"><b>\($0.0)</b><span class=\"tag\">\($0.1)</span><span class=\"meta\">open \($0.2)</span></div>" }.joined(separator: "\n    ")
-            body = """
-            <div class="top"><b>Northwind Support</b><span class="on">Inbox</span><span>Customers</span><span>Reports</span></div>
-            <main>
-              <div class="cards" data-fovea="tickets">
-                <div class="card"><div class="label">Open tickets</div><div class="num">14</div><div class="up">▼ 5 since Monday</div></div>
-                <div class="card"><div class="label">Oldest open</div><div class="num">3 days</div></div>
-                <div class="card"><div class="label">Top topic</div><div class="num small">Signing in with SSO</div><div class="label">6 tickets</div></div>
-              </div>
-              <div class="list">
-                <div class="head">Newest</div>
+                <div class="head">\(L("6 merged this week"))</div>
                 \(rows)
               </div>
             </main>
@@ -150,18 +139,18 @@ final class PracticeFiles {
         case .trail:
             let paragraphs = PracticePage.paragraphs.map { "  <p>\($0)</p>" }.joined(separator: "\n")
             body = """
-            <div class="top"><b>Trail report</b><span class="on">Conditions</span><span>Huts</span><span>Maps</span></div>
+            <div class="top"><b>\(L("Trail report"))</b><span class="on">\(L("Conditions"))</span><span>\(L("Huts"))</span><span>\(L("Maps"))</span></div>
             <main class="article">
               <p class="meta">\(PracticePage.meta)</p>
               <h1 class="title">\(PracticePage.title)</h1>
-              <img class="photo" src="\(photo)" alt="Tents in fresh snow below the peaks">
+              <img class="photo" src="\(photo)" alt="\(L("Tents in fresh snow below the peaks"))">
             \(paragraphs)
             </main>
             """
         }
         return """
         <!doctype html>
-        <html lang="en">
+        <html lang="\(FoveaLocale.shared.language.localeIdentifier)">
         <head><meta charset="utf-8"><title>\(tab.title)</title><link rel="stylesheet" href="pages.css"></head>
         <body>
         \(body)
@@ -208,11 +197,12 @@ final class PracticeFiles {
 /// The trail report's words: the passages the highlighter takes (and what it takes when the page
 /// hasn't said yet).
 enum PracticePage {
-    static let title = "Snow comes early to the high valleys"
-    static let meta = "October 6 · 3 min read"
-    static let paragraphs = [
-        "The first storm of the season moved through overnight and left the upper trails under a hand's depth of fresh snow. Rangers expect the pass to stay open through the weekend.",
-        "Below the tree line the change is quieter. Streams that ran clear all summer have turned milky with meltwater, and the last of the lodges have pulled their chairs inside for the year.",
-        "If you're heading up, start early. The light goes by four, and the wind on the ridge picks up after noon.",
-    ]
+    // Oct 18, Ryan: in the primary language.
+    static var title: String { L("Snow comes early to the high valleys") }
+    static var meta: String { L("October 6 · 3 min read") }
+    static var paragraphs: [String] { [
+        L("The first storm of the season moved through overnight and left the upper trails under a hand's depth of fresh snow. Rangers expect the pass to stay open through the weekend."),
+        L("Below the tree line the change is quieter. Streams that ran clear all summer have turned milky with meltwater, and the last of the lodges have pulled their chairs inside for the year."),
+        L("If you're heading up, start early. The light goes by four, and the wind on the ridge picks up after noon."),
+    ] }
 }

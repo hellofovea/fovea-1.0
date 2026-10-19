@@ -3,13 +3,12 @@ import SwiftUI
 import CapturesCore
 import FoveaKit
 
-/// Settings › Notch: the Island made yours, without a way to break it. The glow keeps the Notch
-/// Workbench's color board (a palette to start from, the hue turned on a spectrum, Custom's spread,
-/// the drift, the seven colors it makes), because people want their own colors, under a live notch
-/// that shows each change as it's made. A control shows only where it can change something
-/// (Spread for Custom; Hue and the drift not for Mono; the wait only while the pointer opens the
-/// board): one that can't move looks broken (Ryan, Oct 6). The board can always be reached, and
-/// Restore Defaults puts it all back.
+/// Settings › Notch: the Island made yours, without a way to break it. The glow's eight palettes
+/// are fixed, as they ship; a ninth choice, Customize, is the person's own, and only it shows the
+/// Hue, Spread and Drift (Ryan, Oct 18). The real notch shows each change as it's made. A control
+/// shows only where it can change something (the sliders for Customize; the wait only while the
+/// pointer opens the board): one that can't move looks broken (Ryan, Oct 6). The board can always
+/// be reached, and Restore Defaults puts it all back.
 
 /// The glow in the voice bar while Fovea listens for an agent: the Workbench's palettes to start
 /// from, and Custom, seven hues fanned round the one picked.
@@ -91,42 +90,28 @@ struct NotchPane: View {
         }
         .id("notch-look")
 
+        // Oct 18, Ryan: "changing the hue should not change the color scheme provided; those should
+        // all be fixed. There should be a choice called Customize that shows the hue and drift only
+        // when selected." The eight palettes are drawn as they ship (FoveaPrefs.drawnGlow*: no turn
+        // of the hue, the default drift and spread); Customize, the ninth tile, is the person's own,
+        // and only it shows Hue, Spread and Drift, as the first run shows it.
         SettingsSection("Glow", note: "The light in the voice bar while you talk to an agent. The notch glows with it as you choose.") {
             SettingsCard {
-                SettingsRow("Palette", detail: glow == .mono ? "Mono is gray: there's no hue to turn." : nil) {
-                    Picker(selection: $model.prefs.glow.animation(motion.animation(.swap))) {
-                        ForEach(GlowChoice.templates, id: \.self) { Text($0.title).tag($0) }
-                        Divider()
-                        Text(GlowChoice.custom.title).tag(GlowChoice.custom)
-                    } label: { EmptyView() }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .fixedSize()
-                }
-                // Only what can change this palette shows: a control that can't move looks broken.
-                if glow != .mono {
-                    VStack(spacing: 0) {
-                        RowDivider()
-                        SettingsRow("Hue", detail: glow == .custom ? "\(Int(prefs.glowHue))°" : "+\(Int(prefs.glowHue))°") {
-                            SpectrumSlider(value: $model.prefs.glowHue)
-                        }
-                        .help(glow == .custom ? "The hue the custom colors fan out from" : "Turns the palette round the color wheel")
-                    }
-                    .transition(.opacity)
-                }
+                GlowTiles(selection: $model.prefs.glow.animation(motion.animation(.swap)), prefs: prefs)
+                    .cardPadding()
                 if glow == .custom {
                     VStack(spacing: 0) {
+                        RowDivider()
+                        SettingsRow("Hue", detail: "\(Int(prefs.glowHue))°") {
+                            SpectrumSlider(value: $model.prefs.glowHue)
+                        }
+                        .help("The hue your colors fan out from")
                         RowDivider()
                         SettingsRow("Spread", detail: "\(Int(prefs.glowSpread))°") {
                             Slider(value: $model.prefs.glowSpread, in: 0...360)
                                 .frame(width: 220)
                         }
-                        .help("How far the seven custom colors fan across the wheel: 0° is one color, 360° a full spectrum")
-                    }
-                    .transition(.opacity)
-                }
-                if glow != .mono {
-                    VStack(spacing: 0) {
+                        .help("How far your seven colors fan across the wheel: 0° is one color, 360° a full spectrum")
                         RowDivider()
                         SettingsRow("Drift", detail: "How much the colors wander round the wheel.") {
                             HStack(spacing: 8) {
@@ -136,13 +121,13 @@ struct NotchPane: View {
                                 Text("Lively").font(.system(size: 11)).foregroundStyle(palette.secondary)
                             }
                         }
+                        RowDivider()
+                        GlowDots(colors: glow.colors(hue: prefs.drawn().hue, spread: prefs.drawn().spread))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
                     }
                     .transition(.opacity)
                 }
-                RowDivider()
-                GlowDots(colors: glow.colors(hue: prefs.glowHue, spread: prefs.glowSpread))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
             }
         }
         .id("notch-glow")
@@ -203,7 +188,7 @@ struct NotchPane: View {
             Button("Restore Defaults") { confirmRestore = true }
                 .disabled(prefs.notchIsDefault)
         }
-        .confirmationDialog("Restore the notch's defaults?", isPresented: $confirmRestore) {
+        .alert("Restore the notch's defaults?", isPresented: $confirmRestore) {
             Button("Restore Defaults") { model.animate(.swap) { model.prefs.restoreNotch() } }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -262,6 +247,87 @@ struct SpectrumSlider: View {
     }
 }
 
+extension Prefs {
+    /// The glow as the notch draws it (Oct 18, the same rule as `FoveaPrefs.drawnGlow*`): a palette
+    /// as it ships, Customize as the person set it. `palette` defaults to the one chosen.
+    func drawn(_ palette: GlowPalette? = nil) -> (hue: Double, spread: Double, drift: Double) {
+        var p = FoveaPrefs()
+        p.glowPalette = palette ?? glow
+        p.glowHue = glowHue
+        p.glowSpread = glowSpread
+        p.glowDrift = glowDrift
+        return (p.drawnGlowHue, p.drawnGlowSpread, p.drawnGlowDrift)
+    }
+}
+
+/// The glow's choices as tiles (Oct 18): the eight palettes, fixed, then Customize, which shows the
+/// person's own colors. Each is the glow in miniature, on the notch's black; the chosen one ringed in
+/// the accent, as System Settings' Appearance tiles are.
+private struct GlowTiles: View {
+    @Environment(\.palette) private var palette
+    @Binding var selection: GlowPalette
+    let prefs: Prefs
+
+    var body: some View {
+        let options = GlowPalette.templates + [.custom]
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 5), spacing: 12) {
+            ForEach(options, id: \.self) { option in
+                let on = option == selection
+                let drawn = prefs.drawn(option)
+                Button { selection = option } label: {
+                    VStack(spacing: 5) {
+                        GlowSwatch(colors: option.colors(hue: drawn.hue, spread: drawn.spread), custom: option == .custom)
+                            .frame(height: 38)
+                            .frame(maxWidth: .infinity)
+                            .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                            .padding(3)
+                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(on ? palette.accent : .clear, lineWidth: 2.5))
+                        Text(option == .custom ? L("Customize") : option.title)
+                            .font(.system(size: 11.5, weight: on ? .semibold : .regular))
+                            .foregroundStyle(palette.text)
+                            .lineLimit(1)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(option == .custom ? L("Your own colors: Hue, Spread and Drift") : L("\(option.title), as it ships"))
+                .accessibilityLabel(option == .custom ? L("Customize") : option.title)
+                .accessibilityAddTraits(on ? [.isSelected] : [])
+            }
+        }
+    }
+}
+
+/// The glow in miniature: its seven colors, soft and overlapping, on the notch's black; Customize
+/// marked with the sliders' symbol.
+private struct GlowSwatch: View {
+    @Environment(\.palette) private var palette
+    let colors: [Color]
+    var custom = false
+
+    var body: some View {
+        let order = [5, 3, 1, 0, 2, 4, 6].filter { $0 < colors.count }
+        ZStack {
+            palette.pill
+            HStack(spacing: -5) {
+                ForEach(order, id: \.self) { i in
+                    Circle().fill(colors[i]).frame(width: 12, height: 12)
+                }
+            }
+            .blur(radius: 2.5)
+            if custom {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(palette.onPill)
+                    .padding(4)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
 /// The glow's seven colors as the bar shows them, left to right: the centre lobe in the middle,
 /// the pairs outward. As the Workbench's swatches.
 struct GlowDots: View {
@@ -309,11 +375,11 @@ struct PictureChoices<Value: Hashable, Picture: View>: View {
                             .padding(3)
                             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
                                 .strokeBorder(on ? palette.accent : .clear, lineWidth: 2.5))
-                        Text(option[keyPath: title])
+                        Text(L(key: option[keyPath: title]))
                             .font(.system(size: 11.5, weight: on ? .semibold : .regular))
                             .foregroundStyle(palette.text)
                         if let detail {
-                            Text(option[keyPath: detail])
+                            Text(L(key: option[keyPath: detail]))
                                 .font(.system(size: 10.5))
                                 .foregroundStyle(palette.secondary)
                                 .multilineTextAlignment(.center)
@@ -324,7 +390,7 @@ struct PictureChoices<Value: Hashable, Picture: View>: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(option[keyPath: title])
+                .accessibilityLabel(L(key: option[keyPath: title]))
                 .accessibilityAddTraits(on ? [.isSelected] : [])
             }
         }

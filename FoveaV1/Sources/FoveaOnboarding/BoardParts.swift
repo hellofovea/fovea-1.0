@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 import OnboardingCore
+import FoveaLook
 
 // What the board holds besides its words: what each step adds (the languages, the accent and the
 // light, the two lists, the microphone's line, the agents, the words to bring), the line to say,
@@ -68,7 +69,7 @@ struct BoardExtras: View {
     var body: some View {
         switch model.step {
         case .signIn:
-            AccountField(model: model, kind: .email)
+            SignInView(model: model)
         case .name:
             AccountField(model: model, kind: .name)
         case .hello:
@@ -89,13 +90,19 @@ struct BoardExtras: View {
         case .hover, .packList, .followUp:
             AgentNote(model: model)
         case .dictationIntro:
-            HStack(spacing: 6) {
-                ForEach(model.keys.caps(.dictation), id: \.self) {
-                    KeyCap(label: $0, lit: model.keysDown.contains($0), accent: model.accentColor, dark: model.boardDark, large: true)
+            VStack(spacing: OT.Board.readingGap + 6) {
+                // Oct 15 review, ST-03.1: the person's own Voice Flow key, as recorded in Settings.
+                HStack(spacing: 6) {
+                    ForEach(model.keys.caps(.dictation), id: \.self) {
+                        KeyCap(label: $0, lit: model.keysDown.contains($0), accent: model.accentColor, dark: model.boardDark, large: true)
+                    }
                 }
+                WhileDictating(model: model)
             }
         case .dictionary:
             DictionaryImportView(model: model)
+        case .memory:
+            MemoryPoints(model: model)
         case .home:
             Closing(model: model)
         default:
@@ -105,7 +112,10 @@ struct BoardExtras: View {
 }
 
 /// The language Fovea listens in (Oct 9): English and Chinese, and More…, which opens a box to type
-/// another in; it's kept as a request, for the languages to add next.
+/// another in; it's kept as a request, for the languages to add next. Oct 17, Ryan (FR-06): more
+/// than one. Return adds the language typed as a chip and clears the box for another; each chip's ✕
+/// takes it off; empty and repeated ones are passed over. They're the prefs' requested languages,
+/// which Settings › Language lists too.
 struct LanguagePicker: View {
     let model: OnboardingModel
     @State private var typed = ""
@@ -113,28 +123,52 @@ struct LanguagePicker: View {
     @Environment(\.boardInk) private var ink
 
     var body: some View {
-        let chosen = model.flow.language
+        let choice = model.languageChoice
+        let requests = model.flow.languageRequests
         VStack(spacing: 12) {
+            // Oct 18, Ryan: "Choose your languages": English and Chinese, each on or off (one
+            // stays on), and More… for the rest, kept as requests.
             HStack(spacing: 10) {
                 Text(Copy.languageLead).font(OT.Type_.guideBody).foregroundStyle(ink.secondary)
-                HStack(spacing: 2) {
+                HStack(spacing: 6) {
                     ForEach(Language.featured, id: \.self) { language in
-                        Button(action: { model.chooseLanguage(language) }) {
-                            segment(language.title, on: chosen == language && !model.languageMoreOpen)
+                        Button(action: { model.toggleLanguage(language) }) {
+                            toggle(Copy.languageName(language), on: choice.on.contains(language))
                         }
                         .buttonStyle(.plain)
+                        .accessibilityValue(choice.on.contains(language) ? L("Switched on") : L("Switched off"))
                     }
                     Button(action: {
                         model.openLanguageMore()
                         focused = true
                     }) {
-                        segment(model.flow.languageRequest ?? Copy.languageMore, on: model.languageMoreOpen)
+                        segment(moreTitle(requests), on: model.languageMoreOpen)
                     }
                     .buttonStyle(.plain)
                     .playTarget(.languageMore, model)
+                    .padding(2)
+                    .background(Capsule().fill(ink.fill))
                 }
-                .padding(2)
-                .background(Capsule().fill(ink.fill))
+            }
+            // With both on, which is primary: the interface's language (Oct 18, Ryan).
+            if choice.asksPrimary {
+                VStack(spacing: 6) {
+                    HStack(spacing: 10) {
+                        Text(Copy.primaryLanguage).font(OT.Type_.guideBody).foregroundStyle(ink.secondary)
+                        HStack(spacing: 2) {
+                            ForEach(choice.on, id: \.self) { language in
+                                Button(action: { model.choosePrimaryLanguage(language) }) {
+                                    segment(Copy.languageName(language), on: choice.primary == language)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(2)
+                        .background(Capsule().fill(ink.fill))
+                    }
+                    Text(Copy.primaryNote).font(.system(size: 12)).foregroundStyle(ink.tertiary)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
             if model.languageMoreOpen {
                 VStack(spacing: 8) {
@@ -142,20 +176,76 @@ struct LanguagePicker: View {
                         .textFieldStyle(.plain)
                         .font(.system(size: 14))
                         .foregroundStyle(ink.primary)
+                        .multilineTextAlignment(.center)
                         .focused($focused)
-                        .onChange(of: typed) { model.requestLanguage(typed) }
-                        .onSubmit { model.requestLanguage(typed) }
-                        .onAppear { typed = model.flow.languageRequest ?? "" }
+                        .onSubmit {
+                            model.addLanguageRequest(typed)
+                            // Cleared for another, whether it was added or passed over.
+                            typed = ""
+                            focused = true
+                        }
                         .padding(.horizontal, 14)
                         .frame(width: OT.Board.languageField, height: 34)
                         .background(Capsule().fill(ink.fill))
                         .overlay(Capsule().strokeBorder(model.accentColor.opacity(focused ? 0.8 : 0.3)))
+                    if !requests.isEmpty {
+                        FlowRow(spacing: 6, centered: true) {
+                            ForEach(requests, id: \.self) { language in
+                                chip(language)
+                            }
+                        }
+                        .frame(width: OT.Board.languageChips)
+                        .transition(.opacity)
+                    }
                     Text(Copy.languageNote).font(.system(size: 12)).foregroundStyle(ink.tertiary)
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .animation(OT.Motion.calm, value: model.languageMoreOpen)
+        .animation(OT.Motion.calm, value: model.languageChoice)
+        .animation(OT.Motion.content, value: requests)
+    }
+
+    /// A language on or off: a capsule with a check, so several can be on at once.
+    private func toggle(_ title: String, on: Bool) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(on ? model.accentColor : ink.tertiary)
+            Text(title).font(.system(size: 11.5, weight: on ? .semibold : .medium))
+                .foregroundStyle(on ? ink.primary : ink.secondary)
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 26)
+        .background(Capsule().fill(ink.fill))
+        .overlay(Capsule().strokeBorder(on ? model.accentColor.opacity(0.6) : ink.hairline))
+        .contentShape(Capsule())
+    }
+
+    /// More…, or what's been asked for once the box is shut ("Japanese", "Japanese +1").
+    private func moreTitle(_ requests: [String]) -> String {
+        guard let first = requests.first, !model.languageMoreOpen else { return Copy.languageMore }
+        return requests.count == 1 ? first : "\(first) +\(requests.count - 1)"
+    }
+
+    /// A language asked for, with its ✕.
+    private func chip(_ language: String) -> some View {
+        HStack(spacing: 5) {
+            Text(language).font(.system(size: 12, weight: .medium)).foregroundStyle(ink.primary)
+            Button(action: { model.removeLanguageRequest(language) }) {
+                Image(systemName: "xmark").font(.system(size: 8.5, weight: .bold)).foregroundStyle(ink.tertiary)
+                    .frame(width: 14, height: 14)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Remove \(language)")
+            .accessibilityLabel("Remove \(language)")
+        }
+        .padding(.leading, 10).padding(.trailing, 6)
+        .frame(height: OT.Board.languageChipHeight)
+        .background(Capsule().fill(ink.fill))
+        .overlay(Capsule().strokeBorder(ink.hairline))
     }
 
     private func segment(_ title: String, on: Bool) -> some View {
@@ -166,6 +256,47 @@ struct LanguagePicker: View {
             .frame(height: 22)
             .background(Capsule().fill(on ? ink.button : .clear))
             .contentShape(Capsule())
+    }
+}
+
+/// Oct 17, Ryan: "there should be a part that tells the user all of the hotkeys". What works while
+/// dictating, with the person's own keys: ⌥ for part of the screen, ⌘ twice for the whole screen
+/// (Oct 18, Ryan), and words (selected) or a file (dragged onto the notch) with no key. All of it
+/// lands after the words.
+struct WhileDictating: View {
+    let model: OnboardingModel
+    @Environment(\.boardInk) private var ink
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(Copy.whileDictatingLead).font(OT.Type_.guideEyebrow).foregroundStyle(ink.tertiary)
+            ForEach(Array(Copy.whileDictating(keys: model.keys).enumerated()), id: \.offset) { _, line in
+                HStack(spacing: 12) {
+                    HStack(spacing: 4) {
+                        if line.caps.isEmpty {
+                            Image(systemName: "cursorarrow.and.square.on.square.dashed")
+                                .font(.system(size: 14)).foregroundStyle(ink.secondary)
+                        }
+                        ForEach(Array(line.caps.enumerated()), id: \.offset) { _, cap in
+                            KeyCap(label: cap, lit: model.keysDown.contains(cap), accent: model.accentColor, dark: model.boardDark)
+                        }
+                        if line.presses > 1 {
+                            Text("×\(line.presses)").font(.system(size: 12, weight: .bold).monospacedDigit())
+                                .foregroundStyle(model.accentColor)
+                        }
+                    }
+                    .frame(width: OT.Board.takeKeysWidth, alignment: .trailing)
+                    // Oct 18, Ryan: what it takes, and how, quieter, under it.
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(line.title).font(.system(size: 13, weight: .medium)).foregroundStyle(ink.primary)
+                        Text(line.detail).font(.system(size: 12)).foregroundStyle(ink.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .frame(width: OT.Board.takeListWidth)
     }
 }
 
@@ -189,9 +320,9 @@ struct Personalize: View {
                         }
                         .buttonStyle(.plain)
                         .playTarget(.accent(accent), model)
-                        .help(accent.title)
+                        .help(L(key: accent.title))
                     }
-                    Text(model.personal.accent.title)
+                    Text(L(key: model.personal.accent.title))
                         .font(OT.Type_.guideBody).foregroundStyle(ink.secondary)
                         .padding(.leading, 4)
                 }
@@ -200,8 +331,12 @@ struct Personalize: View {
             Spacer().frame(height: OT.Board.sectionGap)
             VStack(alignment: .leading, spacing: 10) {
                 label(Copy.auraLabel)
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
-                    ForEach(GlowPalette.templates, id: \.self) { aura in
+                // Oct 18, Ryan: "changing the hue should not change the color scheme provided, those
+                // all should be fixed. There should be a choice called Customize". The eight are
+                // drawn at their own colors whatever the sliders say; Customize is the ninth, and the
+                // hue and the drift show only while it's chosen.
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: OT.Board.auraColumns), spacing: 8) {
+                    ForEach(Personalization.tiles, id: \.self) { aura in
                         Button(action: { model.setAura(aura) }) {
                             AuraChip(aura: aura, hue: model.personal.auraHue, chosen: model.personal.aura == aura)
                         }
@@ -209,7 +344,7 @@ struct Personalize: View {
                         .playTarget(.aura(aura), model)
                     }
                 }
-                if model.personal.aura.turns {
+                if model.personal.aura == .custom {
                     VStack(spacing: 10) {
                         HStack(spacing: 12) {
                             Text("Hue").font(OT.Type_.guideBody).foregroundStyle(ink.secondary).frame(width: 40, alignment: .leading)
@@ -223,17 +358,17 @@ struct Personalize: View {
                         }
                     }
                     .padding(.top, 4)
-                    .transition(.opacity)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
             Spacer().frame(height: OT.Board.sectionGap)
             VStack(alignment: .leading, spacing: 10) {
-                label("The notch")
-                NotchChoiceRow(title: "Glass", options: NotchAppearance.allCases, chosen: model.notchAppearance,
+                label(L("The notch"))
+                NotchChoiceRow(title: L("Glass"), options: NotchAppearance.allCases, chosen: model.notchAppearance,
                                name: \.title) { model.setNotchAppearance($0) }
-                NotchChoiceRow(title: "Panels", options: NativePanels.allCases, chosen: model.notchPanels,
+                NotchChoiceRow(title: L("Panels"), options: NativePanels.allCases, chosen: model.notchPanels,
                                name: \.title) { model.setNotchPanels($0) }
-                NotchChoiceRow(title: "Size", options: NotchDensity.allCases, chosen: model.notchDensity,
+                NotchChoiceRow(title: L("Size"), options: NotchDensity.allCases, chosen: model.notchDensity,
                                name: \.title) { model.setNotchDensity($0) }
             }
         }
@@ -262,7 +397,7 @@ struct NotchChoiceRow<Value: Hashable>: View {
                 ForEach(options, id: \.self) { option in
                     let on = option == chosen
                     Button(action: { choose(option) }) {
-                        Text(option[keyPath: name])
+                        Text(L(key: option[keyPath: name]))
                             .font(.system(size: 11.5, weight: on ? .semibold : .medium))
                             .foregroundStyle(on ? ink.buttonText : ink.secondary)
                             .padding(.horizontal, 10)
@@ -308,7 +443,8 @@ struct AuraChip: View {
     @Environment(\.boardInk) private var ink
 
     var body: some View {
-        let look = (GlowChoice(rawValue: aura.rawValue) ?? .colorful).look(hue: aura.turns ? hue : 0, spread: 120, drift: false)
+        // Oct 18, Ryan: a palette at its own colors; Customize at the hue being set.
+        let look = (GlowChoice(rawValue: aura.rawValue) ?? .colorful).look(hue: aura == .custom ? hue : 0, spread: 120, drift: false)
         let colors = VoiceGlowRenderer.swatches(look: look)
         VStack(spacing: 6) {
             HStack(spacing: 3) {
@@ -320,7 +456,7 @@ struct AuraChip: View {
             .frame(height: 26)
             .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(OT.Colors.auraChipBack))
             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ink.hairline))
-            Text(aura.title).font(.system(size: 11, weight: chosen ? .semibold : .regular))
+            Text(aura == .custom ? Copy.customizeAura : L(key: aura.title)).font(.system(size: 11, weight: chosen ? .semibold : .regular))
                 .foregroundStyle(chosen ? ink.primary : ink.tertiary)
         }
         .padding(4)
@@ -409,7 +545,10 @@ struct PermissionRows: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach([Permission.accessibility, .screenRecording], id: \.self) { permission in
+            // Oct 15 review, OB-01.5 and FR-09: Input Monitoring is the third row, asked for like the
+            // others and shown as it stands, but never waited on: 1.0's own key engine doesn't need
+            // it, so Continue works with the first two (OnboardingModel.grant).
+            ForEach(Permission.page, id: \.self) { permission in
                 let allowed = model.flow.allowed.contains(permission)
                 let asked = model.asked.contains(permission)
                 HStack(spacing: 10) {
@@ -420,7 +559,7 @@ struct PermissionRows: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(permission.paneName).font(.system(size: 12.5, weight: .semibold))
                             .foregroundStyle(ink.primary)
-                        Text(allowed ? "Allowed" : (asked ? "Turn Fovea on in the list" : permission.purpose))
+                        Text(allowed ? L("Allowed") : (asked ? L("Turn Fovea on in the list") : permission.purpose))
                             .font(.system(size: 11)).foregroundStyle(ink.tertiary)
                     }
                     Spacer(minLength: 12)
@@ -487,7 +626,7 @@ struct MicTestView: View {
             .frame(height: 30)
             .animation(.linear(duration: 0.08), value: model.micLevel)
             Text("“\(Copy.micLine)”")
-                .font(.system(size: 22, weight: .medium, design: .serif))
+                .font(.system(size: 22, weight: .medium, design: OT.Board.titleDesign))
                 .foregroundStyle(phase == .listening || phase == .unavailable ? ink.primary : ink.secondary)
             Spacer(minLength: 0)
             if phase == .listening || phase == .unavailable {
@@ -619,7 +758,8 @@ struct AgentsView: View {
                 }
                 .buttonStyle(.plain)
                 .animation(OT.Motion.content, value: on)
-                .accessibilityLabel("\(agent.name), \(on ? "on" : "off")")
+                .accessibilityLabel(agent.name)
+                .accessibilityValue(on ? L("Switched on") : L("Switched off"))
             }
         }
         .padding(.horizontal, 12)
@@ -644,7 +784,7 @@ struct AgentsView: View {
 }
 
 /// Bringing your words (Oct 9, round two): one click for the dictation apps that keep them on this
-/// Mac (as VoiceOS imports from Wispr Flow), a paste for the ones that keep them online, and for
+/// Mac (Wispr Flow), a paste for the ones that keep them online, and for
 /// anything else a paste or a file. The words to look over, each ticked, before they're added.
 struct DictionaryImportView: View {
     let model: OnboardingModel
@@ -771,14 +911,14 @@ struct DictionaryImportView: View {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = ["csv", "txt", "json", "plist", "tsv"].compactMap { UTType(filenameExtension: $0) }
         panel.allowsMultipleSelection = false
-        panel.message = "Choose the words you exported from another dictation app."
+        panel.message = L("Choose the words you exported from another dictation app.")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         model.importFile(url)
     }
 
     private func paste() {
         guard let text = NSPasteboard.general.string(forType: .string), !text.isEmpty else {
-            model.importMessage = "Copy your words first, then paste them here."
+            model.importMessage = L("Copy your words first, then paste them here.")
             return
         }
         model.importPasted(text)
@@ -809,29 +949,7 @@ struct AccountField: View {
             ? Binding(get: { model.typedEmail }, set: { model.typedEmail = $0 })
             : Binding(get: { model.typedName }, set: { model.typedName = $0 })
         VStack(spacing: 8) {
-            if kind == .email {
-                // Google, or an email (Oct 9). 1.0 has no account server: Google signs up on this
-                // Mac only, as the email does.
-                Button(action: { model.signUpWithGoogle() }) {
-                    HStack(spacing: 7) {
-                        Text("G").font(.system(size: 13, weight: .bold, design: .rounded))
-                        Text("Continue with Google").font(.system(size: 13, weight: .medium))
-                    }
-                    .foregroundStyle(ink.primary)
-                    .frame(width: 260, height: 30)
-                    .background(Capsule().fill(ink.fill))
-                    .overlay(Capsule().strokeBorder(ink.hairline))
-                    .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                HStack(spacing: 10) {
-                    Rectangle().fill(ink.hairline).frame(height: 1)
-                    Text("or").font(.system(size: 11.5)).foregroundStyle(ink.tertiary)
-                    Rectangle().fill(ink.hairline).frame(height: 1)
-                }
-                .frame(width: 260)
-                .padding(.vertical, 4)
-            }
+            // Apple, Google and the "or" are the sign-up page's (SignInView, Oct 15 review).
             TextField(kind == .email ? "you@example.com" : "Your name", text: binding)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13))
@@ -844,14 +962,220 @@ struct AccountField: View {
                 .frame(width: 260, height: 30)
                 .background(Capsule().fill(ink.fill))
                 .overlay(Capsule().strokeBorder(model.accentColor.opacity(focused ? 0.8 : 0.3)))
-            if kind == .email {
-                Text("Either one is kept on this Mac for now.")
-                    .font(.system(size: 12)).foregroundStyle(ink.tertiary)
-            }
         }
         .onAppear {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { focused = true }
         }
+    }
+}
+
+/// Oct 15 review, FR-03, FR-04, AC-01.1, AC-01.2: signing up, as it goes. Apple, Google or an email;
+/// then waiting on Apple or Google (Cancel), canceled (the choices again, a quiet line), failed (Try
+/// Again), a link to check for (Resend after a countdown, a different email), and signed in. 1.0 has
+/// no account server: Apple, Google and the link are simulated (OnboardingModel.signUp), and what's
+/// kept stays on this Mac.
+struct SignInView: View {
+    let model: OnboardingModel
+    @Environment(\.boardInk) private var ink
+
+    var body: some View {
+        let B = OT.Board.self
+        VStack(spacing: B.accountGap) {
+            switch model.signInPhase {
+            case .choosing, .canceled:
+                choices
+            case .waiting(let provider):
+                waiting(provider)
+            case .failed(let provider):
+                failed(provider)
+            case .checkEmail:
+                checkEmail
+            case .signedIn(let provider):
+                signedIn(provider)
+            }
+        }
+        .animation(OT.Motion.content, value: model.signInPhase)
+    }
+
+    // MARK: The choices
+
+    private var choices: some View {
+        VStack(spacing: OT.Board.accountGap) {
+            // Oct 15 review, AC-01.1: Apple beside Google, the same size and weight (Apple's rule:
+            // no smaller than the other ways in).
+            provider(.apple, mark: Image(systemName: "apple.logo").font(.system(size: 13, weight: .semibold)))
+            provider(.google, mark: Text("G").font(.system(size: 13, weight: .bold, design: .rounded)))
+            HStack(spacing: 10) {
+                Rectangle().fill(ink.hairline).frame(height: 1)
+                Text("or").font(.system(size: 11.5)).foregroundStyle(ink.tertiary)
+                Rectangle().fill(ink.hairline).frame(height: 1)
+            }
+            .frame(width: OT.Board.accountWidth)
+            .padding(.vertical, 4)
+            AccountField(model: model, kind: .email)
+            if case .canceled = model.signInPhase {
+                // FR-03: canceled, said quietly where the choices are.
+                Text(Copy.signInCanceled)
+                    .font(.system(size: 12)).foregroundStyle(ink.secondary)
+                    .transition(.opacity)
+            } else {
+                Text(Copy.signInKept).font(.system(size: 12)).foregroundStyle(ink.tertiary)
+            }
+        }
+    }
+
+    private func provider(_ provider: AccountProvider, mark: some View) -> some View {
+        Button(action: { model.signUp(with: provider) }) {
+            HStack(spacing: 7) {
+                mark
+                Text(Copy.continueWith(provider)).font(.system(size: 13, weight: .medium))
+            }
+            .foregroundStyle(ink.primary)
+            .frame(width: OT.Board.accountWidth, height: OT.Board.accountHeight)
+            .background(Capsule().fill(ink.fill))
+            .overlay(Capsule().strokeBorder(ink.hairline))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: Waiting, failed
+
+    /// FR-03: Apple's or Google's own window has the person; the dot breathes (never a spinner).
+    private func waiting(_ provider: AccountProvider) -> some View {
+        VStack(spacing: 14) {
+            HStack(spacing: 9) {
+                BreathingDot(color: model.accentColor)
+                Text(Copy.signInWaiting(provider)).font(.system(size: 14, weight: .medium)).foregroundStyle(ink.primary)
+            }
+            quietButton(Copy.signInCancel) { model.cancelSignIn() }
+        }
+        .frame(minHeight: 120)
+    }
+
+    /// FR-04: it didn't work. Say why it might not have, and Try Again.
+    private func failed(_ provider: AccountProvider) -> some View {
+        VStack(spacing: 14) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "exclamationmark.circle").font(.system(size: 13)).foregroundStyle(ink.secondary)
+                Text(Copy.signInFailed).font(.system(size: 13.5)).foregroundStyle(ink.primary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 14) {
+                quietButton(Copy.signInCancel) { model.cancelSignIn() }
+                solidButton(Copy.signInTryAgain) { model.retrySignIn() }
+            }
+        }
+        .frame(minHeight: 120)
+    }
+
+    // MARK: The email's link
+
+    /// AC-01.2: a link sent; Resend held back with a countdown; a different email.
+    private var checkEmail: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "envelope.badge").font(.system(size: 28, weight: .light)).foregroundStyle(model.accentColor)
+            HStack(spacing: 14) {
+                let ready = model.resendLeft == 0
+                Button(action: { model.resendEmail() }) {
+                    Text(ResendCountdown.label(secondsLeft: model.resendLeft))
+                        .font(.system(size: 12.5, weight: .semibold).monospacedDigit())
+                        .foregroundStyle(ready ? ink.primary : ink.tertiary)
+                        .padding(.horizontal, 14).frame(height: 28)
+                        .background(Capsule().strokeBorder(ink.hairline))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(!ready)
+                .help(ready ? "" : "You can send it again in a moment.")
+                quietButton(Copy.signInDifferentEmail) { model.useDifferentEmail() }
+            }
+            if let note = model.signInNote {
+                Text(note).font(.system(size: 12)).foregroundStyle(ink.tertiary).transition(.opacity)
+            }
+        }
+    }
+
+    // MARK: Signed in
+
+    private func signedIn(_ provider: AccountProvider) -> some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill").font(.system(size: 14)).foregroundStyle(model.accentColor)
+                Text(Copy.signedIn(provider, email: model.flow.email)).font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(ink.primary)
+            }
+            // Come back to with Back (OB-01.7): another way in, if wanted.
+            if model.flow.revisited {
+                quietButton(Copy.signInDifferentAccount) { model.useDifferentAccount() }
+            }
+        }
+        .frame(minHeight: 60)
+    }
+
+    private func quietButton(_ title: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(.system(size: 12.5, weight: .medium)).foregroundStyle(ink.secondary)
+                .padding(.horizontal, 6).frame(height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func solidButton(_ title: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(ink.buttonText)
+                .padding(.horizontal, 16).frame(height: 28)
+                .background(Capsule().fill(ink.button))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Running, never a spinner: a dot that breathes (OT.Motion.breathe).
+struct BreathingDot: View {
+    let color: Color
+    @State private var on = false
+
+    var body: some View {
+        Circle().fill(color)
+            .frame(width: OT.Board.waitingDot, height: OT.Board.waitingDot)
+            .opacity(on ? 1 : 0.3)
+            .onAppear { withAnimation(OT.Motion.breathe) { on = true } }
+    }
+}
+
+/// Oct 15 review, OB-01.6: what Fovea remembers, in four short points before the end: what's kept,
+/// where, who reads it, and that it's yours. Continue marks it read (`memoryDisclosureSeen`).
+struct MemoryPoints: View {
+    let model: OnboardingModel
+    @Environment(\.boardInk) private var ink
+
+    /// One symbol a point, in the order of `Copy.memoryPoints`.
+    private static let symbols = ["text.bubble", "laptopcomputer", "person.2", "hand.raised"]
+
+    var body: some View {
+        let B = OT.Board.self
+        VStack(alignment: .leading, spacing: B.memoryGap) {
+            ForEach(Array(Copy.memoryPoints.enumerated()), id: \.offset) { i, point in
+                HStack(alignment: .top, spacing: 14) {
+                    Image(systemName: Self.symbols[min(i, Self.symbols.count - 1)])
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(model.accentColor)
+                        .frame(width: B.memoryIcon, height: B.memoryIcon)
+                        .background(Circle().fill(ink.fill))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(point.title).font(B.memoryTitle).foregroundStyle(ink.primary)
+                        Text(point.detail).font(B.memoryDetail).foregroundStyle(ink.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+        .frame(width: B.memoryWidth)
     }
 }
 
@@ -965,7 +1289,7 @@ struct SmallSwitch: View {
         }
         .buttonStyle(.plain)
         .animation(OT.Motion.content, value: on)
-        .accessibilityValue(on ? "On" : "Off")
+        .accessibilityValue(on ? L("Switched on") : L("Switched off"))
         .accessibilityAddTraits(.isButton)
     }
 }
@@ -1005,9 +1329,12 @@ struct BoardActions: View {
         switch model.step {
         case .dictionary:
             let n = model.importChosen.count
-            return n > 0 ? "Add \(n) word\(n == 1 ? "" : "s")" : model.copy.button
+            return n > 0 ? (n == 1 ? L("Add 1 word") : L("Add \(n) words")) : model.copy.button
         case .agents:
-            return model.connectedAgents.isEmpty ? "Use the practice agent" : model.copy.button
+            return model.connectedAgents.isEmpty ? L("Use the practice agent") : model.copy.button
+        // Come back to with Back, heard already (Oct 17, Ryan).
+        case .microphone where model.micPhase == .heard:
+            return L("Continue")
         default:
             return model.copy.button
         }
@@ -1015,10 +1342,10 @@ struct BoardActions: View {
 
     private var enabled: Bool {
         switch model.step {
-        case .signIn: OnboardingModel.isEmail(model.typedEmail)
+        case .signIn: model.signInPhase.isSignedIn || OnboardingModel.isEmail(model.typedEmail)
         case .name: !model.typedName.trimmingCharacters(in: .whitespaces).isEmpty
         case .agents: true
-        case .microphone: model.micPhase == .waiting
+        case .microphone: model.micPhase == .waiting || (model.micPhase == .heard && model.flow.isComplete)
         case .dictionary: !model.importChosen.isEmpty
         default: model.flow.isComplete
         }
@@ -1032,7 +1359,7 @@ struct BoardActions: View {
                 Button(action: { helpOpen.toggle() }) {
                     HStack(alignment: .firstTextBaseline, spacing: 5) {
                         Image(systemName: "questionmark.circle").font(.system(size: 11))
-                        Text(helpOpen ? help : "Not working?")
+                        Text(helpOpen ? help : L("Not working?"))
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal: false, vertical: true)
                     }

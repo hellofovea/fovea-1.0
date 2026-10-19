@@ -4,7 +4,7 @@ import OnboardingCore
 
 /// Where a page's parts are, in page points (the page's top-left is 0, 0), as the page itself
 /// reports them: each paragraph's box, its lines and its words, and the parts a task takes
-/// (`data-fovea`: the merged pull requests, the open tickets, the chart).
+/// (`data-fovea`: this week's numbers, the merged pull requests, the chart).
 struct PageLayout: Equatable {
     struct Paragraph: Equatable {
         var rect: CGRect

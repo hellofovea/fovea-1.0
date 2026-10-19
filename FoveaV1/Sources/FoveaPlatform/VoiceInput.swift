@@ -77,8 +77,9 @@ public final class VoiceInput {
 
     /// Starts listening: the level at once, the words as they come. Throws when the microphone
     /// can't be had; a speech failure is kept for `finish()` (the bar still listens and shows
-    /// the level, and says why there are no words).
-    public func start(locale: String, contextual: [String] = []) async throws {
+    /// the level, and says why there are no words). `punctuates`: speech recognition adds the
+    /// punctuation (off with Tidy my words off, Oct 15 review ST-04.2/3).
+    public func start(locale: String, contextual: [String] = [], punctuates: Bool = true) async throws {
         cancel()
         guard await Self.requestMicrophone() else { throw VoiceFailure.microphoneDenied }
         partial = ""
@@ -95,7 +96,7 @@ public final class VoiceInput {
                 request.shouldReportPartialResults = true
                 request.requiresOnDeviceRecognition = r.supportsOnDeviceRecognition
                 request.taskHint = .dictation
-                request.addsPunctuation = true
+                request.addsPunctuation = punctuates
                 request.contextualStrings = Array(contextual.prefix(100))
                 self.request = request
                 task = r.recognitionTask(with: request) { [weak self] result, error in

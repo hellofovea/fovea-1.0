@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import OnboardingCore
+import FoveaLook
 
 /// The pictures Fovea takes (Oct 9): the whole screen, or part of it, as real images. They show on
 /// the referent stack, and go to the agent as files in the practice folder's `.captures`. Drawn
@@ -34,6 +35,7 @@ enum ScreenCapture {
 
     private static func render(_ model: OnboardingModel, tab: PracticeTab, scale: CGFloat) -> NSImage? {
         let renderer = ImageRenderer(content: DesktopPicture(model: model, tab: tab)
+            .foveaLanguage()
             .frame(width: OT.Display.size.width, height: OT.Display.size.height)
             .environment(\.colorScheme, .light))
         renderer.scale = scale
@@ -107,13 +109,23 @@ struct DesktopPicture: View {
             .frame(width: OT.Display.size.width, alignment: .trailing)
             .padding(.top, OT.Display.menuBarHeight + OT.Layout.filesTop)
             .padding(.trailing, OT.Layout.filesTrailing)
-            BrowserPicture(model: model, tab: tab)
-                .frame(width: OT.Layout.practiceFrame.width, height: OT.Layout.practiceFrame.height)
-                .offset(x: OT.Layout.practiceFrame.minX, y: OT.Layout.practiceFrame.minY)
-            if model.chatShown {
-                ChatWindow()
-                    .frame(width: OT.Layout.chatFrame.width, height: OT.Layout.chatFrame.height)
-                    .offset(x: OT.Layout.chatFrame.minX, y: OT.Layout.chatFrame.minY)
+            if model.practiceScreen == .dictation {
+                // Oct 17, Ryan: dictation takes pictures too; its two windows are what's there.
+                FeedbackWindow(model: model, picture: true)
+                    .frame(width: OT.Layout.feedbackFrame.width, height: OT.Layout.feedbackFrame.height)
+                    .offset(x: OT.Layout.feedbackFrame.minX, y: OT.Layout.feedbackFrame.minY)
+                MessagesWindow(model: model, picture: true)
+                    .frame(width: OT.Layout.messagesFrame.width, height: OT.Layout.messagesFrame.height)
+                    .offset(x: OT.Layout.messagesFrame.minX, y: OT.Layout.messagesFrame.minY)
+            } else {
+                BrowserPicture(model: model, tab: tab)
+                    .frame(width: OT.Layout.practiceFrame.width, height: OT.Layout.practiceFrame.height)
+                    .offset(x: OT.Layout.practiceFrame.minX, y: OT.Layout.practiceFrame.minY)
+                if model.chatShown {
+                    ChatWindow()
+                        .frame(width: OT.Layout.chatFrame.width, height: OT.Layout.chatFrame.height)
+                        .offset(x: OT.Layout.chatFrame.minX, y: OT.Layout.chatFrame.minY)
+                }
             }
             VStack(spacing: 0) {
                 MenuBarView(app: model.frontApp, solid: true)

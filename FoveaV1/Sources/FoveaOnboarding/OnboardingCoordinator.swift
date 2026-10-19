@@ -6,6 +6,7 @@ import FoveaKit
 import FoveaStore
 import FoveaPlatform
 import FoveaIsland
+import FoveaLook
 
 // The first run, on the person's own Mac (docs/onboarding/REAL_MAC.md's flow, as decided Oct 9):
 // the stage over the real desktop, the real island at the real notch driven by the person's own
@@ -23,6 +24,17 @@ struct ResumePoint: Codable {
     var agentsOn: [String]
     var email: String?
     var name: String?
+    /// Apple, Google or an email (Oct 15 review, AC-01.1); missing in a point kept before it.
+    var account: String?
+}
+
+/// What a run is (Oct 15 review, OB-03.1): the first run, picked up where it was; the whole tour
+/// again from the start, from Home, with nothing kept about where it was; or one practice again
+/// from Home's Getting Started, the rest of the first run left as it is.
+package enum RunKind: Equatable, Sendable {
+    case tour
+    case replay
+    case practice(PracticeAgain)
 }
 
 @MainActor
@@ -32,10 +44,14 @@ package final class OnboardingCoordinator: OnboardingHost {
     /// `--smoke-first-run`: the stage invisible, nothing about the Mac changed (no Dock, no login
     /// item, no apps hidden).
     package var smoke = false
+    /// `--design-shots first-run`: a smoke run with the stage on screen, to be pictured.
+    package var stageShown = false
     private let prefsStore: PrefsStore
     private let state: OnboardingStateStore
     private let dictionary: DictionaryStore
     private var window: StageWindow?
+    /// The stage is on the Space in front (`--design-shots first-run` pictures only then).
+    package var stageInFront: Bool { window.map { $0.isOnActiveSpace && $0.occlusionState.contains(.visible) } ?? false }
     private var hosting: PassthroughHostingView<AnyView>?
     private var pointer: Any?
     private var localPointer: Any?
@@ -43,20 +59,41 @@ package final class OnboardingCoordinator: OnboardingHost {
     private var lastPane: OnboardingCore.Permission?
     /// The run is over: Home opens.
     private let onDone: () -> Void
-    /// "Exit tour" (Oct 10): the run put away part way; Home opens, with a way back.
+    /// "Exit tour" (Oct 10): the run put away part way; Home opens, with a way back. A replay or a
+    /// practice run again (Oct 15 review, OB-03.1) calls `onDone` instead, at its end or its exit:
+    /// nothing is kept about where it was.
     package var onExit: () -> Void = {}
+    /// The tour, a replay of it, or one practice again (Oct 15 review, OB-03.1).
+    package let kind: RunKind
+    /// The run under way, for the Review menu's stages (`registerReviewStages`).
+    package private(set) static weak var current: OnboardingCoordinator?
 
+    /// `kind`: `.tour` picks up where the first run was (as before); `.replay` walks the whole tour
+    /// from the start, `.practice(_)` one practice, both from Home and back to it through `onDone`
+    /// (Oct 15 review, OB-03.1).
     package init(prefs: PrefsStore, island: IslandController, dictionary: DictionaryStore, state: OnboardingStateStore,
-                 onDone: @escaping () -> Void) {
+                 kind: RunKind = .tour, onDone: @escaping () -> Void) {
         self.prefsStore = prefs
         self.island = island
         self.state = state
         self.dictionary = dictionary
         self.onDone = onDone
+        self.kind = kind
         var options = Options.parse()
         // Where the last run stopped (Screen Recording's Quit & Reopen), unless a step was asked for.
-        let resume = options.step == nil ? state.state.resume.flatMap { try? JSONDecoder().decode(ResumePoint.self, from: $0) } : nil
+        // A replay or a practice from Home starts where it starts.
+        let resume = options.step == nil && kind == .tour
+            ? state.state.resume.flatMap { try? JSONDecoder().decode(ResumePoint.self, from: $0) } : nil
+        // Oct 18, Ryan: "for every onboarding, the information from the previous onboarding should
+        // not be stored". A run from the beginning (a new tour, --reset-onboarding, Replay the Tour)
+        // starts blank; a tour picked up where it was keeps what this run entered.
+        if kind == .replay || (kind == .tour && options.step == nil && resume == nil) { Self.forgetLastRun(prefs) }
         if let resume, let step = Step(rawValue: resume.step) { options.step = step }
+        switch kind {
+        case .tour: break
+        case .replay: options.step = nil
+        case .practice(let practice): options.step = practice.steps.first
+        }
         model = OnboardingModel(options: options)
         model.host = self
         if let resume {
@@ -64,8 +101,18 @@ package final class OnboardingCoordinator: OnboardingHost {
             model.flow.language = resume.language
             model.flow.email = resume.email
             model.flow.name = resume.name
+            model.flow.account = resume.account.flatMap(AccountProvider.init(rawValue:))
         } else {
             model.flow.language = prefs.prefs.language
+        }
+        // One practice again: only its own steps, Home again past the last (Oct 15 review, OB-03.1).
+        if case .practice(let practice) = kind, let first = practice.steps.first {
+            var flow = Flow(start: first, only: practice.steps)
+            flow.jump(to: first)
+            flow.language = prefs.prefs.language
+            flow.name = prefs.prefs.accountName.isEmpty ? nil : prefs.prefs.accountName
+            model.flow = flow
+            model.practiceRun = practice
         }
         // Make it yours starts from the choices as they're kept (Oct 10: a resumed tour showed the
         // hue at 0° while the notch glowed at the 227° Settings had, Ocean coming out green).
@@ -74,11 +121,17 @@ package final class OnboardingCoordinator: OnboardingHost {
         model.openAtLogin = prefs.prefs.openAtLogin
         model.typedEmail = prefs.prefs.accountEmail
         model.typedName = prefs.prefs.accountName
+        // The languages asked for under More…, as kept (Oct 17, Ryan, FR-06).
+        model.flow.setLanguageRequests(prefs.prefs.requestedLanguages)
+        // Oct 18, Ryan: the languages chosen, and the interface in the primary from the start.
+        model.languageChoice = LanguageChoice(on: prefs.prefs.languages, primary: model.flow.language)
+        FoveaLocale.shared.language = model.flow.language
         model.screenCleared = !state.state.hiddenApps.isEmpty
         model.onFinished = { [weak self] _ in self?.finished() }
     }
 
     package func start() {
+        Self.current = self
         island.director = model
         // The first run shows its choices at the notch itself, for as long as they're picked: the
         // island's own short previews would cut them off.
@@ -91,7 +144,7 @@ package final class OnboardingCoordinator: OnboardingHost {
         // Back from Screen Recording's Quit & Reopen with the screen cleared: the cover again.
         if !state.state.hiddenApps.isEmpty { coverDesktop() }
         model.start()
-        if let resume = state.state.resume.flatMap({ try? JSONDecoder().decode(ResumePoint.self, from: $0) }) {
+        if kind == .tour, let resume = state.state.resume.flatMap({ try? JSONDecoder().decode(ResumePoint.self, from: $0) }) {
             model.agentsOn = Set(resume.agentsOn.compactMap(Agent.init(rawValue:)))
         }
         startWatching()
@@ -103,7 +156,8 @@ package final class OnboardingCoordinator: OnboardingHost {
     private func buildStage() {
         let screen = Screens.island ?? NSScreen.screens[0]
         let window = StageWindow(frame: screen.frame)
-        let hosting = PassthroughHostingView(rootView: AnyView(RealStage(model: model)))
+        // Oct 18, Ryan: the stage's words follow the primary language, live.
+        let hosting = PassthroughHostingView(rootView: AnyView(RealStage(model: model).foveaLanguage()))
         hosting.frame = NSRect(origin: .zero, size: screen.frame.size)
         hosting.autoresizingMask = [.width, .height]
         hosting.interactive = { [weak self] in
@@ -112,7 +166,7 @@ package final class OnboardingCoordinator: OnboardingHost {
         }
         window.contentView = hosting
         window.setFrame(screen.frame, display: true)
-        if smoke { window.alphaValue = 0 }
+        if smoke, !stageShown { window.alphaValue = 0 }
         window.makeKeyAndOrderFront(nil)
         self.window = window
         self.hosting = hosting
@@ -151,6 +205,10 @@ package final class OnboardingCoordinator: OnboardingHost {
         if !model.flow.allowed.contains(.screenRecording), model.flow.allowed.contains(.accessibility), ScreenCapturer.allowed {
             model.grant(.screenRecording)
         }
+        // Oct 15 review, OB-01.5: Input Monitoring's row as it stands, seen live (never waited on).
+        if !model.flow.allowed.contains(.inputMonitoring), FoveaPlatform.Permission.inputMonitoring.granted {
+            model.inputMonitoringAllowed()
+        }
         // Allowed: Fovea comes back to the front.
         if let pane = model.settingsPane, pane != lastPane { lastPane = pane }
     }
@@ -160,6 +218,7 @@ package final class OnboardingCoordinator: OnboardingHost {
     package func renderStage(to url: URL) {
         let screen = Screens.island ?? NSScreen.screens[0]
         let view = RealStage(model: model)
+            .foveaLanguage()
             .frame(width: screen.frame.width, height: screen.frame.height)
             .background(Color(white: 0.2))
         let renderer = ImageRenderer(content: view)
@@ -191,6 +250,8 @@ package final class OnboardingCoordinator: OnboardingHost {
     func listening(_ on: Bool) { island.showListening(on) }
     func listeningLevel(_ level: Double) { island.setListeningLevel(level) }
     func islandRest() { island.rest() }
+    func clearIslandSessions() { island.clearSessions() }
+    func languageChanged() { island.setChats([model.practiceChat]) }
     func openBoard() { island.openBoard() }
     func openIslandSession(_ id: String) { island.openSession(id) }
     func stageRequest(words: String, items: [StagedReferent]) { island.stageRequest(words: words, items: items) }
@@ -207,6 +268,7 @@ package final class OnboardingCoordinator: OnboardingHost {
         case .accessibility: FoveaPlatform.Permission.accessibility.openSettings()
         case .screenRecording: FoveaPlatform.Permission.screenRecording.openSettings()
         case .microphone: FoveaPlatform.Permission.microphone.openSettings()
+        case .inputMonitoring: FoveaPlatform.Permission.inputMonitoring.openSettings()
         case .automation: break
         }
     }
@@ -219,6 +281,9 @@ package final class OnboardingCoordinator: OnboardingHost {
             _ = AXIsProcessTrustedWithOptions([prompt: true] as CFDictionary)
         case .screenRecording:
             _ = ScreenCapturer.request()
+        case .inputMonitoring:
+            // Oct 15 review, OB-01.5: macOS's own prompt the first time, then the list.
+            FoveaPlatform.Permission.requestInputMonitoring()
         default:
             break
         }
@@ -243,9 +308,13 @@ package final class OnboardingCoordinator: OnboardingHost {
     }
 
     func keepResumePoint() {
+        // Only the tour keeps its place: a replay or a practice from Home never writes over a tour
+        // put away part way (Oct 15 review, OB-03.1).
+        guard kind == .tour else { return }
         let point = ResumePoint(step: model.step.rawValue, allowed: model.flow.allowed.map(\.rawValue),
                                 personal: model.flow.personal, language: model.flow.language,
-                                agentsOn: model.agentsOn.map(\.rawValue), email: model.flow.email, name: model.flow.name)
+                                agentsOn: model.agentsOn.map(\.rawValue), email: model.flow.email, name: model.flow.name,
+                                account: model.flow.account?.rawValue)
         let data = try? JSONEncoder().encode(point)
         state.update { $0.resume = data }
     }
@@ -290,6 +359,39 @@ package final class OnboardingCoordinator: OnboardingHost {
         state.update { $0.hiddenApps = [] }
     }
 
+    /// Oct 18, Ryan: what a first run entered, forgotten before a new one starts: the name, the
+    /// email and how it signed up (signed out until it signs up again), the languages asked for,
+    /// the language as the Mac reads, and Make it yours' choices at their defaults (the glass as
+    /// the Mac's appearance is), so nothing of the old run shows anywhere.
+    static func forgetLastRun(_ store: PrefsStore) {
+        let d = FoveaPrefs()
+        var p = store.prefs
+        p.accountName = d.accountName
+        p.accountEmail = d.accountEmail
+        p.accountProvider = d.accountProvider
+        p.signedOut = true
+        p.requestedLanguages = []
+        p.languages = []
+        p.language = FoveaLanguage.preferred(Locale.preferredLanguages)
+        p.accent = d.accent
+        p.glowPalette = d.glowPalette
+        p.glowHue = d.glowHue
+        p.glowSpread = d.glowSpread
+        p.glowDrift = d.glowDrift
+        p.panels = d.panels
+        p.density = d.density
+        p.notchAppearance = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .dark : .light
+        if p != store.prefs { store.prefs = p }
+    }
+
+    /// Another run on the same Mac and stores (the smoke's practice again, OB-03.1).
+    func makeRun(_ kind: RunKind, onDone: @escaping () -> Void) -> OnboardingCoordinator {
+        let run = OnboardingCoordinator(prefs: prefsStore, island: island, dictionary: dictionary, state: state, kind: kind, onDone: onDone)
+        run.smoke = smoke
+        run.stageShown = stageShown
+        return run
+    }
+
     /// What the smoke reads back after Exit tour.
     var savedResumeStep: Step? {
         state.state.resume.flatMap { try? JSONDecoder().decode(ResumePoint.self, from: $0) }.flatMap { Step(rawValue: $0.step) }
@@ -301,6 +403,15 @@ package final class OnboardingCoordinator: OnboardingHost {
     /// session goes back to the step that makes it), the apps and the desktop back, the stage away,
     /// the island as on any day; Home opens, and the tour picks up from there when asked.
     func exitTour() {
+        // A replay or a practice from Home: back to Home, nothing about the first run kept or
+        // changed (Oct 15 review, OB-03.1).
+        guard kind == .tour else {
+            putAway()
+            if case .practice = kind { model.practice.remove() }
+            prefsStore.flush()
+            onDone()
+            return
+        }
         let step: Step
         switch model.step {
         case .hover: step = .weeklyUpdate
@@ -309,7 +420,8 @@ package final class OnboardingCoordinator: OnboardingHost {
         }
         let point = ResumePoint(step: step.rawValue, allowed: model.flow.allowed.map(\.rawValue),
                                 personal: model.flow.personal, language: model.flow.language,
-                                agentsOn: model.agentsOn.map(\.rawValue), email: model.flow.email, name: model.flow.name)
+                                agentsOn: model.agentsOn.map(\.rawValue), email: model.flow.email, name: model.flow.name,
+                                account: model.flow.account?.rawValue)
         let data = try? JSONEncoder().encode(point)
         state.update {
             $0.resume = data
@@ -322,6 +434,7 @@ package final class OnboardingCoordinator: OnboardingHost {
 
     /// The stage and everything the run changed, put away (the end, or Exit tour).
     private func putAway() {
+        if Self.current === self { Self.current = nil }
         watch?.invalidate()
         watch = nil
         if let pointer { NSEvent.removeMonitor(pointer) }
@@ -348,6 +461,12 @@ package final class OnboardingCoordinator: OnboardingHost {
     func finished() {
         putAway()
         model.practice.remove()
+        // One practice again from Home: over, and Home; the first run as it was (OB-03.1).
+        if case .practice = kind {
+            prefsStore.flush()
+            onDone()
+            return
+        }
         // The words brought in, into the dictionary.
         if !model.importedWords.isEmpty {
             dictionary.add(model.importedWords.map { (word: $0.word, heardAs: $0.heardAs) })
@@ -360,6 +479,54 @@ package final class OnboardingCoordinator: OnboardingHost {
             $0.paused = false
         }
         onDone()
+    }
+}
+
+// MARK: - The Review menu's stages (Oct 15 review)
+
+extension OnboardingCoordinator {
+    /// Registers the first run's review stages: each state the Oct 15 review added that can't be
+    /// reached simply by using the app, shown on the real first-run stage. `start` starts a run of
+    /// that kind (the app delegate owns runs): it's called only when none is under way, or to swap
+    /// a practice run for the tour's pages. A run started for a stage is a replay, so nothing kept
+    /// about the first run changes.
+    package static func registerReviewStages(start: @escaping @MainActor (RunKind) -> Void) {
+        /// The tour's stage, at a step, starting a replay if no tour or replay is under way.
+        func page(_ step: Step, _ then: @escaping @MainActor (OnboardingModel) -> Void = { _ in }) -> @MainActor () -> Void {
+            {
+                if let run = current, case .practice = run.kind { run.exitTour() }
+                if current == nil { start(.replay) }
+                guard let run = current else { return }
+                run.model.alert = nil
+                run.model.jump(to: step)
+                then(run.model)
+            }
+        }
+        /// A practice run again from Home, whatever was under way put away first.
+        func practice(_ kind: RunKind) -> @MainActor () -> Void {
+            {
+                current?.exitTour()
+                start(kind)
+            }
+        }
+        let area = Review.Area.firstRun
+        Review.stage("OB-01.7", "First run: Back beside the progress line", area: area, run: page(.makeItYours))
+        Review.stage("AC-01.1", "First run: sign up with Apple, Google or an email", area: area, run: page(.signIn))
+        Review.stage("FR-03", "First run: sign-in, waiting for Apple", area: area,
+                     run: page(.signIn) { $0.stageSignIn(.waiting(.apple)) })
+        Review.stage("FR-03", "First run: sign-in canceled", area: area,
+                     run: page(.signIn) { $0.stageSignIn(.canceled(.google)) })
+        Review.stage("FR-04", "First run: couldn't sign in", area: area,
+                     run: page(.signIn) { $0.stageSignIn(.failed(.apple)) })
+        Review.stage("AC-01.2", "First run: check your email", area: area,
+                     run: page(.signIn) { $0.stageSignIn(.checkEmail(OT.Staging.email)) })
+        Review.stage("OB-01.5", "First run: Grant Fovea Access, with Input Monitoring", area: area, run: page(.permissions))
+        Review.stage("OB-01.6", "First run: what Fovea remembers", area: area, run: page(.memory))
+        for each in PracticeAgain.allCases {
+            Review.stage("OB-03.1", "Practice again: \(each.title.prefix(1).lowercased() + each.title.dropFirst())", area: area,
+                         run: practice(.practice(each)))
+        }
+        Review.stage("OB-03.1", "Replay the tour from the start", area: area, run: practice(.replay))
     }
 }
 

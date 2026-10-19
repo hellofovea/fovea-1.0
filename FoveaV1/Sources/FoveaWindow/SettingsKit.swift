@@ -10,6 +10,18 @@ import FoveaKit
 /// color only when something needs you. References: Raycast's settings (account header, status
 /// words, a red Sign Out row), Linear's preferences (title over description, control right),
 /// Vercel's Geist (Choicebox, Kbd, card footers), Bartender 5 (pictures of the choices).
+///
+/// Oct 18, Ryan: the interface in the primary language. The parts here take their words as
+/// Strings and show them through `L(key:)`, so a literal written at a call site is looked up in
+/// Localization/zh-Hans/window.strings as it's drawn; a sentence with a value in it is made with
+/// `L("…\(value)…")` where it's written (its key then has %@ or %lld), and passes through unchanged.
+
+/// Oct 18, Ryan: a word whose English means two things in the app ("Max" a plan and a level of
+/// thinking, "Off" a shortcut not set and a permission turned off), looked up by a key of its own
+/// so Chinese can say each: the English as given, the Chinese under `key` in window.strings.
+func L(_ key: StaticString, english: String.LocalizationValue) -> String {
+    String(localized: LocalizedStringResource(key, defaultValue: english, locale: FoveaLocale.shared.locale, bundle: .main))
+}
 
 // MARK: - Native
 
@@ -163,11 +175,11 @@ struct SettingsSection<Content: View, Accessory: View>: View {
         .overlay(alignment: .topLeading) {
             VStack(alignment: .leading, spacing: 4) {
                 if let title {
-                    Text(title).font(.system(size: 15, weight: .semibold)).foregroundStyle(palette.text)
+                    Text(L(key: title)).font(.system(size: 15, weight: .semibold)).foregroundStyle(palette.text)
                         .accessibilityAddTraits(.isHeader)
                 }
                 if let note {
-                    Text(note).font(.system(size: 12)).foregroundStyle(palette.secondary)
+                    Text(L(key: note)).font(.system(size: 12)).foregroundStyle(palette.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if Accessory.self != EmptyView.self { accessory().padding(.top, 8) }
@@ -198,7 +210,7 @@ struct SettingsSection<Content: View, Accessory: View>: View {
             if title != nil || Accessory.self != EmptyView.self {
                 HStack(alignment: .firstTextBaseline) {
                     if let title {
-                        Text(title).font(.system(size: 13, weight: native ? .bold : .semibold)).foregroundStyle(palette.text)
+                        Text(L(key: title)).font(.system(size: 13, weight: native ? .bold : .semibold)).foregroundStyle(palette.text)
                             .accessibilityAddTraits(.isHeader)
                     }
                     Spacer(minLength: 8)
@@ -207,7 +219,7 @@ struct SettingsSection<Content: View, Accessory: View>: View {
                 .padding(.horizontal, inset)
             }
             if let note {
-                Text(note).font(.system(size: native ? 11 : 12)).foregroundStyle(palette.secondary)
+                Text(L(key: note)).font(.system(size: native ? 11 : 12)).foregroundStyle(palette.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, inset)
                     .padding(.bottom, native ? 2 : 4)
@@ -294,10 +306,17 @@ struct SettingsRow<Control: View>: View {
     let title: String
     var detail: String?
     var icon: NSImage?
+    /// Oct 18: the title as written, never looked up (a language's own name: "English" stays
+    /// English in a Chinese interface, with 英语 under it).
+    var verbatim = false
     @ViewBuilder let control: () -> Control
 
     init(_ title: String, detail: String? = nil, icon: NSImage? = nil, @ViewBuilder control: @escaping () -> Control) {
         self.title = title; self.detail = detail; self.icon = icon; self.control = control
+    }
+
+    init(verbatim title: String, detail: String? = nil, @ViewBuilder control: @escaping () -> Control) {
+        self.title = title; self.detail = detail; self.verbatim = true; self.control = control
     }
 
     @Environment(\.settingsNative) private var native
@@ -309,9 +328,9 @@ struct SettingsRow<Control: View>: View {
                 Image(nsImage: icon).resizable().interpolation(.high).frame(width: native ? 24 : 28, height: native ? 24 : 28)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 13, weight: native ? .regular : .medium)).foregroundStyle(palette.text)
+                Text(verbatim ? title : L(key: title)).font(.system(size: 13, weight: native ? .regular : .medium)).foregroundStyle(palette.text)
                 if let detail {
-                    Text(detail).font(.system(size: native ? 11 : 11.5)).foregroundStyle(palette.secondary)
+                    Text(L(key: detail)).font(.system(size: native ? 11 : 11.5)).foregroundStyle(palette.secondary)
                         .frame(maxWidth: 360, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -361,12 +380,12 @@ struct InkToggle: View {
     @Binding var isOn: Bool
     var body: some View {
         if native {
-            Toggle(title, isOn: $isOn)
+            Toggle(L(key: title), isOn: $isOn)
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .labelsHidden()
         } else {
-            Toggle(title, isOn: $isOn)
+            Toggle(L(key: title), isOn: $isOn)
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .labelsHidden()
@@ -391,9 +410,9 @@ struct InlinePicker<Value: Hashable>: View {
             Picker(selection: $selection) {
                 ForEach(options, id: \.self) { option in
                     if let icon, let image = icon(option) {
-                        Label { Text(label(option)) } icon: { Image(nsImage: Art.small(image)) }.tag(option)
+                        Label { Text(L(key: label(option))) } icon: { Image(nsImage: Art.small(image)) }.tag(option)
                     } else {
-                        Text(label(option)).tag(option)
+                        Text(L(key: label(option))).tag(option)
                     }
                 }
             } label: {
@@ -414,9 +433,9 @@ struct InlinePicker<Value: Hashable>: View {
                     selection = option
                 } label: {
                     if option == selection {
-                        Label(label(option), systemImage: "checkmark").labelStyle(.titleAndIcon)
+                        Label(L(key: label(option)), systemImage: "checkmark").labelStyle(.titleAndIcon)
                     } else {
-                        Text(label(option))
+                        Text(L(key: label(option)))
                     }
                 }
             }
@@ -424,9 +443,9 @@ struct InlinePicker<Value: Hashable>: View {
             // One text with its images set in it, so a menu's label keeps their order and size.
             let chevron = Text(Image(systemName: "chevron.up.chevron.down")).font(.system(size: 9, weight: .semibold))
             if let icon, let image = icon(selection) {
-                Text("\(Image(nsImage: Art.small(image)))  \(label(selection)) \(chevron)")
+                Text("\(Image(nsImage: Art.small(image)))  \(L(key: label(selection))) \(chevron)")
             } else {
-                Text("\(label(selection)) \(chevron)")
+                Text("\(L(key: label(selection))) \(chevron)")
             }
         }
         .menuStyle(.borderlessButton)
@@ -463,7 +482,7 @@ struct TextButton: View {
     var body: some View {
         if native {
             // The system's push button.
-            Button(title, role: role, action: action)
+            Button(L(key: title), role: role, action: action)
         } else {
             PillButton(title, kind: role == .destructive ? .destructive : .secondary, action: action)
         }
@@ -482,10 +501,10 @@ struct StatusLabel: View {
         HStack(spacing: 6) {
             if ok {
                 Image(systemName: "checkmark").font(.system(size: 9.5, weight: .bold))
-                Text(word)
+                Text(L(key: word))
             } else {
                 Circle().fill(palette.warning).frame(width: 6, height: 6)
-                Text(word).foregroundStyle(palette.text)
+                Text(L(key: word)).foregroundStyle(palette.text)
                 if let fix {
                     TextButton(fix.title, action: fix.action).padding(.leading, 6)
                 }
@@ -525,8 +544,8 @@ struct ChoiceTiles<Value: Hashable, Picture: View>: View {
                             .background(palette.ink(0.04))
                             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(option.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(palette.text)
-                            Text(option.detail).font(.system(size: 11.5)).foregroundStyle(palette.secondary)
+                            Text(L(key: option.title)).font(.system(size: 13, weight: .semibold)).foregroundStyle(palette.text)
+                            Text(L(key: option.detail)).font(.system(size: 11.5)).foregroundStyle(palette.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         .padding(.horizontal, 4)
@@ -555,7 +574,7 @@ struct ChoiceTiles<Value: Hashable, Picture: View>: View {
                 .onHover { h in
                     withAnimation(motion.animation(.hover)) { if h { hovered = option.value } else if hovered == option.value { hovered = nil } }
                 }
-                .accessibilityLabel(option.title)
+                .accessibilityLabel(L(key: option.title))
                 .accessibilityAddTraits(on ? [.isSelected] : [])
             }
         }
@@ -602,7 +621,7 @@ struct KeyCaps: View {
                     HStack(spacing: 4) {
                         ForEach(Array(keys.enumerated()), id: \.offset) { _, key in
                             if key.hasPrefix("~") {
-                                Text(String(key.dropFirst())).font(.system(size: large ? 13 : 11.5)).foregroundStyle(palette.tertiary)
+                                Text(L(key: String(key.dropFirst()))).font(.system(size: large ? 13 : 11.5)).foregroundStyle(palette.tertiary)
                             } else {
                                 KeyCapView(key: key, large: large)
                             }
@@ -615,7 +634,7 @@ struct KeyCaps: View {
         .buttonStyle(.plain)
         .onExitCommand { recording = false }
         .help("Click, then press the new keys")
-        .accessibilityLabel(keys.map { $0.hasPrefix("~") ? String($0.dropFirst()) : $0 }.joined(separator: " "))
+        .accessibilityLabel(keys.map { $0.hasPrefix("~") ? L(key: String($0.dropFirst())) : $0 }.joined(separator: " "))
     }
 }
 
@@ -665,7 +684,7 @@ struct ChipWell<Item: Identifiable>: View {
                          onRemove: { onRemove(item) }, onTap: onTap.map { tap in { tap(item) } })
             }
             if adding {
-                TextField(addTitle, text: $draft)
+                TextField(L(key: addTitle), text: $draft)
                     .textFieldStyle(.plain)
                     .font(.system(size: 12.5))
                     .focused($fieldFocused)
@@ -682,7 +701,7 @@ struct ChipWell<Item: Identifiable>: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "plus").font(.system(size: 9.5, weight: .semibold))
-                        Text(addTitle)
+                        Text(L(key: addTitle))
                     }
                     .font(.system(size: 12.5))
                     .foregroundStyle(palette.secondary)
@@ -760,7 +779,7 @@ struct DangerCard: View {
         if native {
             SettingsCard {
                 SettingsRow(title, detail: consequence) {
-                    Button(button, role: .destructive, action: action)
+                    Button(L(key: button), role: .destructive, action: action)
                 }
             }
         } else {
@@ -772,12 +791,12 @@ struct DangerCard: View {
         let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
         return HStack(alignment: .center, spacing: 16) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 13, weight: .medium)).foregroundStyle(palette.text)
-                Text(consequence).font(.system(size: 11.5)).foregroundStyle(palette.secondary)
+                Text(L(key: title)).font(.system(size: 13, weight: .medium)).foregroundStyle(palette.text)
+                Text(L(key: consequence)).font(.system(size: 11.5)).foregroundStyle(palette.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 12)
-            PillButton(button, kind: .destructive, action: action)
+            PillButton(L(key: button), kind: .destructive, action: action)
         }
         .padding(16)
         .shading(shape, .resting)
@@ -842,8 +861,10 @@ struct SettingsSegments<Value: Hashable>: View {
 
     var body: some View {
         if native {
-            Picker("", selection: Binding(get: { selection }, set: { choose($0) })) {
-                ForEach(segments, id: \.value) { Text($0.title).tag($0.value) }
+            Picker(selection: Binding(get: { selection }, set: { choose($0) })) {
+                ForEach(segments, id: \.value) { Text(L(key: $0.title)).tag($0.value) }
+            } label: {
+                EmptyView()
             }
             .pickerStyle(.segmented)
             .labelsHidden()

@@ -161,7 +161,7 @@ Clicking a day opens its own page:
 
 ![Four cards: the theme, the type and time, the app it went to, the words with their chips, and what was taken across the foot](../shots/captures/card-anatomy.png)
 
-Each capture is a square card, 236 pt, in the style of Paste's clipboard cards. From top to bottom:
+Each capture is a square card, 220 pt (236 until Oct 13: four a row in the 1024-pt window), in the style of Paste's clipboard cards. From top to bottom:
 
 1. **Header, two lines.**
    - The **theme** in bold (13 pt): "Notch ears height".

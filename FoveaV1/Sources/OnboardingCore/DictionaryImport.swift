@@ -12,8 +12,8 @@ public struct ImportedWord: Equatable, Hashable, Sendable {
     }
 }
 
-/// Reading a dictionary from another dictation app (Oct 9). None of Wispr Flow, Typeless, VoiceOS
-/// or Superwhisper documents an export, so it takes what people can get out of them:
+/// Reading a dictionary from another dictation app (Oct 9). None of Wispr Flow, Typeless or
+/// Superwhisper documents an export, so it takes what people can get out of them:
 /// - a CSV in Wispr Flow's own import layout: one column of words, or two, heard then written;
 /// - a text file or a paste, one word a line ("heard → written" also reads);
 /// - JSON: a list of words, or of objects with a word and what it replaces (MacWhisper's list);

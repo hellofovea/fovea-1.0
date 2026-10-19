@@ -1,5 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
+import FoveaKit
 
 /// A modifier key used on its own as a press-to-toggle key: a bare press, the key down then up
 /// with no other key in between, fires once on release; the key held as a modifier for another
@@ -274,5 +275,339 @@ final class WorkbenchKeyMonitor {
         default:
             return false
         }
+    }
+}
+
+// MARK: - Changeable shortcuts (Oct 15 review, ST-03.1)
+
+// Oct 15 review, ST-03.1: Voiceflow, Dispatch, the region (⌘) and the highlighter (left ⌥) answer
+// to the chords Settings › Shortcuts records (`FoveaKeys.chord`), not to fixed keys. Modifiers
+// alone work as fn always has: a press (a key down, then up, with no other key or click while it
+// was down, the chord's other caps held with it) starts, the next stops; the region and the
+// highlighter keep ⌘'s and ⌥'s down, up (a tap or a hold) and double press (`ModifierGesture`). A
+// chord with a key (⌥ Space) acts on the key's down, and only then is the key kept from the app in
+// front. A cleared chord does nothing.
+
+/// The modifier keys, each side apart: a chord names them ("fn", "⌃", "right ⌥"), an event's
+/// flags say which are down.
+struct ModifierKeys: OptionSet, Hashable {
+    let rawValue: UInt16
+    init(rawValue: UInt16) { self.rawValue = rawValue }
+
+    static let fn = ModifierKeys(rawValue: 1 << 0)
+    static let leftControl = ModifierKeys(rawValue: 1 << 1)
+    static let rightControl = ModifierKeys(rawValue: 1 << 2)
+    static let leftOption = ModifierKeys(rawValue: 1 << 3)
+    static let rightOption = ModifierKeys(rawValue: 1 << 4)
+    static let leftShift = ModifierKeys(rawValue: 1 << 5)
+    static let rightShift = ModifierKeys(rawValue: 1 << 6)
+    static let leftCommand = ModifierKeys(rawValue: 1 << 7)
+    static let rightCommand = ModifierKeys(rawValue: 1 << 8)
+    static let control: ModifierKeys = [.leftControl, .rightControl]
+    static let option: ModifierKeys = [.leftOption, .rightOption]
+    static let shift: ModifierKeys = [.leftShift, .rightShift]
+    static let command: ModifierKeys = [.leftCommand, .rightCommand]
+    static let left: ModifierKeys = [.leftControl, .leftOption, .leftShift, .leftCommand]
+    static let right: ModifierKeys = [.rightControl, .rightOption, .rightShift, .rightCommand]
+
+    /// `NX_DEVICE…KEYMASK`: which side of each modifier is down, in the device-dependent flags.
+    private static let sides: [(ModifierKeys, UInt)] = [
+        (.leftControl, 0x0001), (.leftShift, 0x0002), (.rightShift, 0x0004), (.leftCommand, 0x0008),
+        (.rightCommand, 0x0010), (.leftOption, 0x0020), (.rightOption, 0x0040), (.rightControl, 0x2000),
+    ]
+
+    /// The keys down in an event's flags. A flag without its side (as some apps post them) is the
+    /// left key, the one every Mac has.
+    init(flags: NSEvent.ModifierFlags) {
+        var keys: ModifierKeys = flags.contains(.function) ? .fn : []
+        let raw = flags.rawValue
+        let kinds: [(NSEvent.ModifierFlags, ModifierKeys)] = [(.control, .control), (.option, .option),
+                                                              (.shift, .shift), (.command, .command)]
+        for (flag, both) in kinds where flags.contains(flag) {
+            var found: ModifierKeys = []
+            for (key, bit) in Self.sides where both.contains(key) && raw & bit != 0 { found.insert(key) }
+            keys.formUnion(found.isEmpty ? both.intersection(.left) : found)
+        }
+        self = keys
+    }
+
+    /// Each key on its own.
+    var keys: [ModifierKeys] {
+        (0..<9).map { ModifierKeys(rawValue: 1 << $0) }.filter { contains($0) }
+    }
+
+    /// One cap as a chord writes it ("fn", "⌃", "left ⌥", "right ⌘"…); nil for one Fovea can't read.
+    static func cap(_ cap: String) -> ModifierKeys? {
+        let words = cap.lowercased().split(separator: " ").map(String.init)
+        guard let symbol = words.last, words.count <= 2 else { return nil }
+        let both: ModifierKeys
+        switch symbol {
+        case "fn", "🌐", "globe": return words.count == 1 ? .fn : nil
+        case "⌃", "ctrl", "control": both = .control
+        case "⌥", "opt", "option", "alt": both = .option
+        case "⇧", "shift": both = .shift
+        case "⌘", "cmd", "command": both = .command
+        default: return nil
+        }
+        switch words.count == 2 ? words[0] : nil {
+        case nil: return both
+        case "left": return both.intersection(.left)
+        case "right": return both.intersection(.right)
+        default: return nil
+        }
+    }
+}
+
+/// A recorded chord, ready to match: each cap's keys, and the key pressed with them (if any).
+struct ChordPattern: Equatable {
+    let caps: [ModifierKeys]
+    let keyCode: Int?
+
+    /// nil for a cleared chord (no keys at all) or one with a cap Fovea can't read: it does nothing.
+    init?(_ chord: KeyChord?) {
+        guard let chord, !(chord.modifiers.isEmpty && chord.keyCode == nil) else { return nil }
+        var caps: [ModifierKeys] = []
+        for cap in chord.modifiers {
+            guard let keys = ModifierKeys.cap(cap) else { return nil }
+            caps.append(keys)
+        }
+        self.caps = caps
+        keyCode = chord.keyCode
+    }
+
+    var allowed: ModifierKeys { caps.reduce([]) { $0.union($1) } }
+    /// Each cap held, whatever else is.
+    func held(_ down: ModifierKeys) -> Bool { caps.allSatisfy { !down.intersection($0).isEmpty } }
+    /// Exactly these modifiers: each cap held, and nothing else.
+    func matches(_ down: ModifierKeys) -> Bool { held(down) && down.subtracting(allowed).isEmpty }
+}
+
+/// Fovea's changeable shortcuts, from any app: the modifiers through NSEvent's monitors (as fn's
+/// always were), a chord's key through the keyboard tap (`handleKey`), which may keep it.
+@MainActor
+final class ShortcutMonitor {
+    /// What a shortcut does. A toggle acts once a press (on the modifiers' release, or its key's
+    /// down) and says whether the press was its; a hold has a down, an up (a tap or not) and a
+    /// double press, as ⌘ has.
+    struct Action {
+        enum Kind { case toggle, hold }
+        var kind: Kind
+        var toggle: () -> Bool = { false }
+        /// A hold's key is taken from the app in front only while this holds (on a voice bar).
+        var active: () -> Bool = { true }
+        var down: () -> Void = {}
+        var up: (_ tap: Bool) -> Void = { _ in }
+        var doublePress: () -> Void = {}
+    }
+
+    var actions: [String: Action] = [:]
+    /// Nothing acts (Settings › Shortcuts is recording one).
+    var paused: () -> Bool = { false }
+    /// The chords in force, by shortcut, in `order` (the first of two equal chords wins).
+    private(set) var patterns: [String: ChordPattern] = [:]
+    private var order: [String] = []
+    private var monitors: [Any] = []
+    /// The modifiers down now.
+    private var down: ModifierKeys = []
+    /// Each modifier key's own press, as fn's monitor always had it: the others held at some point
+    /// while it was down, whether a key or a click came while it was down, and whether a shortcut
+    /// already fired from the keys held with it (the last to go up doesn't fire it twice).
+    private var heldWith: [UInt16: ModifierKeys] = [:]
+    private var usedWith: Set<UInt16> = []
+    private var spent: Set<UInt16> = []
+    private var gestures: [String: ModifierGesture] = [:]
+    /// Holds under way: by their modifiers, and by a chord's key.
+    private var holding: Set<String> = []
+    private var keyHolds: [Int: String] = [:]
+    /// Keys whose down was ours: their repeats and their up are kept too.
+    private var kept: Set<Int> = []
+
+    var isRunning: Bool { !monitors.isEmpty }
+
+    /// The chords now, by shortcut id, in the order given; one that changed starts afresh (a hold
+    /// under way is let go).
+    func set(_ chords: [(id: String, chord: KeyChord?)]) {
+        var next: [String: ChordPattern] = [:]
+        for (id, chord) in chords { if let pattern = ChordPattern(chord) { next[id] = pattern } }
+        order = chords.map(\.id)
+        guard next != patterns else { return }
+        for id in Set(patterns.keys).union(next.keys) where patterns[id] != next[id] {
+            if holding.remove(id) != nil { actions[id]?.up(false) }
+            gestures[id] = nil
+            keyHolds = keyHolds.filter { $0.value != id }
+        }
+        patterns = next
+    }
+
+    func chord(_ id: String) -> ChordPattern? { patterns[id] }
+
+    /// A shortcut is these modifiers pressed alone (left ⌃ alone stays Choose chat's only if not).
+    func claims(_ keys: ModifierKeys) -> Bool {
+        patterns.values.contains { $0.keyCode == nil && $0.matches(keys) }
+    }
+
+    func start() {
+        guard monitors.isEmpty else { return }
+        let mask: NSEvent.EventTypeMask = [.flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+        if let local = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] event in
+            self?.handle(event)
+            return event
+        }) {
+            monitors.append(local)
+        }
+        if let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] event in
+            self?.handle(event)
+        }) {
+            monitors.append(global)
+        }
+    }
+
+    func stop() {
+        monitors.forEach { NSEvent.removeMonitor($0) }
+        monitors.removeAll()
+        down = []
+        heldWith = [:]
+        usedWith = []
+        spent = []
+    }
+
+    /// One event from the monitors (the smoke feeds it the edges a press makes).
+    func handle(_ event: NSEvent) {
+        switch event.type {
+        case .flagsChanged:
+            modifiers(ModifierKeys(flags: event.modifierFlags), at: event.timestamp)
+        case .keyDown:
+            // A chord's own key is the tap's to judge (`handleKey`).
+            guard !kept.contains(Int(event.keyCode)) else { return }
+            used(except: Int(event.keyCode))
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+            used(except: nil)
+        default:
+            break
+        }
+    }
+
+    /// Something pressed or clicked during a press: the modifiers weren't pressed alone, and a hold
+    /// under way is a hold, not a tap.
+    private func used(except keyCode: Int?) {
+        for key in down.keys { usedWith.insert(key.rawValue) }
+        for id in holding { gestures[id]?.used() }
+        // Oct 18, Ryan: two presses are a double press only with nothing between them.
+        for (id, gesture) in gestures where !gesture.isDown && !holding.contains(id) { gestures[id] = ModifierGesture() }
+        for (code, id) in keyHolds where code != keyCode { gestures[id]?.used() }
+    }
+
+    private func modifiers(_ new: ModifierKeys, at t: TimeInterval) {
+        let old = down
+        down = new
+        for key in new.subtracting(old).keys {
+            heldWith[key.rawValue] = []
+            usedWith.remove(key.rawValue)
+            spent.remove(key.rawValue)
+        }
+        for key in new.keys { heldWith[key.rawValue, default: []].formUnion(new.subtracting(key)) }
+        // Oct 18, Ryan: another modifier pressed between two presses breaks their double press.
+        let pressed = new.subtracting(old)
+        if !pressed.isEmpty {
+            for (id, gesture) in gestures where !gesture.isDown && !holding.contains(id) {
+                if !pressed.subtracting(patterns[id]?.allowed ?? []).isEmpty { gestures[id] = ModifierGesture() }
+            }
+        }
+        // Holds by their modifiers: let go once a cap is up; started the moment the chord is held
+        // exactly (as ⌘'s down always started capture).
+        for id in order {
+            guard let pattern = patterns[id], pattern.keyCode == nil, actions[id]?.kind == .hold else { continue }
+            if holding.contains(id) {
+                if !pattern.held(new) {
+                    holding.remove(id)
+                    release(id, at: t)
+                } else if !new.subtracting(pattern.allowed).isEmpty {
+                    gestures[id]?.used()
+                }
+            } else if pattern.matches(new), !pattern.held(old), !paused() {
+                holding.insert(id)
+                var gesture = gestures[id] ?? ModifierGesture()
+                let edges = gesture.down(at: t)
+                gestures[id] = gesture
+                if edges.contains(.down) { actions[id]?.down() }
+            }
+        }
+        // Toggles by their modifiers, as fn always worked: one of the chord's keys let go after a
+        // press of its own (no key or click while it was down), every cap held at some point with
+        // it. Of the chords that fit, the one with the most caps: fn with ⌃ held is fn ⌃, fn with ⌘
+        // held is still fn.
+        for key in old.subtracting(new).keys {
+            let raw = key.rawValue
+            let with = heldWith.removeValue(forKey: raw) ?? []
+            let quiet = !usedWith.contains(raw) && !spent.contains(raw)
+            usedWith.remove(raw)
+            spent.remove(raw)
+            guard quiet, !paused() else { continue }
+            let pressed = with.union(key)
+            var best: (id: String, caps: Int)?
+            for id in order {
+                guard let pattern = patterns[id], pattern.keyCode == nil, actions[id]?.kind == .toggle,
+                      !key.intersection(pattern.allowed).isEmpty, pattern.held(pressed) else { continue }
+                if pattern.caps.count > (best?.caps ?? 0) { best = (id, pattern.caps.count) }
+            }
+            guard let id = best?.id else { continue }
+            // The keys still held with it have had their press.
+            for other in new.keys { spent.insert(other.rawValue) }
+            _ = actions[id]?.toggle()
+        }
+    }
+
+    private func release(_ id: String, at t: TimeInterval) {
+        var gesture = gestures[id] ?? ModifierGesture()
+        let edges = gesture.up(at: t)
+        gestures[id] = gesture
+        for edge in edges {
+            switch edge {
+            case .up(let tap): actions[id]?.up(tap)
+            case .doublePress: actions[id]?.doublePress()
+            case .down: break
+            }
+        }
+    }
+
+    /// A key down or up, from the keyboard tap (any app) or Fovea's own windows. True keeps it from
+    /// the app in front: only a chord's own key, and only while the press is Fovea's.
+    func handleKey(_ event: NSEvent) -> Bool {
+        let code = Int(event.keyCode)
+        let t = event.timestamp
+        if event.type == .keyUp {
+            if let id = keyHolds.removeValue(forKey: code) { release(id, at: t) }
+            return kept.remove(code) != nil
+        }
+        guard event.type == .keyDown else { return false }
+        if kept.contains(code) {
+            if event.isARepeat { return true }
+            // Its up never came: a new press.
+            kept.remove(code)
+            if let id = keyHolds.removeValue(forKey: code) { release(id, at: t) }
+        }
+        var mods = ModifierKeys(flags: event.modifierFlags)
+        // The arrows and the function keys carry fn's flag on every press.
+        if !down.contains(.fn) { mods.remove(.fn) }
+        guard !paused(), let id = order.first(where: { id in
+            guard let pattern = patterns[id] else { return false }
+            return pattern.keyCode == code && pattern.matches(mods)
+        }), let action = actions[id] else { return false }
+        // Not a press of the modifiers alone, and a hold of them (⌥ under ⌥ Space) isn't a tap.
+        used(except: code)
+        guard !event.isARepeat else { return false }
+        switch action.kind {
+        case .toggle:
+            guard action.toggle() else { return false }
+        case .hold:
+            guard action.active() else { return false }
+            var gesture = gestures[id] ?? ModifierGesture()
+            let edges = gesture.down(at: t)
+            gestures[id] = gesture
+            keyHolds[code] = id
+            if edges.contains(.down) { action.down() }
+        }
+        kept.insert(code)
+        return true
     }
 }

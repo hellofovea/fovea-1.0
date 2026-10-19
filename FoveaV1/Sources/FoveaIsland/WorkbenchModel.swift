@@ -347,6 +347,10 @@ final class WorkbenchModel {
     @ObservationIgnored var inspectTransitionId: UUID?
     /// The pointer on the collapsed stack: it fans to the right.
     var stackHovered = false
+    /// Oct 15 review, VF04: how far the opened stack's one row is scrolled sideways, in points.
+    var stackScroll: CGFloat = 0
+    /// Oct 17, Ryan: a file dragged onto the notch is over it (its drop state shows).
+    var fileDropTargeted = false
     /// How the island and the cards move for the change being made; set with the change.
     @ObservationIgnored var islandAnimation: Animation = WorkbenchTokens.Motion.open
     @ObservationIgnored var cardChange: CardChange = .settle
@@ -593,11 +597,18 @@ final class WorkbenchModel {
     var v2History: [String: [V2Turn]] = [:]
     /// Chats pulled out of the notch, and the one being pulled.
     var v2Detached: [V2Detached] = []
+    /// The display the pulled-out chats are on, when it isn't the notch's: they follow the pointer
+    /// to the display in use (Oct 11). nil: the notch's display.
+    var liveDetachedArea: CGSize?
+    /// A pulled-out chat being moved by its header: it doesn't follow the pointer mid-drag.
+    var v2DetachedMoving = false
     var v2DragOut: V2DragOut?
     @ObservationIgnored var v2Pinned = false
     /// The board a session was opened from was pinned (the panel's radio): back on it, it is again.
     @ObservationIgnored var v2BoardPinned = false
     @ObservationIgnored var v2Scripts: [String: [AgentBeat]] = [:]
+    /// The beat a session stopped at to ask the person (Allow goes on from it, Oct 11).
+    @ObservationIgnored var v2PausedBeat: [String: Int] = [:]
     @ObservationIgnored var v2Requests: [String: V2Request] = [:]
     /// What was taken with each request, for the head of an answer about it.
     @ObservationIgnored var v2Attachments: [String: [NSImage]] = [:]
@@ -609,6 +620,8 @@ final class WorkbenchModel {
     @ObservationIgnored var v2Transcribe: Task<Void, Never>?
     /// When the transcription began (its progress bar).
     var v2TranscribeStart = Date.distantPast
+    /// Oct 15 review: Dispatch's sessions' missed cases (Feedback/V2Cases.swift), observed apart.
+    let cases = V2CaseState()
 
     // MARK: Feedback, Oct 6 (Feedback/*.swift; docs/island/FEEDBACK_2026-10-06.md)
 
@@ -845,6 +858,10 @@ final class WorkbenchModel {
         // request; fn is that flow's while one of its cards is up, and Voiceflow's everywhere else.
         functionKey.onPress = { [weak self] in
             guard let self else { return }
+            // A press during a setting's preview at the real notch is the real thing: the preview
+            // goes first (its timer used to rest the notch under it, and its samples stayed on the
+            // board: Oct 11).
+            if self.previewing, self.live != nil { self.endPreview() }
             if self.v2FunctionKey(control: self.functionKey.heldDuring.contains(.control)) { return }
             self.toggleVoiceFlow()
         }
@@ -861,8 +878,8 @@ final class WorkbenchModel {
         // ⌘ on a voice bar, either side: a screenshot, one region per press; pressed twice, the whole
         // screen. Option is the highlighter (Oct 6 feedback, round two).
         for key in [leftCommandKey, rightCommandKey] {
-            key.onDown = { [weak self] in self?.commandDown() }
-            key.onUp = { [weak self] click in self?.commandUp(click: click) }
+            key.onDown = { [weak self] in self?.regionDown() }
+            key.onUp = { [weak self] click in self?.regionUp(click: click) }
             key.onDoublePress = { [weak self] in self?.captureWholeScreen() }
         }
         accent = snapshot ? .blue : defaults.string(forKey: Self.accentKey).flatMap(FoveaAccent.init(rawValue:)) ?? .blue
@@ -1019,7 +1036,9 @@ final class WorkbenchModel {
         }
     }
 
-    var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+    // Oct 15 review, IS02: Fovea's own Motion (Settings › Appearance) decides; Match the Mac reads
+    // the Mac's Reduce Motion (WorkbenchModel+Input.swift).
+    var reduceMotion: Bool { motionReduced }
 
     /// Starts the meter once, on the edge into listening: a voice bar handing over to another
     /// keeps it running (starting the meter twice would leave its first sampler running).

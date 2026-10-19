@@ -2,8 +2,10 @@ import AppKit
 import AVFoundation
 import Speech
 import ServiceManagement
+import IOKit.hid
+import FoveaKit
 
-// The four things Fovea asks for, where each stands, and the System Settings page for each.
+// The five things Fovea asks for, where each stands, and the System Settings page for each.
 
 public enum Permission: String, CaseIterable, Sendable {
     /// Device Control and Data Access on macOS 27 (Accessibility before): the keys in any app,
@@ -13,14 +15,20 @@ public enum Permission: String, CaseIterable, Sendable {
     case screenRecording
     case microphone
     case speechRecognition
+    /// Input Monitoring (Oct 15, the dev team's review OB-01.5): the shortcuts heard in every app.
+    /// Their key engine listens with it; 1.0's own works without it, so 1.0 asks but never waits on it.
+    case inputMonitoring
 
     /// The page's name as macOS 27 writes it.
-    public var paneName: String {
+    public var paneName: String { L(key: englishPaneName) }
+
+    var englishPaneName: String {
         switch self {
         case .accessibility: return "Device Control and Data Access"
         case .screenRecording: return "Screen & System Audio Recording"
         case .microphone: return "Microphone"
         case .speechRecognition: return "Speech Recognition"
+        case .inputMonitoring: return "Input Monitoring"
         }
     }
 
@@ -30,6 +38,7 @@ public enum Permission: String, CaseIterable, Sendable {
         case .screenRecording: return "Privacy_ScreenCapture"
         case .microphone: return "Privacy_Microphone"
         case .speechRecognition: return "Privacy_SpeechRecognition"
+        case .inputMonitoring: return "Privacy_ListenEvent"
         }
     }
 
@@ -40,6 +49,7 @@ public enum Permission: String, CaseIterable, Sendable {
         case .screenRecording: return CGPreflightScreenCaptureAccess()
         case .microphone: return AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
         case .speechRecognition: return SFSpeechRecognizer.authorizationStatus() == .authorized
+        case .inputMonitoring: return IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
         }
     }
 
@@ -53,7 +63,15 @@ public enum Permission: String, CaseIterable, Sendable {
         case .speechRecognition:
             let s = SFSpeechRecognizer.authorizationStatus()
             return s == .denied || s == .restricted
+        case .inputMonitoring:
+            return IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeDenied
         }
+    }
+
+    /// Asks macOS for Input Monitoring: the system's own prompt the first time, then nothing (the
+    /// person turns it on in System Settings). Returns whether it's allowed now.
+    @MainActor @discardableResult public static func requestInputMonitoring() -> Bool {
+        IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
     }
 
     /// Opens System Settings at this page's list.

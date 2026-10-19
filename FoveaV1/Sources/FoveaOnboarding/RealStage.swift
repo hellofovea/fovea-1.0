@@ -85,6 +85,8 @@ struct RealStage: View {
         if let bar = model.targets[.board] { rects.append(bar) }
         if let corner = model.targets[.corner] { rects.append(corner.insetBy(dx: -4, dy: -4)) }
         if let mute = model.targets[.mute] { rects.append(mute.insetBy(dx: -4, dy: -4)) }
+        // Back, on a step to do (Oct 15 review, OB-01.7; every step, Oct 17).
+        if model.canGoBack, let back = model.targets[.back] { rects.append(back.insetBy(dx: -4, dy: -4)) }
         switch model.practiceScreen {
         case .empty: break
         case .page:

@@ -175,6 +175,8 @@ enum Art {
     }
 }
 
+// Oct 18, Ryan: these are pictures of the person's screen (fixtures), so their words stay as
+// drawn in every language: `Text(verbatim:)`, never a key.
 /// Copied from Prototypes/FoveaWindowBench/Fixtures/CaptureArt.swift (may drift).
 /// The fixtures' screenshots, each drawn as what its capture says it holds: a section of the
 /// page on localhost:3000, IslandShape.swift in Xcode, two notches in the workbench, Downloads
@@ -222,10 +224,10 @@ private struct WhySection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Why Fovea")
+            Text(verbatim: "Why Fovea")
                 .font(.system(size: 40, weight: .bold))
                 .foregroundStyle(ink)
-            Text("Point at anything on your screen and send it to your coding agent.")
+            Text(verbatim: "Point at anything on your screen and send it to your coding agent.")
                 .font(.system(size: 19))
                 .foregroundStyle(gray)
                 .padding(.top, 12)
@@ -235,7 +237,7 @@ private struct WhySection: View {
                 bullet("text.bubble", "Your agent gets the context", "Your words, and every region, in the order you made them.")
             }
             .padding(.top, 44)
-            Text("Join the waitlist")
+            Text(verbatim: "Join the waitlist")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 22)
@@ -294,7 +296,7 @@ private struct CodeRegion: View {
         HStack(alignment: .top, spacing: 0) {
             VStack(alignment: .trailing, spacing: 0) {
                 ForEach(Array(Self.lines.indices), id: \.self) { i in
-                    Text("\(i + 10)").frame(height: 22)
+                    Text(verbatim: "\(i + 10)").frame(height: 22)
                 }
             }
             .foregroundStyle(Color(red: 0.6, green: 0.6, blue: 0.63))
@@ -324,7 +326,7 @@ private enum SwiftLine {
     static let types: Set<String> = ["IslandShape", "Shape", "CGFloat", "AnimatablePair", "CGRect", "Path", "CGPoint"]
 
     static func text(_ line: String) -> Text {
-        var result = Text("")
+        var result = Text(verbatim: "")
         var word = ""
         func flush() {
             guard !word.isEmpty else { return }
@@ -373,7 +375,7 @@ private struct NotchPair: View {
                             Capsule().fill(Color.white.opacity(0.85)).frame(width: 3.5, height: CGFloat(h))
                         }
                     }
-                    Text("Listening").font(.system(size: 15, weight: .medium)).foregroundStyle(Color.white.opacity(0.85))
+                    Text(verbatim: "Listening").font(.system(size: 15, weight: .medium)).foregroundStyle(Color.white.opacity(0.85))
                     Spacer(minLength: 0)
                     Circle().fill(Color.white.opacity(0.85)).frame(width: 8, height: 8)
                 }
@@ -410,7 +412,7 @@ private struct DownloadsRegion: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            row(name: Text("Name"), date: "Date Modified", size: "Size", kind: "Kind", icon: nil, header: true)
+            row(name: Text(verbatim: "Name"), date: "Date Modified", size: "Size", kind: "Kind", icon: nil, header: true)
                 .frame(height: 30)
             Rectangle().fill(Color.black.opacity(0.1)).frame(height: 1)
             ForEach(Array(files.enumerated()), id: \.offset) { i, file in
@@ -458,17 +460,17 @@ private struct DocsRegion: View {
             }
             .frame(width: 180, alignment: .leading)
             VStack(alignment: .leading, spacing: 18) {
-                Text("Rate limits").font(.system(size: 34, weight: .bold)).foregroundStyle(ink)
-                Text("The API allows up to 100 read requests per second per account and 100 write requests per second per account. Requests over the limit receive a 429 response.")
+                Text(verbatim: "Rate limits").font(.system(size: 34, weight: .bold)).foregroundStyle(ink)
+                Text(verbatim: "The API allows up to 100 read requests per second per account and 100 write requests per second per account. Requests over the limit receive a 429 response.")
                     .font(.system(size: 17))
                     .foregroundStyle(ink)
                     .lineSpacing(5)
                     .fixedSize(horizontal: false, vertical: true)
                 Grid(alignment: .leading, horizontalSpacing: 40, verticalSpacing: 10) {
-                    GridRow { Text("Mode"); Text("Reads"); Text("Writes") }
+                    GridRow { Text(verbatim: "Mode"); Text(verbatim: "Reads"); Text(verbatim: "Writes") }
                         .font(.system(size: 13, weight: .semibold)).foregroundStyle(gray)
-                    GridRow { Text("Live"); Text("100 per second"); Text("100 per second") }
-                    GridRow { Text("Test"); Text("25 per second"); Text("25 per second") }
+                    GridRow { Text(verbatim: "Live"); Text(verbatim: "100 per second"); Text(verbatim: "100 per second") }
+                    GridRow { Text(verbatim: "Test"); Text(verbatim: "25 per second"); Text(verbatim: "25 per second") }
                 }
                 .font(.system(size: 15, design: .monospaced))
                 .foregroundStyle(ink)
@@ -503,8 +505,8 @@ private struct CalendarRegion: View {
             }
             .padding(.top, 14)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Design review with Lin").font(.system(size: 9, weight: .semibold))
-                Text("10:00–10:45").font(.system(size: 8))
+                Text(verbatim: "Design review with Lin").font(.system(size: 9, weight: .semibold))
+                Text(verbatim: "10:00–10:45").font(.system(size: 8))
             }
             .foregroundStyle(blue)
             .padding(.horizontal, 5)

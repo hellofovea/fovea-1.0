@@ -74,14 +74,55 @@ extension WorkbenchModel {
         }
     }
 
+    /// Oct 15 review, VF10: Paste beside Copy: the words into the field that's focused now (the path
+    /// dictation takes), then the island rests as it does after a dictation lands. False when no
+    /// field takes them (the button says so, and the words stay).
+    @discardableResult
+    func pasteHeldWords() -> Bool {
+        guard notchState == .pasteNotFound, !pasteCopied else { return false }
+        if let live {
+            guard livePasteHeld(live) else { return false }
+        } else {
+            // The Workbench: the notes' comment box, the one input box on the mock pages.
+            guard inputBoxOnScreen else { return false }
+            pastedNote = transcript
+        }
+        pasteTask?.cancel()
+        if pasteStart != nil, pastePausedAt == nil { pastePausedAt = Date() }
+        pasteLanding = Date()
+        pasteTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(WorkbenchTokens.Feedback.landHold))
+            guard let self, !Task.isCancelled, self.notchState == .pasteNotFound else { return }
+            self.notchState = .silent
+        }
+        return true
+    }
+
+    /// Oct 15 review, VF09 ("Hover keeps the held text open"): the pointer on the held words holds
+    /// the 5 s close, the ring still; leaving starts the 5 s again. Copy's own stop isn't undone.
+    func setPasteHover(_ inside: Bool) {
+        guard notchState == .pasteNotFound, !pasteCopied, pasteStart != nil, !snapshotMode else { return }
+        if inside {
+            guard pastePausedAt == nil else { return }
+            pastePausedAt = Date()
+            pasteTask?.cancel()
+            pasteTask = nil
+        } else if pastePausedAt != nil {
+            pastePausedAt = nil
+            pasteStart = Date()
+            schedulePasteEnd()
+        }
+    }
+
     /// ✕ (or esc): the transcript goes, and the island rests.
     func dismissPaste() {
         guard notchState == .pasteNotFound else { return }
         notchState = .silent
     }
 
-    /// The time left before the island rests, 1 → 0: 5 s from appearing, whatever the pointer
-    /// does or however far the transcript is opened; it stops only where Copy was pressed.
+    /// The time left before the island rests, 1 → 0: 5 s from appearing, however far the transcript
+    /// is opened; it stops where Copy was pressed, and while the pointer is on the words (Oct 15
+    /// review, VF09), starting again once it leaves.
     func pasteRemaining(at date: Date) -> Double {
         guard let start = pasteStart else { return snapshotMode ? WorkbenchTokens.Paste.still : 1 }
         let now = pastePausedAt ?? date

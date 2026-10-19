@@ -1,6 +1,8 @@
 import SwiftUI
 import AppKit
 import FoveaCore
+import FoveaLook
+import FoveaKit
 
 // The Oct 6 feedback's Dispatch Version 2 views (V2Feedback.swift has the flow).
 // docs/island/FEEDBACK_2026-10-06.md has the reasons.
@@ -205,7 +207,7 @@ struct V2Answer: View {
             }
             let artifacts = model.v2Artifacts(task)
             if !artifacts.isEmpty, task.state == .complete {
-                V2ArtifactsRow(model: model, artifacts: artifacts)
+                V2ArtifactsRow(model: model, artifacts: artifacts, taskID: task.id)
             }
         }
         .frame(width: width, alignment: .topLeading)
@@ -363,39 +365,67 @@ struct V2WorkStepRow: View {
 struct V2ArtifactsRow: View {
     let model: WorkbenchModel
     let artifacts: [V2Artifact]
+    /// The session they're from (Oct 15 review, QA20: its bar says when a copy can't be saved).
+    var taskID: String? = nil
 
     var body: some View {
         HStack(spacing: WorkbenchTokens.FeedbackV2.artifactGap) {
             ForEach(artifacts) { artifact in
-                V2ArtifactButton(artifact: artifact) { model.openArtifact(artifact) }
+                V2ArtifactButton(model: model, artifact: artifact, taskID: taskID)
             }
             Spacer(minLength: 0)
         }
     }
 }
 
+/// Open what the answer made; and, for a file (Oct 15 review, QA20), Show in Finder and Save a
+/// Copy… in its menu.
 struct V2ArtifactButton: View {
+    let model: WorkbenchModel
     let artifact: V2Artifact
-    let action: () -> Void
+    var taskID: String? = nil
     @State private var hovering = false
 
     var body: some View {
         let F = WorkbenchTokens.FeedbackV2.self
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: "arrow.up.forward.square").font(F.artifactGlyph)
-                Text("Open \(artifact.title)").lineLimit(1)
+        Group {
+            if artifact.path != nil {
+                Menu {
+                    Button("Open") { model.openArtifactV2(artifact, taskID: taskID) }
+                    Button("Show in Finder") { model.showArtifactInFinder(artifact, taskID: taskID) }
+                    Divider()
+                    Button("Save a Copy…") { model.saveArtifactCopy(artifact, taskID: taskID) }
+                } label: {
+                    label(F)
+                } primaryAction: {
+                    model.openArtifactV2(artifact, taskID: taskID)
+                }
+                .menuStyle(.button)
+                .menuIndicator(.visible)
+                .buttonStyle(.plain)
+                .fixedSize()
+            } else {
+                Button { model.openArtifactV2(artifact, taskID: taskID) } label: { label(F) }
+                    .buttonStyle(.plain)
             }
-            .font(F.artifactFont)
-            .foregroundStyle(WorkbenchTokens.V2.titleColor)
-            .padding(.horizontal, F.artifactPaddingH)
-            .frame(height: F.artifactHeight)
-            .background(Capsule(style: .continuous).fill(hovering ? F.artifactFillHover : F.artifactFill))
-            .contentShape(Capsule(style: .continuous))
         }
-        .buttonStyle(.plain)
+        .padding(.trailing, artifact.path != nil ? F.artifactPaddingH * 0.6 : 0)
+        .background(Capsule(style: .continuous).fill(hovering ? F.artifactFillHover : F.artifactFill))
+        .contentShape(Capsule(style: .continuous))
         .onHover { hovering = $0 }
-        .help("Open \(artifact.title) to check it yourself")
+        .help(artifact.path != nil ? L("Open \(artifact.title), or show it in Finder, or save a copy") : L("\(artifact.openLabel) to check it yourself"))
+    }
+
+    private func label(_ F: WorkbenchTokens.FeedbackV2.Type) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "arrow.up.forward.square").font(F.artifactGlyph)
+            Text(artifact.openLabel).lineLimit(1)
+        }
+        .font(F.artifactFont)
+        .foregroundStyle(WorkbenchTokens.V2.titleColor)
+        .padding(.leading, F.artifactPaddingH)
+        .padding(.trailing, artifact.path != nil ? 2 : F.artifactPaddingH)
+        .frame(height: F.artifactHeight)
     }
 }
 
@@ -407,49 +437,119 @@ struct V2ReferentPile: View {
     let model: WorkbenchModel
     let space: Namespace.ID
     @State private var fanned = false
+    @State private var overPile = false
+    @State private var overFan = false
+    @State private var closing: Task<Void, Never>?
 
     var body: some View {
         let F = WorkbenchTokens.FeedbackV2.self
+        let T = WorkbenchTokens.Referents.self
         let items = model.liveReferents
         let w = F.pileHeight * F.pileAspect
+        let pileWidth = w + 2 * F.pileOffset
+        // Oct 15 review, QA02: past three, "+N" on the stack, as the voice bar has it.
+        let hidden = max(0, items.count - 3)
         ZStack(alignment: .leading) {
             // The stack's own footprint: it never pushes the pills.
-            Color.clear.frame(width: w + 2 * F.pileOffset, height: F.pileHeight)
-            if fanned {
-                HStack(spacing: F.fanGap) {
-                    ForEach(items) { referent in
-                        V2AttachmentThumb(model: model, referent: referent, space: space)
-                    }
-                }
-                .padding(F.fanPadding)
-                .background(RoundedRectangle(cornerRadius: F.fanRadius, style: .continuous).fill(F.fanFill))
-                .overlay(RoundedRectangle(cornerRadius: F.fanRadius, style: .continuous).strokeBorder(WorkbenchTokens.ink(0.1), lineWidth: 0.75))
-                .offset(x: -F.fanPadding)
-                .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .leading)))
-                .zIndex(10)
-            } else {
-                ForEach(Array(items.prefix(3).enumerated().reversed()), id: \.element.id) { i, referent in
-                    let s = 1 - CGFloat(i) * F.pileShrink
-                    Image(nsImage: referent.image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: w * s, height: F.pileHeight * s)
-                        .clipShape(RoundedRectangle(cornerRadius: WorkbenchTokens.V2.attachmentRadius, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: WorkbenchTokens.V2.attachmentRadius, style: .continuous)
-                            .strokeBorder(WorkbenchTokens.ink(0.2), lineWidth: 0.75))
-                        .rotationEffect(.degrees(F.pileRotation[i]))
-                        .opacity(i == 0 ? 1 : F.pileBackOpacity)
-                        // Each card behind peeks past the right edge of the one before it.
-                        .offset(x: w * (1 - s) + CGFloat(i) * F.pileOffset)
-                }
+            Color.clear.frame(width: pileWidth + (hidden > 0 ? T.moreGap + StackLayout.moreWidth(hidden) : 0),
+                              height: F.pileHeight)
+            ForEach(Array(items.prefix(3).enumerated().reversed()), id: \.element.id) { i, referent in
+                let s = 1 - CGFloat(i) * F.pileShrink
+                Image(nsImage: referent.image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: w * s, height: F.pileHeight * s)
+                    .clipShape(RoundedRectangle(cornerRadius: WorkbenchTokens.V2.attachmentRadius, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: WorkbenchTokens.V2.attachmentRadius, style: .continuous)
+                        .strokeBorder(WorkbenchTokens.ink(0.2), lineWidth: 0.75))
+                    .rotationEffect(.degrees(F.pileRotation[i]))
+                    .opacity(fanned ? 0 : (i == 0 ? 1 : F.pileBackOpacity))
+                    // Each card behind peeks past the right edge of the one before it.
+                    .offset(x: w * (1 - s) + CGFloat(i) * F.pileOffset)
+            }
+            if hidden > 0 {
+                ReferentMoreChip(count: hidden)
+                    .offset(x: pileWidth + T.moreGap)
+                    .opacity(fanned ? 0 : 1)
             }
         }
         .frame(height: F.pileHeight)
         .contentShape(Rectangle())
-        .onHover { inside in withAnimation(F.fanMotion) { fanned = inside } }
-        .help(items.map { "\($0.kind.label) · \($0.source)" }.joined(separator: "\n"))
+        .onHover { overPile = $0; updateFan() }
+        // Fanned: every referent in one row over the pills, numbered in the order taken, swiped
+        // sideways when it's wider than Choose chat (an overlay, so the pills never move).
+        .overlay(alignment: .leading) {
+            if fanned {
+                fan(items)
+                    .offset(x: -F.fanPadding)
+                    .onHover { overFan = $0; updateFan() }
+                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .leading)))
+            }
+        }
+        .zIndex(10)
+        .help(items.enumerated().map { "\($0.offset + 1) · \($0.element.kind.label) · \($0.element.whereTaken)" }.joined(separator: "\n"))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("What was taken")
+    }
+
+    /// The row: each referent's thumb with its number (and the other display's glyph), in one line
+    /// that scrolls past Choose chat's width.
+    @ViewBuilder
+    private func fan(_ items: [CapturedReferent]) -> some View {
+        let F = WorkbenchTokens.FeedbackV2.self
+        let T = WorkbenchTokens.Referents.self
+        let V = WorkbenchTokens.V2.self
+        let row = HStack(spacing: F.fanGap) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { i, referent in
+                V2AttachmentThumb(model: model, referent: referent, space: space)
+                    .overlay(alignment: .topLeading) {
+                        ReferentNumberBadge(number: i + 1)
+                            .scaleEffect(F.fanBadgeScale, anchor: .topLeading)
+                            .padding(F.fanBadgeInset)
+                            .allowsHitTesting(false)
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        if referent.otherDisplay {
+                            ReferentOtherDisplayBadge()
+                                .scaleEffect(F.fanBadgeScale, anchor: .bottomTrailing)
+                                .padding(F.fanBadgeInset)
+                        }
+                    }
+            }
+        }
+        let natural = items.map { min(V.attachThumb * $0.aspect, V.attachThumb * 2) }.reduce(0, +)
+            + CGFloat(max(0, items.count - 1)) * F.fanGap
+        let most = V2Geometry.contentWidth - 2 * F.fanPadding
+        Group {
+            if natural > most {
+                ScrollView(.horizontal) { row }
+                    .scrollIndicators(.automatic)
+                    .frame(width: most)
+            } else {
+                row
+            }
+        }
+        .padding(F.fanPadding)
+        .background(RoundedRectangle(cornerRadius: F.fanRadius, style: .continuous).fill(F.fanFill))
+        .overlay(RoundedRectangle(cornerRadius: F.fanRadius, style: .continuous).strokeBorder(WorkbenchTokens.ink(0.1), lineWidth: 0.75))
+        .fixedSize()
+        .animation(T.numberFade, value: items.count)
+    }
+
+    /// Open while the pointer is on the stack or the row; it closes a moment after it leaves both
+    /// (moving from one to the other is never a leave).
+    private func updateFan() {
+        let F = WorkbenchTokens.FeedbackV2.self
+        closing?.cancel()
+        if overPile || overFan {
+            if !fanned { withAnimation(F.fanMotion) { fanned = true } }
+            return
+        }
+        closing = Task { @MainActor in
+            try? await Task.sleep(for: F.fanCloseDelay)
+            guard !Task.isCancelled, !overPile, !overFan else { return }
+            withAnimation(F.fanMotion) { fanned = false }
+        }
     }
 }
 
@@ -495,23 +595,51 @@ struct V2ModelSheet: View {
         let F = WorkbenchTokens.FeedbackV2.self
         VStack(alignment: .leading, spacing: F.sheetGap) {
             if showsChats {
-                row("Chat") {
+                row(L("Chat")) {
                     ForEach(model.v2Suggestions) { pick in
                         V2SheetChip(title: pick.title, icon: pick.agent, chosen: model.v2Pick == pick) { model.chooseV2(pick) }
                     }
                 }
             }
-            row("Model") {
-                V2SheetChip(title: "Auto", chosen: model.v2Model == nil) { model.chooseModel(nil) }
-                ForEach(model.v2ModelOptions) { option in
-                    V2SheetChip(title: option.name, chosen: model.v2Model == option.id) { model.chooseModel(option.id) }
+            row(L("Model")) {
+                // Oct 15 review, QA08: the models on their way, or couldn't load (Try Again); one
+                // chosen for another agent, or not in the plan, dimmed (the notes say why).
+                if model.cases.modelsLoad != .loaded {
+                    V2ModelsStatus(model: model)
+                } else {
+                    if let carried = model.v2CarriedModel {
+                        V2SheetChip(title: carried.name, chosen: false, unavailable: carried.reason) {}
+                    }
+                    V2SheetChip(title: L("Auto"), chosen: model.v2Model == nil || model.v2CarriedModel != nil) { model.chooseModel(nil) }
+                    ForEach(model.v2ModelOptions) { option in
+                        V2SheetChip(title: option.name, chosen: model.v2Model == option.id,
+                                    unavailable: model.v2ModelUnavailable(option)) { model.chooseModel(option.id) }
+                    }
                 }
             }
-            row("Thinking") {
-                V2SheetChip(title: "Auto", chosen: model.v2Effort == nil) { model.chooseEffort(nil) }
+            row(L("island.row.thinking", english: "Thinking")) {
+                V2SheetChip(title: L("Auto"), chosen: model.v2Effort == nil) { model.chooseEffort(nil) }
                 ForEach(model.v2EffortOptions, id: \.self) { effort in
                     V2SheetChip(title: ModelCatalog.effortName(effort), chosen: model.v2Effort == effort) { model.chooseEffort(effort) }
                 }
+            }
+            // Oct 15 review, QA09: how far the session goes without asking; set by the agent's own
+            // settings, it can't be changed here (the notes say where).
+            row(L("Approvals")) {
+                ForEach(V2ApprovalMode.allCases) { mode in
+                    V2SheetChip(title: mode.title, chosen: model.cases.approvalMode == mode,
+                                unavailable: model.cases.approvalLocked != nil && model.cases.approvalMode != mode
+                                    ? model.cases.approvalLocked : nil) { model.chooseApprovalMode(mode) }
+                        .help(mode.help)
+                }
+                if model.cases.approvalLocked != nil {
+                    Image(systemName: "lock.fill").font(WorkbenchTokens.Cases.blockedGlyph).foregroundStyle(WorkbenchTokens.V2.subColor)
+                }
+            }
+            let notes = model.v2ModelNotes
+            if !notes.isEmpty {
+                V2ModelNotesLine(notes: notes)
+                    .padding(.leading, WorkbenchTokens.FeedbackV2.sheetLabelWidth + WorkbenchTokens.FeedbackV2.sheetChipGap)
             }
         }
     }
@@ -527,11 +655,12 @@ struct V2ModelSheet: View {
         .frame(height: F.sheetRow)
     }
 
-    /// Its height, for the outline.
-    static func height(chats: Bool) -> CGFloat {
+    /// Its height, for the outline: the rows (the chats, the model, thinking, approvals) and, when
+    /// a model can't be picked or the approvals are set elsewhere, a line of notes (Oct 15 review).
+    static func height(chats: Bool, notes: Int = 0) -> CGFloat {
         let F = WorkbenchTokens.FeedbackV2.self
-        let rows: CGFloat = chats ? 3 : 2
-        return rows * F.sheetRow + (rows - 1) * F.sheetGap
+        let rows: CGFloat = chats ? 4 : 3
+        return rows * F.sheetRow + (rows - 1) * F.sheetGap + (notes > 0 ? F.sheetGap + CGFloat(notes) * WorkbenchTokens.Cases.detailRow : 0)
     }
 }
 
@@ -539,27 +668,32 @@ struct V2SheetChip: View {
     let title: String
     var icon: String? = nil
     let chosen: Bool
+    /// Oct 15 review, QA08/QA09: why it can't be picked; dimmed and struck through, the why on hover.
+    var unavailable: String? = nil
     let action: () -> Void
     @State private var hovering = false
 
     var body: some View {
         let F = WorkbenchTokens.FeedbackV2.self
         let V = WorkbenchTokens.V2.self
+        let off = unavailable != nil
         Button(action: action) {
             HStack(spacing: 5) {
                 if let icon { ChatAgentIcon(agent: ChatAgent.named(icon), size: F.sheetChipIcon) }
-                Text(title).lineLimit(1)
+                Text(title).lineLimit(1).strikethrough(off, color: WorkbenchTokens.ink(0.4))
                 if chosen { Image(systemName: "checkmark").font(F.sheetCheck) }
             }
             .font(F.sheetChipFont)
-            .foregroundStyle(chosen ? V.titleColor : WorkbenchTokens.ink(0.7))
+            .foregroundStyle(chosen ? V.titleColor : WorkbenchTokens.ink(off ? 0.35 : 0.7))
             .padding(.horizontal, F.sheetChipPaddingH)
             .frame(height: F.sheetChipHeight)
-            .background(Capsule(style: .continuous).fill(chosen ? V.chipChosenFill : (hovering ? V.hoverFill : V.chipFill)))
+            .background(Capsule(style: .continuous).fill(chosen ? V.chipChosenFill : (hovering && !off ? V.hoverFill : V.chipFill)))
             .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
+        .disabled(off)
         .onHover { hovering = $0 }
+        .help(unavailable ?? "")
         .animation(nil, value: chosen)
     }
 }
@@ -579,16 +713,9 @@ struct V2QueueSection: View {
         let items = model.v2Queue[task.id] ?? []
         let paused = model.v2QueuePaused.contains(task.id)
         VStack(alignment: .leading, spacing: F.queueSpacing) {
-            HStack(spacing: 6) {
-                Text(paused ? "WAITING · HELD" : "WAITING").font(V.labelFont).tracking(0.6).foregroundStyle(V.labelColor)
-                if paused {
-                    Text(task.state == .needsYou ? "until you answer above" : "after a failure")
-                        .font(F.queueNote).foregroundStyle(V.subColor)
-                    Spacer(minLength: 4)
-                    AgentPanelButton(title: "Resume", symbol: "play.fill", primary: false) { model.resumeQueue(task.id) }
-                } else {
-                    Spacer(minLength: 4)
-                }
+            ViewThatFits(in: .horizontal) {
+                header(paused: paused, note: true)
+                header(paused: paused, note: false)
             }
             .frame(height: F.queueHeader)
             ForEach(items) { ask in
@@ -598,15 +725,25 @@ struct V2QueueSection: View {
                             .frame(width: F.queueThumb * 1.3, height: F.queueThumb)
                             .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                     }
-                    Text(ask.text).font(F.queueText).foregroundStyle(V.bodyColor).lineLimit(1)
-                    Spacer(minLength: 6)
-                    AgentPanelButton(title: "Send now", symbol: "arrow.turn.down.right", primary: false) { model.sendQueuedNow(task.id, ask) }
-                        .help("Put it into this turn now, out of the line")
-                    Button { model.cancelQueued(task.id, ask) } label: {
-                        Image(systemName: "xmark").font(F.queueCloseGlyph).foregroundStyle(V.subColor)
-                            .frame(width: F.queueClose, height: F.queueClose).contentShape(Rectangle())
+                    if ask.failed {
+                        // Oct 15 review, QA11: it couldn't send; it stays, to try again or remove.
+                        Text("Couldn't send").font(F.queueNote.weight(.semibold)).foregroundStyle(WorkbenchTokens.Panel.failedColor)
+                            .fixedSize()
                     }
-                    .buttonStyle(.plain).help("Don't send it")
+                    Text(ask.text).font(F.queueText).foregroundStyle(ask.failed ? V.subColor : V.bodyColor).lineLimit(1)
+                    Spacer(minLength: 6)
+                    if ask.failed {
+                        AgentPanelButton(title: L("Try Again"), symbol: "arrow.clockwise", primary: false) { model.retryQueued(task.id, ask) }
+                        AgentPanelButton(title: L("Remove"), primary: false) { model.cancelQueued(task.id, ask) }
+                    } else {
+                        AgentPanelButton(title: L("Send now"), symbol: "arrow.turn.down.right", primary: false) { model.sendQueuedNow(task.id, ask) }
+                            .help("Put it into this turn now, out of the line")
+                        Button { model.cancelQueued(task.id, ask) } label: {
+                            Image(systemName: "xmark").font(F.queueCloseGlyph).foregroundStyle(V.subColor)
+                                .frame(width: F.queueClose, height: F.queueClose).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain).help("Don't send it")
+                    }
                 }
                 .padding(.horizontal, F.queueRowPaddingH)
                 .frame(height: F.queueRow)
@@ -614,6 +751,30 @@ struct V2QueueSection: View {
             }
         }
         .frame(width: width, alignment: .topLeading)
+    }
+
+    /// The queue's header: held, Resume, and (Oct 15 review, QA12) Open in the agent, to manage it
+    /// there; narrow, without the note.
+    private func header(paused: Bool, note: Bool) -> some View {
+        let F = WorkbenchTokens.FeedbackV2.self
+        let V = WorkbenchTokens.V2.self
+        let why = task.state == .needsYou ? L("until you answer above") : L("after a failure")
+        return HStack(spacing: 6) {
+            Text(paused ? "WAITING · HELD" : "WAITING").font(V.labelFont).tracking(0.6).foregroundStyle(V.labelColor)
+                .help(paused ? "Held \(why)" : "")
+            if paused {
+                if note { Text(why).font(F.queueNote).foregroundStyle(V.subColor) }
+                Spacer(minLength: 4)
+                if model.v2OpensInAgent(task) {
+                    // Oct 17, Ryan: the same Open in <agent> as the session's bar, one way.
+                    V2OpenInAgentChip(model: model, task: task, iconOnly: !note,
+                                      note: ("QA12", "A held queue: Resume, or Open in the agent to manage it there"))
+                }
+                AgentPanelButton(title: L("Resume"), symbol: "play.fill", primary: false) { model.resumeQueue(task.id) }
+            } else {
+                Spacer(minLength: 4)
+            }
+        }
     }
 
     static func height(count: Int) -> CGFloat {
@@ -656,14 +817,19 @@ struct V2ReanswerMenu: View {
     let model: WorkbenchModel
     let task: AgentTaskItem
     var compact = false
+    /// Oct 15 review: where it's narrow (a pulled-out chat), the glyph only.
+    var iconOnly = false
 
     var body: some View {
         let options = ModelCatalog.options(agent: task.agent == ChatAgent.fovea.id ? "claude-code" : task.agent)
         Menu {
-            Button("Answer again with \(task.modelLabel ?? "Auto")") { model.reanswerV2(task.id) }
+            Button("Answer again with \(task.modelLabel ?? L("Auto"))") { model.reanswerV2(task.id) }
             Divider()
             ForEach(options) { option in
-                if option.efforts.isEmpty {
+                if let why = model.v2ModelUnavailable(option) {
+                    // Oct 15 review, QA08: listed, not to pick, and why.
+                    Button("\(option.name) (\(why))") {}.disabled(true)
+                } else if option.efforts.isEmpty {
                     Button(option.name) { model.reanswerV2(task.id, model: option.id) }
                 } else {
                     Menu(option.name) {
@@ -676,7 +842,7 @@ struct V2ReanswerMenu: View {
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "arrow.clockwise").font(WorkbenchTokens.FeedbackV2.iconChipGlyph)
-                Text(compact ? "Answer again · \(task.modelLabel ?? "Auto")" : "Answer again")
+                if !iconOnly { Text(compact ? "Answer again · \(task.modelLabel ?? L("Auto"))" : "Answer again") }
             }
             .font(WorkbenchTokens.FeedbackV2.iconChipFont)
         } primaryAction: {
@@ -685,7 +851,8 @@ struct V2ReanswerMenu: View {
         .menuStyle(.button)
         .buttonStyle(.plain)
         .foregroundStyle(WorkbenchTokens.ink(0.85))
-        .padding(.horizontal, WorkbenchTokens.FeedbackV2.iconChipPaddingH)
+        .padding(.horizontal, iconOnly ? 0 : WorkbenchTokens.FeedbackV2.iconChipPaddingH)
+        .frame(minWidth: WorkbenchTokens.FeedbackV2.iconButton)
         .frame(height: WorkbenchTokens.FeedbackV2.iconButton)
         .background(Capsule(style: .continuous).fill(WorkbenchTokens.ink(0.09)))
         .fixedSize()

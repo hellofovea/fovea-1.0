@@ -41,6 +41,66 @@ public enum AXReader {
                             frame: frame(of: focused))
     }
 
+    /// Oct 18, Ryan: a text field under the pointer, where dictated words land ("the place where the
+    /// user's mouse is hovering at the very last moment before sending").
+    public struct TextField {
+        public let element: AXUIElement
+        public let pid: pid_t
+        /// Its frame, global top-left points.
+        public let frame: CGRect?
+        /// It already holds the keyboard.
+        public let focused: Bool
+    }
+
+    /// The field that takes text under a global point: the element there, or the nearest above it
+    /// that does (a text field or area, a combo or search box, an editable web area or its editable
+    /// root). Never a secure field, never one of Fovea's own.
+    @MainActor public static func textField(at point: CGPoint) -> TextField? {
+        guard trusted, let owner = WindowList.owner(at: point) else { return nil }
+        let app = AXUIElementCreateApplication(owner)
+        AXUIElementSetMessagingTimeout(app, 0.5)
+        AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        var hit: AXUIElement?
+        guard AXUIElementCopyElementAtPosition(app, Float(point.x), Float(point.y), &hit) == .success, var element = hit else { return nil }
+        for _ in 0..<12 {
+            AXUIElementSetMessagingTimeout(element, 0.5)
+            if let field = takesText(element) {
+                let focused: AXUIElement? = copy(app, kAXFocusedUIElementAttribute)
+                return TextField(element: field, pid: owner, frame: frame(of: field),
+                                 focused: focused.map { CFEqual($0, field) } ?? false)
+            }
+            guard let parent: AXUIElement = copy(element, kAXParentAttribute) else { break }
+            element = parent
+        }
+        return nil
+    }
+
+    /// The element itself when it takes text, or the editable root it's in (web content).
+    static func takesText(_ element: AXUIElement) -> AXUIElement? {
+        let role: String? = copy(element, kAXRoleAttribute)
+        let subrole: String? = copy(element, kAXSubroleAttribute)
+        if subrole == "AXSecureTextField" { return nil }
+        if let root: AXUIElement = copy(element, "AXEditableAncestor") { return root }
+        var settable: DarwinBoolean = false
+        AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable)
+        let editable = (copy(element, "AXEditable") as Bool?) ?? false
+        let accepts = PasteTarget.accepts(role: role, subrole: subrole, editable: editable || (settable.boolValue && role == "AXWebArea"))
+        return accepts ? element : nil
+    }
+
+    /// Brings a field forward to take the words: its app in front, its window raised and main, the
+    /// field focused. Never a click.
+    @MainActor public static func focus(_ field: TextField) {
+        let app = AXUIElementCreateApplication(field.pid)
+        AXUIElementSetAttributeValue(app, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+        if let window: AXUIElement = copy(field.element, kAXWindowAttribute) {
+            AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
+            AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+        }
+        AXUIElementSetAttributeValue(field.element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+        NSRunningApplication(processIdentifier: field.pid)?.activate()
+    }
+
     /// The app in front, by name and bundle ID.
     @MainActor public static var frontmostApp: (name: String, bundleID: String)? {
         guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
@@ -110,6 +170,26 @@ public enum AXReader {
             element = parent
         }
         return nil
+    }
+
+    // MARK: Oct 17, Ryan: words and files with no key
+
+    // Oct 18, Ryan: what the person selected is read by `SelectionAX` (SelectionReader.swift), off
+    // the main thread: text markers for web content, character ranges (below) for Cocoa text.
+
+    /// The frames of the lines a range runs across, as a selection is drawn.
+    static func lineFrames(in element: AXUIElement, from lo: Int, to hi: Int) -> [CGRect] {
+        var lines: [CGRect] = []
+        if let first = line(at: lo, in: element), let last = line(at: max(lo, hi - 1), in: element) {
+            for n in first...max(first, last) {
+                guard let lineRange = range(ofLine: n, in: element) else { continue }
+                let s = max(lineRange.location, lo), e = min(lineRange.location + lineRange.length, hi)
+                guard e > s, let r = bounds(in: element, range: CFRange(location: s, length: e - s)) else { continue }
+                lines.append(r)
+            }
+        }
+        if lines.isEmpty, let r = bounds(in: element, range: CFRange(location: lo, length: hi - lo)) { lines = [r] }
+        return lines
     }
 
     // MARK: -
@@ -215,7 +295,27 @@ public enum WindowList {
 /// The words go where the text cursor is: on the pasteboard, then ⌘V, then the pasteboard as it
 /// was. Needs Accessibility (to post the key).
 public enum Paster {
+    /// Oct 17, Ryan ("paste them after the words"): one part of what a dictation pastes, in turn,
+    /// into the same field: words, a picture (PNG), or a file.
+    public enum Piece: Equatable, Sendable {
+        case text(String)
+        case image(Data)
+        case file(URL)
+    }
+
+    /// How long the app in front gets to read one piece before the next is put on the pasteboard.
+    static let pieceGap: Duration = .milliseconds(220)
+    /// How long the last piece stays before the pasteboard is put back.
+    static let restoreAfter: Duration = .milliseconds(600)
+
     @MainActor public static func paste(_ text: String) {
+        Task { await paste([.text(text)]) }
+    }
+
+    /// Each piece in turn: on the pasteboard, then ⌘V; the pasteboard as it was once the last has
+    /// been read (unless something else wrote to it). The words go first, so a field that takes
+    /// text only still gets them when it refuses a picture or a file.
+    @MainActor public static func paste(_ pieces: [Piece]) async {
         let board = NSPasteboard.general
         // What was on the pasteboard, item by item, to put back.
         let saved: [[NSPasteboard.PasteboardType: Data]] = (board.pasteboardItems ?? []).map { item in
@@ -223,21 +323,33 @@ public enum Paster {
             for type in item.types { if let data = item.data(forType: type) { out[type] = data } }
             return out
         }
-        board.clearContents()
-        board.setString(text, forType: .string)
-        let changed = board.changeCount
-        postCommandV()
-        // Put the pasteboard back once the app has read it, unless something else wrote to it.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            guard board.changeCount == changed else { return }
+        for (i, piece) in pieces.enumerated() {
+            if i > 0 { try? await Task.sleep(for: pieceGap) }
             board.clearContents()
-            let items = saved.map { entry -> NSPasteboardItem in
+            switch piece {
+            case .text(let text):
+                board.setString(text, forType: .string)
+            case .image(let png):
                 let item = NSPasteboardItem()
-                for (type, data) in entry { item.setData(data, forType: type) }
-                return item
+                item.setData(png, forType: .png)
+                if let tiff = NSImage(data: png)?.tiffRepresentation { item.setData(tiff, forType: .tiff) }
+                board.writeObjects([item])
+            case .file(let url):
+                board.writeObjects([url as NSURL])
             }
-            if !items.isEmpty { board.writeObjects(items) }
+            postCommandV()
         }
+        let changed = board.changeCount
+        // Put the pasteboard back once the app has read it, unless something else wrote to it.
+        try? await Task.sleep(for: restoreAfter)
+        guard board.changeCount == changed else { return }
+        board.clearContents()
+        let items = saved.map { entry -> NSPasteboardItem in
+            let item = NSPasteboardItem()
+            for (type, data) in entry { item.setData(data, forType: type) }
+            return item
+        }
+        if !items.isEmpty { board.writeObjects(items) }
     }
 
     static func postCommandV() {

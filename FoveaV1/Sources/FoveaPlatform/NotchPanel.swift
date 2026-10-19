@@ -71,8 +71,87 @@ public final class PassthroughHostingView<Content: View>: NSHostingView<Content>
     public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
+/// Oct 17, Ryan: files dragged onto the notch. A clear view over the island (and a little past it)
+/// that takes a drop of files from Finder or the desktop; it's put up only while such a drag is
+/// under way, so no other drag, and no click, ever lands on it.
+public final class FileDropView: NSView {
+    /// The drag is over it (true) or has left (false).
+    public var onTargeted: (Bool) -> Void = { _ in }
+    /// The files let go on it, and where (AppKit's screen point). True when they were taken.
+    public var onDrop: ([URL], NSPoint) -> Bool = { _, _ in false }
+
+    public override init(frame: NSRect) {
+        super.init(frame: frame)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// Drawn all but invisible, so the window server counts it as there.
+    public override func draw(_ dirtyRect: NSRect) {
+        NSColor.black.withAlphaComponent(0.002).setFill()
+        dirtyRect.fill()
+    }
+
+    private func files(_ info: NSDraggingInfo) -> [URL] {
+        info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+    }
+
+    public override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard !files(sender).isEmpty else { return [] }
+        onTargeted(true)
+        return .copy
+    }
+
+    public override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        files(sender).isEmpty ? [] : .copy
+    }
+
+    public override func draggingExited(_ sender: NSDraggingInfo?) { onTargeted(false) }
+
+    public override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { !files(sender).isEmpty }
+
+    public override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let urls = files(sender)
+        onTargeted(false)
+        let point = window.map { $0.convertPoint(toScreen: sender.draggingLocation) } ?? NSEvent.mouseLocation
+        return onDrop(urls, point)
+    }
+
+    public override func draggingEnded(_ sender: NSDraggingInfo) { onTargeted(false) }
+}
+
 /// The screens Fovea lives on.
 public enum Screens {
+    /// The app in front fills `screen` (taken full screen): the menu bar is gone and macOS leaves
+    /// the band beside the notch black. A window's bounds need no permission to read.
+    @MainActor public static func frontAppFillsScreen(_ screen: NSScreen) -> Bool {
+        guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return false }
+        return fullScreenWindow(on: screen) { $0 == pid }
+    }
+
+    /// An app `owner` accepts has taken `screen` full screen: its windows together span the screen's
+    /// width down to its foot, their top at the screen's top or just under the notch (where macOS
+    /// puts a full-screen app on a Mac with one). Oct 11: comparing one window with the whole screen
+    /// missed every one of them (Chrome full screen is several windows, from y 33 down). An ordinary
+    /// window can't go above the menu bar, which is lower than the notch, so it never counts.
+    @MainActor public static func fullScreenWindow(on screen: NSScreen, owner: (Int32) -> Bool) -> Bool {
+        let area = global(CGRect(origin: .zero, size: screen.frame.size), on: screen)
+        let notch = screen.safeAreaInsets.top
+        let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+        var byApp: [Int32: CGRect] = [:]
+        for window in info {
+            guard let pid = window[kCGWindowOwnerPID as String] as? Int32, owner(pid),
+                  (window[kCGWindowLayer as String] as? Int) == 0,
+                  let dict = window[kCGWindowBounds as String] as? NSDictionary,
+                  let rect = CGRect(dictionaryRepresentation: dict), rect.intersects(area) else { continue }
+            byApp[pid] = byApp[pid].map { $0.union(rect) } ?? rect
+        }
+        return byApp.values.contains { u in
+            u.minX - area.minX < 1 && area.maxX - u.maxX < 1 && area.maxY - u.maxY < 1 && u.minY - area.minY <= notch + 1
+        }
+    }
+
     /// The display with the notch (the built-in one), else the main display.
     @MainActor public static var island: NSScreen? {
         NSScreen.screens.first { $0.safeAreaInsets.top > 0 } ?? NSScreen.main ?? NSScreen.screens.first
@@ -82,6 +161,18 @@ public enum Screens {
     @MainActor public static var underPointer: NSScreen? {
         let p = NSEvent.mouseLocation
         return NSScreen.screens.first { NSMouseInRect(p, $0.frame, false) }
+    }
+
+    /// Oct 15 review, IS05 ("where you're working"): the display a press opens the island on, the
+    /// one with the pointer (AppKit's point); the notch's when the pointer is on none.
+    @MainActor public static func forPress(at appKitPoint: CGPoint = NSEvent.mouseLocation) -> NSScreen? {
+        NSScreen.screens.first { NSMouseInRect(appKitPoint, $0.frame, false) } ?? island
+    }
+
+    /// Two screens are one display.
+    @MainActor public static func same(_ a: NSScreen?, _ b: NSScreen?) -> Bool {
+        guard let a, let b else { return a == nil && b == nil }
+        return displayID(a) == displayID(b)
     }
 
     /// A screen as the island's geometry reads it: its own points from zero, the menu bar's height,

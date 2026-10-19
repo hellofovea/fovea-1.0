@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import FoveaCore
+import FoveaKit
 
 // Dispatch's Agent panel: the Agent tasks Fovea delivered, as the hover list shows them, each
 // readable at a glance (what it is doing, on what, how far, what changed) and controllable in
@@ -318,6 +319,21 @@ extension WorkbenchModel {
     /// Allow what a task asked for: it goes on.
     func allowTask(_ id: String) {
         guard let task = agentTasks.first(where: { $0.id == id }), task.state == .needsYou else { return }
+        // Oct 15 review, QA14: for how long (just this once, or the session), and a line saying
+        // what it goes on to do.
+        let scope = v2Scope(id)
+        if scope == .session { cases.allowedForSession.insert(id) }
+        decideV2(id, allowedLine(id, scope: scope))
+        cases.scopes[id] = nil
+        cases.approvalFiles[id] = nil
+        // A session of the person's own that stopped to ask: its script goes on from there.
+        if let beat = v2PausedBeat.removeValue(forKey: id), let i = agentTasks.firstIndex(where: { $0.id == id }) {
+            agentTasks[i].state = .working
+            agentTasks[i].ask = nil
+            v2QueuePaused.remove(id)
+            run(id, from: beat)
+            return
+        }
         let command = task.object ?? "swift test"
         run([
             AgentBeat(activity: "Running \(command)", work: .running, object: command,
@@ -332,15 +348,33 @@ extension WorkbenchModel {
     /// Deny it: the agent goes on without it.
     func denyTask(_ id: String) {
         guard let task = agentTasks.first(where: { $0.id == id }), task.state == .needsYou else { return }
+        // Oct 15 review, QA14: a line saying what was decided.
+        decideV2(id, L("Denied · going on without it"))
+        cases.scopes[id] = nil
+        cases.approvalFiles[id] = nil
+        v2PausedBeat[id] = nil
+        v2QueuePaused.remove(id)
         run([
-            AgentBeat(activity: "Going on without running it", work: .thinking, object: task.object),
-            AgentBeat(activity: "Done, without the tests", work: .done, object: task.object, state: .complete),
+            AgentBeat(activity: L("Going on without running it"), work: .thinking, object: task.object),
+            AgentBeat(activity: L("Done, without the tests"), work: .done, object: task.object, state: .complete),
         ], on: id)
     }
 
     /// Answer what a task asked: it goes on with that.
     func answerTask(_ id: String, _ answer: String) {
         guard agentTasks.contains(where: { $0.id == id && $0.state == .needsYou }) else { return }
+        // Oct 15 review, QA15: a line with the answer; a session of the person's own goes on with
+        // its script from where it asked.
+        decideV2(id, L("Answered · \(answer)"))
+        cases.forms[id] = nil
+        cases.formAnswers[id] = nil
+        if let beat = v2PausedBeat.removeValue(forKey: id), let i = agentTasks.firstIndex(where: { $0.id == id }) {
+            agentTasks[i].state = .working
+            agentTasks[i].ask = nil
+            v2QueuePaused.remove(id)
+            run(id, from: beat)
+            return
+        }
         let keep = answer == "Keep"
         run([
             AgentBeat(activity: keep ? "Adding the flag to CaptureSettings.swift" : "Removing LegacyCapture.swift",
@@ -358,7 +392,7 @@ extension WorkbenchModel {
         withAnimation(WorkbenchTokens.Panel.change) {
             agentTasks[i].state = .failed
             agentTasks[i].stopped = true
-            agentTasks[i].activity = "Stopped"
+            agentTasks[i].activity = L("Stopped")
             agentTasks[i].preview = nil
             agentTasks[i].age = 0
             agentTasks[i].inState = 0
@@ -369,13 +403,13 @@ extension WorkbenchModel {
     func retryTask(_ id: String) {
         guard let task = agentTasks.first(where: { $0.id == id }), task.state == .failed else { return }
         if let i = agentTasks.firstIndex(where: { $0.id == id }) { agentTasks[i].stopped = false }
-        let file = task.object.map { String($0.split(separator: ":")[0]) } ?? "the build"
+        let file = task.object.map { String($0.split(separator: ":")[0]) } ?? L("the build")
         run([
-            AgentBeat(activity: "Editing \(file)", work: .editing, object: file,
+            AgentBeat(activity: L("Editing \(file)"), work: .editing, object: file,
                       preview: "override func flagsChanged(with event: NSEvent)"),
-            AgentBeat(activity: "Running swift build", work: .running, object: "swift build",
+            AgentBeat(activity: L("Running swift build"), work: .running, object: "swift build",
                       preview: "Compiling \(file)"),
-            AgentBeat(activity: "Builds again; fn toggles", work: .done, object: file, state: .complete),
+            AgentBeat(activity: L("Builds again; fn toggles"), work: .done, object: file, state: .complete),
         ], on: id)
     }
 

@@ -22,6 +22,8 @@ struct V2QueuedAsk: Identifiable, Equatable {
     let id = UUID()
     let text: String
     var images: [NSImage] = []
+    /// Oct 15 review, QA11: it couldn't be sent; it stays in line, to try again or remove.
+    var failed = false
     static func == (a: V2QueuedAsk, b: V2QueuedAsk) -> Bool { a.id == b.id }
 }
 
@@ -31,7 +33,14 @@ struct V2Artifact: Identifiable, Equatable {
     let title: String
     let symbol: String
     var change: FileChange? = nil
+    /// Oct 15 review, QA20: a file's path (absolute, or in its project's folder), so it can be
+    /// shown in Finder and copied; nil for what isn't a file (the calendar, a draft in Mail).
+    var path: String? = nil
+    /// Oct 18, Ryan: its button's words whole, for what isn't a file ("Open the paper": Chinese
+    /// puts no space before 论文 as it does before a file's name).
+    var open: String? = nil
     var id: String { title }
+    var openLabel: String { open ?? L("Open \(title)") }
 }
 
 // MARK: - The models each agent offers
@@ -43,19 +52,21 @@ struct AgentModelOption: Identifiable, Equatable {
     let name: String
     let efforts: [String]
     let defaultEffort: String?
+    /// Oct 15 review, QA08: listed, but it can't be picked here, and why ("Not in your plan").
+    var unavailable: String? = nil
 }
 
 enum ModelCatalog {
     static func options(agent: String) -> [AgentModelOption] {
+        // Oct 18, Ryan: only Codex and Claude Code (Grok Bot's model went with it).
         switch agent {
         case "codex":
             return [AgentModelOption(id: "gpt-5-codex", name: "GPT-5 Codex", efforts: ["low", "medium", "high", "xhigh"], defaultEffort: "medium"),
-                    AgentModelOption(id: "gpt-5", name: "GPT-5", efforts: ["minimal", "low", "medium", "high"], defaultEffort: "medium")]
+                    AgentModelOption(id: "gpt-5", name: "GPT-5", efforts: ["minimal", "low", "medium", "high"], defaultEffort: "medium"),
+                    AgentModelOption(id: "gpt-5-pro", name: "GPT-5 Pro", efforts: [], defaultEffort: nil, unavailable: "Not in your plan")]
         case "cursor":
             return [AgentModelOption(id: "claude-opus-5", name: "Opus 5", efforts: ["low", "medium", "high"], defaultEffort: "high"),
                     AgentModelOption(id: "gpt-5", name: "GPT-5", efforts: ["low", "medium", "high"], defaultEffort: "medium")]
-        case "grok-bot":
-            return [AgentModelOption(id: "grok-4", name: "Grok 4", efforts: ["low", "high"], defaultEffort: "low")]
         default:
             // Claude Code, and Fovea's quick answers (its default agent).
             return [AgentModelOption(id: "opus-5.5", name: "Opus 5.5", efforts: ["low", "medium", "high", "max"], defaultEffort: "high"),
@@ -66,12 +77,12 @@ enum ModelCatalog {
 
     static func effortName(_ effort: String) -> String {
         switch effort {
-        case "minimal": return "Minimal"
-        case "low": return "Low"
-        case "medium": return "Medium"
-        case "high": return "High"
-        case "xhigh": return "Extra High"
-        case "max": return "Max"
+        case "minimal": return L("Minimal")
+        case "low": return L("Low")
+        case "medium": return L("Medium")
+        case "high": return L("High")
+        case "xhigh": return L("Extra High")
+        case "max": return L("island.effort.max", english: "Max")  // Oct 18, Ryan: "Max" is also a plan
         default: return effort.capitalized
         }
     }
@@ -84,19 +95,19 @@ extension V2Request {
     /// name a chat): a few words, never the request itself.
     var generatedTitle: String {
         switch self {
-        case .formula: return "The attention formula, explained"
-        case .calendar: return "This afternoon's calendar"
-        case .draft: return "Reply to Sam about Thursday"
-        case .code: return "Match the notch ears to the menu bar"
+        case .formula: return L("The attention formula, explained")
+        case .calendar: return L("This afternoon's calendar")
+        case .draft: return L("Reply to Sam about Thursday")
+        case .code: return L("Match the notch ears to the menu bar")
         }
     }
 
     /// The plan it makes, when it makes one: the code change does; a quick answer doesn't.
     var plan: [String] {
         switch self {
-        case .code: return ["Read the request and the two screenshots", "Match the ears to the menu bar's height",
-                            "Take the spacing from the second screenshot", "Build and run the tests"]
-        case .formula: return ["Read the formula", "Explain each term"]
+        case .code: return [L("Read the request and the two screenshots"), L("Match the ears to the menu bar's height"),
+                            L("Take the spacing from the second screenshot"), L("Build and run the tests")]
+        case .formula: return [L("Read the formula"), L("Explain each term")]
         case .calendar, .draft: return []
         }
     }
@@ -105,7 +116,7 @@ extension V2Request {
     func planDone(beat: Int, followUp: Bool) -> Int {
         guard !followUp else { return 0 }
         switch self {
-        case .code: return [0, 1, 2, 3, 3, 4][min(beat, 5)]
+        case .code: return [0, 1, 2, 3, 3, 3, 4][min(beat, 6)]
         case .formula: return [0, 1, 2][min(beat, 2)]
         default: return 0
         }
@@ -131,7 +142,7 @@ extension V2Request {
     func answer(followUp: Bool) -> String {
         switch (self, followUp) {
         case (.code, false):
-            return """
+            return L("""
             The ears now match the menu bar's height, and the spacing follows your second screenshot.
 
             ### What changed
@@ -142,9 +153,9 @@ extension V2Request {
             ### Checked
             - `swift build` passes.
             - `swift test` passes, the 12 tests in `NotchGeometryTests` among them.
-            """
+            """)
         case (.code, true):
-            return """
+            return L("""
             It holds on an external display too: the software island takes the same ear height there.
 
             ### What I checked
@@ -157,9 +168,9 @@ extension V2Request {
             - `softwareIslandEars` in [NotchGeometryTests.swift](Tests/FoveaCoreTests/NotchGeometryTests.swift), which pins the ear height there.
 
             `swift test --filter NotchGeometryTests` passes.
-            """
+            """)
         case (.formula, false):
-            return """
+            return L("""
             It turns each word into a weighted mix of the other words' values.
 
             | Term | What it means |
@@ -170,32 +181,32 @@ extension V2Request {
             | softmax | Turns the scores into weights that add up to 1 |
 
             So a word's output is the others' values, weighted by how well they match it.
-            """
+            """)
         case (.formula, true):
-            return """
+            return L("""
             Without it, the scores grow with the key size and softmax saturates.
 
             - A dot product of two *d*-long vectors grows about as √*d*.
             - Dividing by √dₖ keeps the scores near 1, so the weights stay soft.
-            """
+            """)
         case (.calendar, false):
-            return """
+            return L("""
             Two things this afternoon:
 
             - **2:00 PM** Design review with Mia · Zoom
             - **4:30 PM** Dentist · 18 Grove St
 
             You're free from 3:00 to 4:30.
-            """
+            """)
         case (.calendar, true):
-            return """
+            return L("""
             Free from 1:00 tomorrow.
 
             - **12:00 PM** Lunch with Ana · Tartine
             - **1:00 PM** Free until 6:00
-            """
+            """)
         case (.draft, false):
-            return """
+            return L("""
             Here's a short yes, with the invite to follow:
 
             > Hi Sam,
@@ -203,9 +214,9 @@ extension V2Request {
             > Thursday at 3 works for me. I'll send an invite this afternoon.
             >
             > Best,
-            """
+            """)
         case (.draft, true):
-            return """
+            return L("""
             The same yes, a little warmer:
 
             > Hi Sam,
@@ -213,7 +224,7 @@ extension V2Request {
             > Thursday at 3 is perfect, looking forward to it. I'll send an invite this afternoon.
             >
             > Best,
-            """
+            """)
         }
     }
 
@@ -227,23 +238,23 @@ extension V2Request {
         switch (self, followUp) {
         case (.code, false):
             return V2Work(seconds: 161, entries: [
-                .remark("I'll look at your two screenshots first, then find where the ears get their height."),
-                step(.read, "your 2 screenshots"),
+                .remark(L("I'll look at your two screenshots first, then find where the ears get their height.")),
+                step(.read, L("your 2 screenshots")),
                 step(.read, "IslandShape.swift"),
-                step(.search, "menuBarHeight", note: "3 files"),
+                step(.search, "menuBarHeight", note: L("3 files")),
                 step(.read, "NotchGeometry.swift"),
-                .remark("The ears use a fixed 22 pt. I'll read the height from the menu bar instead, and take the spacing from your second screenshot."),
+                .remark(L("The ears use a fixed 22 pt. I'll read the height from the menu bar instead, and take the spacing from your second screenshot.")),
                 step(.edit, "IslandShape.swift", added: 3, removed: 1),
                 step(.edit, "NotchGeometry.swift", added: 2, removed: 1),
-                .remark("Building and running the tests."),
+                .remark(L("Building and running the tests.")),
                 step(.build, "swift build", passed: true),
                 step(.test, "swift test", passed: true),
             ])
         case (.code, true):
             return V2Work(seconds: 72, entries: [
-                .remark("I'll check the island on a display without a notch."),
+                .remark(L("I'll check the island on a display without a notch.")),
                 step(.read, "NotchGeometry.swift"),
-                step(.search, "softwareIsland", note: "2 files"),
+                step(.search, "softwareIsland", note: L("2 files")),
                 step(.read, "Fixtures.swift"),
                 step(.edit, "Fixtures.swift", added: 9, removed: 0),
                 step(.edit, "NotchGeometryTests.swift", added: 14, removed: 0),
@@ -251,28 +262,28 @@ extension V2Request {
             ])
         case (.formula, false):
             return V2Work(seconds: 8, entries: [
-                step(.read, "your screenshot"),
-                .remark("This is scaled dot-product attention, from the paper's section 3.2.1."),
+                step(.read, L("your screenshot")),
+                .remark(L("This is scaled dot-product attention, from the paper's section 3.2.1.")),
             ])
         case (.formula, true):
-            return V2Work(seconds: 6, entries: [.remark("The scaling keeps the softmax away from its flat ends.")])
+            return V2Work(seconds: 6, entries: [.remark(L("The scaling keeps the softmax away from its flat ends."))])
         case (.calendar, false):
             return V2Work(seconds: 4, entries: [
-                .remark("Checking this afternoon in your calendar."),
-                step(.tool, "calendar · list_events", note: "2 events"),
+                .remark(L("Checking this afternoon in your calendar.")),
+                step(.tool, "calendar · list_events", note: L("2 events")),
             ])
         case (.calendar, true):
             return V2Work(seconds: 4, entries: [
-                .remark("Checking tomorrow."),
-                step(.tool, "calendar · list_events", note: "2 events"),
+                .remark(L("Checking tomorrow.")),
+                step(.tool, "calendar · list_events", note: L("2 events")),
             ])
         case (.draft, false):
             return V2Work(seconds: 9, entries: [
-                .remark("Reading Sam's email."),
+                .remark(L("Reading Sam's email.")),
                 step(.tool, "mail · read_message"),
             ])
         case (.draft, true):
-            return V2Work(seconds: 5, entries: [.remark("Making the same reply a little warmer.")])
+            return V2Work(seconds: 5, entries: [.remark(L("Making the same reply a little warmer."))])
         }
     }
 
@@ -281,13 +292,13 @@ extension V2Request {
     func artifacts(followUp: Bool, changes: [FileChange]) -> [V2Artifact] {
         switch self {
         case .code:
-            return changes.map { V2Artifact(title: $0.name, symbol: "swift", change: $0) }
+            return changes.map { V2Artifact(title: $0.name, symbol: "swift", change: $0, path: $0.path) }
         case .formula:
-            return [V2Artifact(title: "the paper", symbol: "doc.richtext")]
+            return [V2Artifact(title: L("the paper"), symbol: "doc.richtext", open: L("Open the paper"))]
         case .calendar:
-            return [V2Artifact(title: "Calendar", symbol: "calendar")]
+            return [V2Artifact(title: L("Calendar"), symbol: "calendar", open: L("Open Calendar"))]
         case .draft:
-            return [V2Artifact(title: "the draft in Mail", symbol: "envelope")]
+            return [V2Artifact(title: L("the draft in Mail"), symbol: "envelope", open: L("Open the draft in Mail"))]
         }
     }
 }
@@ -296,14 +307,14 @@ extension AgentWork {
     /// #16, decided: the kind of step, never its object (the dev team's proposal).
     var kindLine: String {
         switch self {
-        case .reading: return "Reading files"
-        case .editing: return "Editing files"
-        case .running: return "Running a command"
-        case .browsing: return "Searching the web"
-        case .thinking: return "Thinking"
-        case .asking: return "Waiting for you"
-        case .done: return "Done"
-        case .failed: return "Failed"
+        case .reading: return L("Reading files")
+        case .editing: return L("Editing files")
+        case .running: return L("Running a command")
+        case .browsing: return L("Searching the web")
+        case .thinking: return L("island.thinking", english: "Thinking")
+        case .asking: return L("Waiting for you")
+        case .done: return L("island.done", english: "Done")
+        case .failed: return L("Failed")
         }
     }
 
@@ -325,14 +336,14 @@ extension AgentWork {
     func past(_ object: String?) -> String {
         let thing = object ?? ""
         switch self {
-        case .reading: return object == nil ? "Read the request" : "Read \(thing)"
-        case .editing: return "Edited \(thing)"
-        case .running: return "Ran \(thing)"
-        case .browsing: return "Searched \(thing)"
-        case .thinking: return "Thought it through"
-        case .asking: return "Asked you"
-        case .done: return "Done"
-        case .failed: return "Failed"
+        case .reading: return object == nil ? L("Read the request") : L("Read \(thing)")
+        case .editing: return L("Edited \(thing)")
+        case .running: return L("Ran \(thing)")
+        case .browsing: return L("Searched \(thing)")
+        case .thinking: return L("Thought it through")
+        case .asking: return L("Asked you")
+        case .done: return L("island.done", english: "Done")
+        case .failed: return L("Failed")
         }
     }
 }
@@ -344,10 +355,10 @@ extension WorkbenchModel {
     func v2ModelLabel(agent: String) -> String {
         let options = ModelCatalog.options(agent: agent == ChatAgent.fovea.id ? "claude-code" : agent)
         guard let id = v2Model, let model = options.first(where: { $0.id == id }) else {
-            return v2Effort.map { "Auto · \(ModelCatalog.effortName($0))" } ?? "Auto"
+            return v2Effort.map { L("Auto · \(ModelCatalog.effortName($0))") } ?? L("Auto")
         }
         if let effort = v2Effort ?? model.defaultEffort, model.efforts.contains(effort) {
-            return "\(model.name) · \(ModelCatalog.effortName(effort))"
+            return L("\(model.name) · \(ModelCatalog.effortName(effort))")
         }
         return model.name
     }
@@ -428,7 +439,8 @@ extension WorkbenchModel {
     /// What it made, to open.
     func v2Artifacts(_ task: AgentTaskItem) -> [V2Artifact] {
         if directorSessions.contains(task.id) {
-            return (directorFiles[task.id] ?? []).map { V2Artifact(title: $0, symbol: "doc.text") }
+            // Oct 15 review, QA20: in the first run's folder (`cases.fileRoots`), to show and copy.
+            return (directorFiles[task.id] ?? []).map { V2Artifact(title: ($0 as NSString).lastPathComponent, symbol: "doc.text", path: $0) }
         }
         let request = v2Requests[task.id] ?? v2Request
         return request.artifacts(followUp: v2FollowUps.contains(task.id), changes: task.changes)
@@ -437,7 +449,7 @@ extension WorkbenchModel {
     /// Open: the file in the editor, the paper, the calendar; here the island rests, as it would
     /// once the app comes forward.
     func openArtifact(_ artifact: V2Artifact) {
-        if notchState == .v2Chat { closeV2Chat() }
+        if notchState == .v2Chat { cases.editing = nil; closeV2Chat() }
     }
 
     // MARK: Titles (#15)
@@ -506,11 +518,12 @@ extension WorkbenchModel {
 
     /// Done: the next waiting message goes, unless the queue holds. Returns whether one went.
     func takeNextQueued(_ id: String) -> Bool {
-        guard !v2QueuePaused.contains(id), let next = v2Queue[id]?.first else { return false }
+        // Oct 15 review, QA11: one that couldn't send waits for Try Again; the next goes.
+        guard !v2QueuePaused.contains(id), let next = v2Queue[id]?.first(where: { !$0.failed }) else { return false }
         Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(500))
             guard let self else { return }
-            withAnimation(WorkbenchTokens.V2.resize) { self.v2Queue[id]?.removeFirst() }
+            withAnimation(WorkbenchTokens.V2.resize) { self.v2Queue[id]?.removeAll { $0 == next } }
             self.askMoreV2(id, text: next.text, inWindow: true, now: true)
         }
         return true
@@ -663,7 +676,7 @@ extension WorkbenchModel {
             v2Runs[id]?.cancel()
             agentTasks[i].state = .needsYou
             agentTasks[i].work = .asking
-            agentTasks[i].activity = "Run swift test --filter NotchGeometry?"
+            agentTasks[i].activity = L("Run swift test --filter NotchGeometry?")
             agentTasks[i].ask = .approval("swift test --filter NotchGeometry")
             v2QueuePaused.insert(id)
         }

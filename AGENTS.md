@@ -6,7 +6,7 @@ macOS app. Read this before writing code.
 
 ## Current task
 
-**Fovea 1.0 (`FoveaV1/`, Oct 9) is the app now:** the first run, the window and the notch as one `Fovea.app` on the real desktop and the real notch, forked from the three prototypes below (which stay for design work). How to run it and its layout: `FoveaV1/README.md`. What was decided and what departs from the rules here: `docs/v1/V1.md`. Work on the product goes there; the prototypes below are the design references.
+**Fovea 1.0 (`FoveaV1/`, Oct 9) is the app now:** the first run, the window and the notch as one `Fovea.app` on the real desktop and the real notch, forked from the three prototypes below (which stay for design work). How to run it and its layout: `FoveaV1/README.md`. What was decided and what departs from the rules here: `docs/v1/V1.md`. The dev team's review of Oct 15, every missing case built and Ryan's decisions (the Memory browser, changeable shortcuts, recordings kept only for failures, the menu bar icon, closing never stops, each press on the display you're working on), with the departures from the rules below: `docs/v1/REVIEW_2026-10-15.md`; `--review` adds a Review menu that stages each new state (no marks on the UI). Work on the product goes there; the prototypes below are the design references.
 
 Two surfaces, one app, both runnable prototypes:
 
@@ -126,7 +126,8 @@ material: ⌃⌥⌘1…5 from any app (or Island menu › Material, or --demo is
          B–E are prototypes against PRD §2.7/§6 until an amendment lands. The pick persists in IslandPrefs.
 workbench: cd Prototypes && swift run FoveaWorkbench [--snapshot shots | --smoke | --play-demo | --record demo.mp4]   # mock desktop + control panel for notch designs (Prototypes/README.md)
 icons:   scripts/fetch-destination-icons.sh    # provider marks → Resources/Destinations
-app icon: swift scripts/fovea-icon.swift       # the serif f, traced from Brand/Source → AppIcon.png, Brand/ (layered .icon, iconset, masters, variants)
+app icon: python3 scripts/fovea-pressed-loop.py  # the pressed loop's artwork (Oct 13, needs numpy) → Brand/Source
+         swift scripts/fovea-icon.swift       # from it → AppIcon.png, Brand/ (layered .icon, iconset, marks, variants), the agents' fovea.png
 lint:    (none yet)
 format:  (none yet)
 ```

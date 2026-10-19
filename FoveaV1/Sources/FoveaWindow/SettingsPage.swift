@@ -98,7 +98,7 @@ struct SoonPill: View {
     @Environment(\.palette) private var palette
     var text = "Soon"
     var body: some View {
-        Text(text)
+        Text(L(key: text))
             .font(.system(size: 10.5, weight: .semibold))
             .foregroundStyle(palette.secondary)
             .padding(.horizontal, 7)
@@ -107,9 +107,14 @@ struct SoonPill: View {
     }
 }
 
+// Oct 15 review: Voice & Capture, Shortcuts, Connectors and Eye Tracking are in their own files now
+// (VoiceCaptureSettings.swift, ShortcutRecorder.swift, AgentStatus.swift, EyeTrackingSettings.swift).
+
 /// Settings' values for the prototype (in memory; nothing here reaches the system).
 struct Prefs {
-    enum Gaze: Equatable { case idle, downloading(Double), downloaded }
+    /// The Gaze Collector's steps (Oct 15 review, ST-08: following the dots, reviewing, sending,
+    /// then collected, when eye tracking's controls appear). Simulated.
+    enum Gaze: Equatable { case idle, downloading(Double), downloaded, collecting(Double), reviewing, sending(Double), collected }
 
     var openAtLogin = true
     var showInDock = true
@@ -119,10 +124,10 @@ struct Prefs {
     var remember = true
     var rememberNotice = true
     var microphone = "MacBook Air Microphone"
-    var speechLanguage = "Automatic"
-    /// Fovea's words, and the notch's (row 6).
+    /// Oct 18, Ryan: the languages the person speaks (FoveaPrefs.languages), and the primary of
+    /// them (FoveaPrefs.language): Fovea's interface, the notch and speech recognition use it.
+    var languages: [FoveaLanguage] = [.english]
     var appLanguage: FoveaLanguage = .english
-    var notchLanguage: NotchLanguage = .sameAsApp
     /// Memory Link (row 24, as the Mac app has it): remember what you send, not only what you ask.
     var memoryLink = true
     /// Places Fovea takes nothing from (row 25): apps, websites, and words.
@@ -159,6 +164,14 @@ struct Prefs {
     var hoverWait: HoverWait = .normal
     var showAnswers = true
     var reviewFirst = true
+    // Oct 15 review: Voice & Capture's Tidy my words (ST-04.2), Appearance's Motion (IS02) and the
+    // recorded shortcuts (ST-03.1), mirrored to FoveaPrefs by the window's controller.
+    var tidyWords = true
+    var motion: MotionPreference = .system
+    var shortcutChords: [String: KeyChord] = [:]
+    /// Oct 17, Ryan (FR-06): the languages asked for under the first run's More…, and here
+    /// (FoveaPrefs.requestedLanguages, mirrored by the window's controller).
+    var requestedLanguages: [String] = []
 
     /// The notch's settings as they ship.
     var notchIsDefault: Bool {
@@ -176,7 +189,8 @@ struct Prefs {
 // MARK: - Account
 
 /// Who you are (your photo and name, yours to change), then the words Fovea writes your way and
-/// what it knows of you, and how it runs on this Mac: its version and updates, and help.
+/// what it knows of you, and how it runs on this Mac. Oct 15 review, MW-04c: the version, updates,
+/// beta, help and the links moved to Settings › About; RC-02: earlier data, while there is some.
 struct AccountPane: View {
     @Environment(CapturesModel.self) private var model
     @Environment(\.palette) private var palette
@@ -194,14 +208,18 @@ struct AccountPane: View {
         if dictionary { DictionarySection() }
         if memories { MemorySection() }
 
-        SettingsSection("On this Mac") {
+        // Oct 15 review, RC-02.1: captures from an earlier version or account, only while there are.
+        EarlierDataSection()
+
+        // "On this Mac" is also the first run's word for an agent already installed: a key of its own.
+        SettingsSection(L("On this Mac (settings)", english: "On this Mac")) {
             SettingsCard {
                 // Light, Dark, or as the Mac is set: here on the tabs; the sidebar layouts give it
                 // Settings › Appearance, with the theme and the accent.
                 if !native {
                     SettingsRow("Appearance") {
                         Picker("Appearance", selection: $model.appearance) {
-                            ForEach([Appearance.light, .dark, .system], id: \.self) { Text($0.title).tag($0) }
+                            ForEach([Appearance.light, .dark, .system], id: \.self) { Text(L(key: $0.title)).tag($0) }
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()
@@ -211,20 +229,13 @@ struct AccountPane: View {
                 }
                 SettingsRow("Open at login") { InkToggle(title: "Open at login", isOn: $model.prefs.openAtLogin) }
                 RowDivider()
-                SettingsRow("Show in Dock", detail: "Off keeps Fovea in the menu bar and around the notch.") {
+                // Oct 15 review, ST-02.5: for real (the app follows prefs.showInDock).
+                SettingsRow("Show in Dock", detail: "Off, Fovea stays in the menu bar. Open this window from its icon there.") {
                     InkToggle(title: "Show in Dock", isOn: $model.prefs.showInDock)
                 }
-                RowDivider()
-                UpdateRow()
-                RowDivider()
-                SettingsRow("Get beta updates") { InkToggle(title: "Get beta updates", isOn: $model.prefs.betaUpdates) }
-            } footer: {
-                LegalLinks()
             }
         }
         .id("account-mac")
-
-        SupportSection()
     }
 }
 
@@ -238,6 +249,10 @@ struct PlanPane: View {
 
     var body: some View {
         let usage = model.usage
+        // Oct 15 review, AC-02.1 and MW-04d: the trial, its end, a subscription ending or expired,
+        // a payment that failed, the billing page that didn't open.
+        PlanStatusSection()
+
         SettingsSection("This month") {
             PlanUsageCard()
         }
@@ -258,15 +273,33 @@ struct PlanPane: View {
                     SettingsRow("Nothing to pay", detail: "Free has no bill. Upgrade any time; you're charged from that day.")
                 } else {
                     let price = model.plan.price(yearly: model.yearlyBilling)
-                    if let next = model.nextPlan {
-                        SettingsRow("\(model.plan.title) ends \(Lines.day(usage.resets))",
-                                    detail: "Then \(next.title): \(next.credits.formatted()) credits a month. Until then nothing changes.") {
-                            TextButton("Keep \(model.plan.title)") { model.choose(model.plan) }
+                    // Oct 15 review, AC-02.1 and MW-04d: a trial has no bill yet; a cancelled
+                    // subscription doesn't renew.
+                    // Oct 18, Ryan: in the primary language, a whole sentence for a year and for a month.
+                    if model.planAlert == .trial {
+                        SettingsRow(L("Trial ends \(Lines.day(model.trialEnds))"),
+                                    detail: model.yearlyBilling ? L("Nothing to pay until you choose a plan. Then $\(price) a year.")
+                                                                : L("Nothing to pay until you choose a plan. Then $\(price) a month."))
+                    } else if model.planAlert == .subscriptionEnding {
+                        SettingsRow(L("\(model.plan.title) ends \(Lines.day(usage.resets))"),
+                                    detail: "Cancelled: it won't renew. Renew on hellofovea.com to keep it.")
+                    } else if let next = model.nextPlan {
+                        SettingsRow(L("\(model.plan.title) ends \(Lines.day(usage.resets))"),
+                                    detail: L("Then \(next.title): \(next.credits.formatted()) credits a month. Until then nothing changes.")) {
+                            TextButton(L("Keep \(model.plan.title)")) { model.choose(model.plan) }
                         }
                     } else {
-                        SettingsRow("Renews \(Lines.day(usage.resets))",
-                                    detail: "$\(price) \(model.yearlyBilling ? "a year" : "a month"). Simulated: nothing is charged.")
+                        SettingsRow(L("Renews \(Lines.day(usage.resets))"),
+                                    detail: model.yearlyBilling ? L("$\(price) a year. Simulated: nothing is charged.")
+                                                                : L("$\(price) a month. Simulated: nothing is charged."))
                     }
+                }
+                RowDivider()
+                // Cancelling or keeping the subscription happens on the website (Oct 13).
+                SettingsRow("Your subscription", detail: "Cancel it, keep it or change it on hellofovea.com.") {
+                    // Oct 15 review, MW-04d: a page that won't open says so (Plan's Try Again).
+                    Button("Manage on the Website ↗") { model.openBilling() }
+                        .buttonStyle(.link)
                 }
             }
         }
@@ -310,7 +343,7 @@ private struct PlanTile: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(plan.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(palette.text)
                 Spacer()
-                if current { Badge(text: "Current") } else if waiting { Badge(text: "From \(Lines.day(model.usage.resets))") }
+                if current { Badge(text: "Current") } else if waiting { Badge(text: L("From \(Lines.day(model.usage.resets))")) }
             }
             // Who it's for, under its name.
             Text(plan.line)
@@ -318,7 +351,7 @@ private struct PlanTile: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 3)
             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(price == 0 ? "$0" : "$\(price)").font(.system(size: 22, weight: .semibold)).foregroundStyle(palette.text)
+                Text(verbatim: "$\(price)").font(.system(size: 22, weight: .semibold)).foregroundStyle(palette.text)
                     .monospacedDigit()
                     .contentTransition(.numericText())
                 Text(price == 0 ? "for good" : (yearly ? "a year" : "a month")).font(.system(size: 12)).foregroundStyle(palette.secondary)
@@ -357,27 +390,31 @@ private struct PlanTile: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 30)
         } else if waiting {
-            PillButton("Keep \(model.plan.title) instead", kind: .secondary) { model.choose(model.plan) }
+            PillButton(L("Keep \(model.plan.title) instead"), kind: .secondary) { model.choose(model.plan) }
                 .frame(maxWidth: .infinity)
         } else if plan > model.plan {
-            PillButton("Upgrade to \(plan.title)", kind: .prominent) { confirm = true }
+            PillButton(L("Upgrade to \(plan.title)"), kind: .prominent) { confirm = true }
                 .frame(maxWidth: .infinity)
         } else {
-            PillButton("Switch to \(plan.title)", kind: .secondary) { confirm = true }
+            PillButton(L("Switch to \(plan.title)"), kind: .secondary) { confirm = true }
                 .frame(maxWidth: .infinity)
         }
     }
 
+    // Oct 18, Ryan: in the primary language.
     private var confirmTitle: String {
-        plan > model.plan ? "Upgrade to \(plan.title) now?" : "Switch to \(plan.title) on \(Lines.day(model.usage.resets))?"
+        plan > model.plan ? L("Upgrade to \(plan.title) now?") : L("Switch to \(plan.title) on \(Lines.day(model.usage.resets))?")
     }
 
     private var confirmMessage: String {
         let price = plan.price(yearly: model.yearlyBilling)
+        let credits = plan.credits.formatted()
         if plan > model.plan {
-            return "\(plan.credits.formatted()) credits a month, from today. $\(price) \(model.yearlyBilling ? "a year" : "a month"). This is a prototype: nothing is charged."
+            return model.yearlyBilling
+                ? L("\(credits) credits a month, from today. $\(price) a year. This is a prototype: nothing is charged.")
+                : L("\(credits) credits a month, from today. $\(price) a month. This is a prototype: nothing is charged.")
         }
-        return "You keep \(model.plan.title) until then. After that, \(plan.credits.formatted()) credits a month. You can change your mind until then."
+        return L("You keep \(model.plan.title) until then. After that, \(credits) credits a month. You can change your mind until then.")
     }
 }
 
@@ -386,7 +423,7 @@ private struct Badge: View {
     @Environment(\.palette) private var palette
     let text: String
     var body: some View {
-        Text(text)
+        Text(L(key: text))
             .font(.system(size: 10.5, weight: .semibold))
             .foregroundStyle(palette.isDark ? Color.black : Color.white)
             .padding(.horizontal, 7)
@@ -424,596 +461,4 @@ struct FlowLayout: Layout {
 }
 
 
-// MARK: - Voice & Capture
-
-struct VoicePane: View {
-    @Environment(CapturesModel.self) private var model
-    @Environment(\.palette) private var palette
-    @State private var confirmClear = false
-
-    var body: some View {
-        @Bindable var model = model
-        SettingsSection("Voice") {
-            SettingsCard {
-                SettingsRow("Microphone") {
-                    HStack(spacing: 10) {
-                        LevelMeter()
-                        InlinePicker(options: ["MacBook Air Microphone", "AirPods Pro", "Studio Display"],
-                                     selection: $model.prefs.microphone, label: { $0 })
-                    }
-                }
-                RowDivider()
-                SettingsRow("Play sounds when listening starts and stops") {
-                    InkToggle(title: "Play sounds", isOn: $model.prefs.sounds)
-                }
-            } footer: {
-                // The language you speak moved to Language, with Fovea's and the notch's (row 6).
-                Text("The language you speak is in Language.")
-            }
-        }
-
-        // Screen awareness (Yulun, Oct 7): you choose, and can see, what dictation reads from your
-        // screen. Item by item, as What a question can include (row 22).
-        SettingsSection("Screen awareness", note: "What Fovea reads from your screen while you dictate. Never the whole screen, unless you take it.") {
-            SettingsCard {
-                SettingsRow("What you pick", detail: "Text you select, the regions and files you take.") {
-                    StatusLabel(word: "Always")
-                }
-                RowDivider()
-                SettingsRow("The window you're speaking into", detail: "Its app, its title, its web address, or the file it shows.") {
-                    InkToggle(title: "The window you're speaking into", isOn: $model.prefs.dictationWindow.animation(model.motion.animation(.swap)))
-                }
-                if model.prefs.dictationWindow {
-                    VStack(spacing: 0) {
-                        RowDivider()
-                        SettingsRow("The text in that window", detail: "A picture of the window, read on this Mac. Only its text goes with your words, to spell names and terms right.") {
-                            InkToggle(title: "The text in that window", isOn: $model.prefs.dictationWindowText)
-                        }
-                    }
-                    .transition(.opacity)
-                }
-            } footer: {
-                Text("What a question can include is in Connectors.")
-            }
-        }
-        .id("screen")
-
-        SettingsSection("Capture") {
-            SettingsCard {
-                SettingsRow("Read the text in what you take", detail: "So you can search the words in a region you took.") {
-                    InkToggle(title: "Read the text in what you take", isOn: $model.prefs.readText)
-                }
-                RowDivider()
-                PrivacyRulesCard()
-            }
-        }
-        .id("capture")
-
-        SettingsSection("History") {
-            SettingsCard {
-                SettingsRow("Keep captures") {
-                    InlinePicker(options: ["24 hours", "1 week", "1 month", "Forever"], selection: $model.prefs.keepCaptures, label: { $0 })
-                }
-                RowDivider()
-                SettingsRow("Keep screenshots", detail: "When a screenshot goes, your words and the text read off it stay.") {
-                    InlinePicker(options: ["30 days", "90 days", "180 days", "Forever"], selection: $model.prefs.keepScreenshots, label: { $0 })
-                }
-            } footer: {
-                Text("Your captures, recordings and screenshots stay on this Mac.")
-            }
-        }
-
-        SettingsSection("Permissions") {
-            SettingsCard {
-                SettingsRow("Microphone") { StatusLabel(word: "Allowed") }
-                RowDivider()
-                SettingsRow("Speech Recognition") { StatusLabel(word: "Allowed") }
-                RowDivider()
-                SettingsRow("Screen Recording", detail: model.prefs.dictationWindow && model.prefs.dictationWindowText
-                            ? "To take regions and the whole screen, and to read the window you're speaking into."
-                            : "To take regions and the whole screen.") { StatusLabel(word: "Allowed") }
-            }
-        }
-
-        let n = model.library.captures.count
-        DangerCard(title: "Clear history",
-                   consequence: "Deletes all \(n.formatted()) captures and their screenshots from this Mac. This can't be undone.",
-                   button: "Clear History…") { confirmClear = true }
-            .confirmationDialog("Delete all \(n.formatted()) captures?", isPresented: $confirmClear) {
-                Button("Delete \(n.formatted()) Captures", role: .destructive) { model.say("Would clear your history (simulated)") }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Every capture, its screenshots and its words leave this Mac. This can't be undone.")
-            }
-    }
-
-    static func icon(_ name: String) -> NSImage? {
-        let ids = ["1Password": "com.1password.1password", "Keychain Access": "com.apple.keychainaccess",
-                   "Messages": "com.apple.MobileSMS", "Mail": "com.apple.mail"]
-        guard let id = ids[name] else { return NSWorkspace.shared.icon(for: .application) }
-        return Art.icon(AppRef(name, id))
-    }
-}
-
-/// A small input meter, moving as a microphone would (simulated; still under Reduce Motion).
-private struct LevelMeter: View {
-    @Environment(\.palette) private var palette
-    @Environment(\.motion) private var motion
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 0.08, paused: motion.reduce)) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            HStack(alignment: .center, spacing: 2) {
-                ForEach(0..<5, id: \.self) { i in
-                    let v = motion.reduce ? 0.3 : 0.25 + 0.75 * abs(sin(t * (2.1 + Double(i) * 0.7) + Double(i)))
-                    Capsule().fill(palette.text.opacity(0.55)).frame(width: 2.5, height: 4 + 10 * v)
-                }
-            }
-            .frame(height: 14)
-        }
-        .accessibilityHidden(true)
-    }
-}
-
-// MARK: - Shortcuts
-
-struct ShortcutsPane: View {
-    @Environment(CapturesModel.self) private var model
-    @Environment(\.palette) private var palette
-    /// Read when the pane shows, and again each second it's open (a grant is seen live).
-    @State private var granted: [Permission: Bool] = [:]
-    private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-
-    var body: some View {
-        // Fovea's keys, from the one table every surface reads (FoveaKit's `FoveaKeys`): the
-        // round the onboarding teaches and the notch acts on.
-        SettingsSection(nil, note: "Press once to start, again to stop.") {
-            HStack(alignment: .top, spacing: 12) {
-                ForEach(FoveaKeys.daily) { key in
-                    MainKey(title: key.title, detail: key.detail, keys: key.keys)
-                }
-            }
-        }
-
-        SettingsSection("While you speak") {
-            SettingsCard {
-                ForEach(Array(FoveaKeys.whileSpeaking.enumerated()), id: \.element.id) { i, key in
-                    if i > 0 { RowDivider() }
-                    SettingsRow(key.title, detail: key.detail) { FixedCaps(keys: key.keys, presses: key.presses) }
-                }
-            }
-        }
-
-        SettingsSection("In the notch", note: "The board opens when the pointer rests at the notch (Settings › Notch).") {
-            SettingsCard {
-                ForEach(Array(FoveaKeys.inTheNotch.enumerated()), id: \.element.id) { i, key in
-                    if i > 0 { RowDivider() }
-                    SettingsRow(key.title, detail: key.detail) { FixedCaps(keys: key.keys, presses: key.presses) }
-                }
-            }
-        }
-
-        SettingsSection("Permissions", note: "Fovea needs these for its keys in any app, to take what you point at, and to hear you.") {
-            SettingsCard {
-                let rows: [Permission] = [.accessibility, .screenRecording, .microphone, .speechRecognition]
-                ForEach(Array(rows.enumerated()), id: \.element) { i, permission in
-                    if i > 0 { RowDivider() }
-                    SettingsRow(permission.paneName) {
-                        if granted[permission] ?? permission.granted {
-                            StatusLabel(word: "Allowed")
-                        } else {
-                            StatusLabel(word: "Not allowed", ok: false,
-                                        fix: ("Open Privacy Settings…", { permission.openSettings() }))
-                        }
-                    }
-                }
-            }
-        }
-        .onAppear { refresh() }
-        .onReceive(tick) { _ in refresh() }
-    }
-
-    private func refresh() {
-        for p in Permission.allCases { granted[p] = p.granted }
-    }
-}
-
-/// A shortcut's keys, as caps (they aren't changed in 1.0), "×2" for one pressed twice.
-private struct FixedCaps: View {
-    @Environment(\.palette) private var palette
-    let keys: [String]
-    var presses = 1
-
-    var body: some View {
-        HStack(spacing: 4) {
-            ForEach(Array(keys.enumerated()), id: \.offset) { _, key in
-                Text(key)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(palette.text)
-                    .frame(minWidth: 22, minHeight: 22)
-                    .padding(.horizontal, key.count > 1 ? 6 : 0)
-                    .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(palette.ink(0.06)))
-                    .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(palette.ink(0.12), lineWidth: 0.5))
-            }
-            if presses > 1 {
-                Text("×\(presses)").font(.system(size: 11, weight: .semibold)).foregroundStyle(palette.secondary)
-            }
-        }
-        .accessibilityElement()
-        .accessibilityLabel(keys.joined(separator: " ") + (presses > 1 ? ", twice" : ""))
-    }
-}
-
-/// One of the two keys you'll use every day, given room: its caps large, its name and a line.
-private struct MainKey: View {
-    @Environment(\.palette) private var palette
-    let title: String
-    let detail: String
-    let keys: [String]
-    var body: some View {
-        // Concentric: the well inset 6 pt in a card rounded 14, so rounded 8.
-        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
-        VStack(alignment: .leading, spacing: 0) {
-            KeyCaps(keys: keys, large: true)
-                .frame(maxWidth: .infinity, minHeight: 64)
-                .background(palette.ink(0.04))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(palette.text)
-                Text(detail).font(.system(size: 11.5)).foregroundStyle(palette.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.horizontal, 4)
-            .padding(.top, 10)
-            .padding(.bottom, 4)
-        }
-        .padding(6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .settingsSurface(shape)
-    }
-}
-
-// MARK: - Connectors
-
-struct ConnectorsPane: View {
-    @Environment(CapturesModel.self) private var model
-    @Environment(\.palette) private var palette
-    @State private var checked = "Checked just now"
-
-    var body: some View {
-        @Bindable var model = model
-        SettingsSection("Agents") {
-            Button { model.say("Agents checked (simulated)") } label: {
-                HStack(spacing: 4) {
-                    Text(checked)
-                    Image(systemName: "arrow.clockwise").font(.system(size: 10, weight: .semibold))
-                }
-                .font(.system(size: 12))
-                .foregroundStyle(palette.secondary)
-            }
-            .buttonStyle(.plain)
-            .help("Check again")
-        } content: {
-            SettingsCard {
-                SettingsRow("Claude Code", detail: "Ready · 2.1", icon: Art.agentIcon("Claude Code"))
-                RowDivider(inset: 56)
-                SettingsRow("Codex", detail: "Ready · 0.47", icon: Art.agentIcon("Codex"))
-                RowDivider(inset: 56)
-                SettingsRow("Cursor", detail: "Not installed", icon: Art.agentIcon("Cursor")) {
-                    TextButton("Get Cursor ↗") { model.say("Would open Cursor's site (simulated)") }
-                }
-            } footer: {
-                Text("Dispatches go to these, through the copy already signed in on this Mac.")
-            }
-        }
-
-        // Who answers, with which model; what a question may include (rows 21, 22).
-        QuestionsSections()
-            .id("questions")
-
-        SettingsSection("What agents can read") {
-            SettingsCard {
-                SettingsRow("Claude Code", icon: Art.agentIcon("Claude Code")) { StatusLabel(word: "Can read") }
-                RowDivider(inset: 56)
-                SettingsRow("Codex", icon: Art.agentIcon("Codex")) {
-                    TextButton("Add…") { model.say("Would add Fovea Memory to Codex (simulated)") }
-                }
-            } footer: {
-                Text("Agents read your memories, except the ones you hide from them.")
-                Spacer()
-                TextButton("Access Log…") { model.accessLogShown = true }
-            }
-        }
-    }
-}
-
-// MARK: - Eye Tracking
-
-/// In beta, and honest about it (row 34): there's a model at work already; the way to try it is
-/// to help collect the data that fits it to you.
-struct EyeTrackingPane: View {
-    @Environment(CapturesModel.self) private var model
-    @Environment(\.palette) private var palette
-
-    var body: some View {
-        SettingsSection(nil) {
-            // Concentric: the picture inset 8 pt in a card rounded 20, so rounded 12.
-            SettingsCard(radius: 20) {
-                VStack(spacing: 14) {
-                    GazeHero().frame(height: 196)
-                        .padding(.horizontal, -8)
-                        .padding(.top, -8)
-                    VStack(spacing: 6) {
-                        Text("Eye tracking is in beta")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(palette.text)
-                        // Row 34: say there's a model at work already, and how to get to try it.
-                        Text("Fovea already has a gaze model at work: look at something, say “this,” and it knows what you mean. To try it, spend ten minutes with the Gaze Collector; then it's yours, fitted to your eyes.")
-                            .font(.system(size: 13))
-                            .foregroundStyle(palette.secondary)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: 400)
-                    }
-                }
-                .cardPadding()
-                .padding(.bottom, 8)
-            }
-        }
-
-        SettingsSection("Try the beta", note: "The beta is open to people who help collect data. One session with the Gaze Collector fits the model to your eyes, and makes eye tracking better for everyone.") {
-            SettingsCard {
-                VStack(alignment: .leading, spacing: 14) {
-                    Step(number: 1, title: "Download the Gaze Collector", detail: "A small app, separate from Fovea.")
-                    Step(number: 2, title: "Follow the dots", detail: "About ten minutes, at your desk, with the camera on.")
-                    Step(number: 3, title: "Review, then send", detail: "Watch the recording first. Send it only if you want to.")
-                    Step(number: 4, title: "Turn on eye tracking", detail: "Once your session is in, the switch below works, with a model fitted to you.")
-                }
-                .cardPadding()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                RowDivider()
-                CollectorDownload()
-                    .cardPadding()
-                    .frame(maxWidth: .infinity)
-                RowDivider()
-                SettingsRow("Eye tracking", detail: "Available after your first session.") {
-                    InkToggle(title: "Eye tracking", isOn: .constant(false)).disabled(true)
-                }
-            }
-        }
-        .id("eye-beta")
-
-        SettingsSection("What the Collector records") {
-            SettingsCard {
-                SettingsRow("Video of your eyes", detail: "Only while you follow the dots. The camera light stays on the whole time.")
-                RowDivider()
-                SettingsRow("Where each dot was", detail: "Its place on the screen and when it moved.")
-                RowDivider()
-                SettingsRow("Nothing leaves without you", detail: "Recordings stay on your Mac until you review them and choose to send.")
-                RowDivider()
-                SettingsRow("Yours to delete", detail: "Remove any recording from the Collector, anytime.")
-            } footer: {
-                Text("Thank you. Every session helps Fovea see a little better.")
-            }
-        }
-    }
-}
-
-private struct Step: View {
-    @Environment(\.palette) private var palette
-    let number: Int
-    let title: String
-    let detail: String
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(verbatim: "\(number)")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(palette.text)
-                .frame(width: 18, height: 18)
-                .overlay(Circle().strokeBorder(palette.tertiary, lineWidth: 0.75))
-                .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 5 }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 13, weight: .medium)).foregroundStyle(palette.text)
-                Text(detail).font(.system(size: 11.5)).foregroundStyle(palette.secondary)
-            }
-        }
-    }
-}
-
-/// Download, then its progress, then Open, in place (the download is simulated: nothing is
-/// fetched).
-private struct CollectorDownload: View {
-    @Environment(CapturesModel.self) private var model
-    @Environment(\.palette) private var palette
-    var body: some View {
-        ZStack {
-            switch model.prefs.gaze {
-            case .idle:
-                VStack(spacing: 6) {
-                    PillButton("Download Gaze Collector", symbol: "arrow.down", kind: .prominent, large: true) {
-                        model.downloadCollector()
-                    }
-                    Text("38 MB · macOS 14 or later").font(.system(size: 11.5)).foregroundStyle(palette.secondary)
-                }
-                .transition(.blockSwap)
-            case .downloading(let p):
-                VStack(spacing: 8) {
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(palette.text.opacity(0.08))
-                            Capsule().fill(palette.text.opacity(0.85)).frame(width: max(4, geo.size.width * p))
-                        }
-                    }
-                    .frame(width: 240, height: 4)
-                    HStack(spacing: 10) {
-                        Text("Downloading… \(Int((p * 38).rounded())) of 38 MB").monospacedDigit()
-                        TextButton("Cancel") { model.cancelCollector() }
-                    }
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(palette.secondary)
-                }
-                .transition(.blockSwap)
-            case .downloaded:
-                VStack(spacing: 6) {
-                    HStack(spacing: 12) {
-                        PillButton("Open Gaze Collector", symbol: "eye", kind: .prominent, large: true) {
-                            model.say("Would open the Gaze Collector (simulated)")
-                        }
-                        TextButton("Show in Finder") { model.say("Would show it in Downloads (simulated)") }
-                    }
-                    StatusLabel(word: "In your Downloads folder")
-                }
-                .transition(.blockSwap)
-            }
-        }
-        .frame(minHeight: 56)
-    }
-}
-
-private struct GazeHero: View {
-    @Environment(CapturesModel.self) private var model
-    @Environment(\.palette) private var palette
-    @Environment(\.motion) private var motion
-    @State private var focus = 1
-    @State private var trail: [Int] = []
-    @State private var resting = true
-
-    private let screen = CGSize(width: 340, height: 178)
-    /// The three windows on the screen, and where on each the eyes land.
-    private let windows: [CGRect] = [
-        CGRect(x: 14, y: 22, width: 150, height: 82),
-        CGRect(x: 176, y: 22, width: 150, height: 82),
-        CGRect(x: 14, y: 114, width: 312, height: 50),
-    ]
-    private let gazes: [CGPoint] = [CGPoint(x: 96, y: 58), CGPoint(x: 236, y: 66), CGPoint(x: 150, y: 140)]
-
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(palette.mark.opacity(palette.isDark ? 0.10 : 0.16))
-            screenView
-        }
-        .task(id: motion.reduce) { await run() }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Coming soon: look at something on screen and say “this.”")
-    }
-
-    private var screenView: some View {
-        ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: 9, style: .continuous).fill(palette.card)
-            // The menu bar, with the notch where Fovea lives.
-            Rectangle().fill(palette.text.opacity(0.04)).frame(height: 12)
-            IslandShape(topRadius: 3, bottomRadius: 5)
-                .fill(Color.black)
-                .frame(width: 52, height: 12)
-                .offset(x: (screen.width - 52) / 2)
-            chart.frame(width: windows[0].width, height: windows[0].height).offset(x: windows[0].minX, y: windows[0].minY)
-            paragraph.frame(width: windows[1].width, height: windows[1].height).offset(x: windows[1].minX, y: windows[1].minY)
-            code.frame(width: windows[2].width, height: windows[2].height).offset(x: windows[2].minX, y: windows[2].minY)
-            ForEach(Array(windows.enumerated()), id: \.offset) { i, w in
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .strokeBorder(palette.text, lineWidth: 1.5)
-                    .frame(width: w.width + 4, height: w.height + 4)
-                    .offset(x: w.minX - 2, y: w.minY - 2)
-                    .opacity(focus == i && resting ? 1 : 0)
-                    .animation(motion.animation(.hover), value: focus == i && resting)
-            }
-            ForEach(Array(trail.enumerated()), id: \.offset) { n, i in
-                Circle().fill(palette.text)
-                    .frame(width: 5, height: 5)
-                    .opacity([0.35, 0.18, 0.08][min(n, 2)])
-                    .offset(x: gazes[i].x - 2.5, y: gazes[i].y - 2.5)
-            }
-            gaze.offset(x: gazes[focus].x - 18, y: gazes[focus].y - 18)
-            Text("this")
-                .font(.system(size: 10.5, weight: .semibold))
-                .foregroundStyle(palette.onMark)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 2.5)
-                .background(Capsule().fill(palette.mark))
-                .scaleEffect(resting ? 1 : 0.9, anchor: .bottomLeading)
-                .opacity(resting ? 1 : 0)
-                .offset(x: gazes[focus].x + 12, y: gazes[focus].y - 26)
-        }
-        .frame(width: screen.width, height: screen.height)
-        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(palette.hairline, lineWidth: 1))
-        .shadow(color: .black.opacity(palette.isDark ? 0.4 : 0.1), radius: 8, y: 3)
-    }
-
-    private var gaze: some View {
-        ZStack {
-            Circle().fill(RadialGradient(colors: [palette.mark.opacity(0.7), palette.mark.opacity(0)],
-                                         center: .center, startRadius: 2, endRadius: 18))
-            Circle().fill(palette.text).frame(width: 8, height: 8)
-            Circle().strokeBorder(Color.white, lineWidth: 1.5).frame(width: 8, height: 8)
-        }
-        .frame(width: 36, height: 36)
-    }
-
-    private var windowFill: some View {
-        RoundedRectangle(cornerRadius: 5, style: .continuous).fill(palette.text.opacity(0.035))
-    }
-
-    private var chart: some View {
-        HStack(alignment: .bottom, spacing: 7) {
-            ForEach([0.45, 0.7, 0.55, 0.9, 0.62, 0.8], id: \.self) { h in
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(palette.text.opacity(0.28))
-                    .frame(width: 14, height: 56 * h)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .padding(12)
-        .background(windowFill)
-    }
-
-    private var paragraph: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Capsule().fill(palette.text.opacity(0.5)).frame(width: 70, height: 6)
-            ForEach([118.0, 104, 122, 84], id: \.self) { w in
-                Capsule().fill(palette.text.opacity(0.16)).frame(width: w, height: 5)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(12)
-        .background(windowFill)
-    }
-
-    private var code: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array([[(0.0, 34.0, Color.purple), (40, 56, Color.blue)],
-                           [(14, 48, Color.pink), (68, 90, Color.gray)],
-                           [(14, 30, Color.orange), (50, 120, Color.gray)]].enumerated()), id: \.offset) { _, line in
-                ZStack(alignment: .leading) {
-                    ForEach(Array(line.enumerated()), id: \.offset) { _, token in
-                        Capsule().fill(token.2.opacity(0.4)).frame(width: token.1, height: 5).offset(x: token.0)
-                    }
-                }
-                .frame(height: 5)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(12)
-        .background(windowFill)
-    }
-
-    /// A rest of about a second and a half, the "this" fading, a quick jump to the next window,
-    /// "this" again: the rhythm of reading a screen.
-    private func run() async {
-        if motion.reduce {
-            focus = 1; resting = true; trail = []
-            return
-        }
-        while !Task.isCancelled {
-            withAnimation(motion.animation(.content)) { resting = true }
-            try? await Task.sleep(for: .seconds(motion.seconds(1.5)))
-            guard !Task.isCancelled else { return }
-            withAnimation(motion.animation(.press)) { resting = false }
-            try? await Task.sleep(for: .seconds(motion.seconds(0.1)))
-            trail = Array(([focus] + trail).prefix(3))
-            withAnimation(.spring(duration: motion.seconds(0.32), bounce: 0.06)) { focus = (focus + 1) % gazes.count }
-            try? await Task.sleep(for: .seconds(motion.seconds(0.28)))
-        }
-    }
-}
 
