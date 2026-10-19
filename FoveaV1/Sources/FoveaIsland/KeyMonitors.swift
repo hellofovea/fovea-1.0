@@ -398,6 +398,9 @@ final class ShortcutMonitor {
         var down: () -> Void = {}
         var up: (_ tap: Bool) -> Void = { _ in }
         var doublePress: () -> Void = {}
+        /// Oct 19, Ryan: a hold by modifiers alone met another key or modifier (⌘C, ⌘V, ⌘⇧): it
+        /// was never a press, so what its down did can be undone at once.
+        var interrupted: () -> Void = {}
     }
 
     var actions: [String: Action] = [:]
@@ -480,6 +483,8 @@ final class ShortcutMonitor {
             // A chord's own key is the tap's to judge (`handleKey`).
             guard !kept.contains(Int(event.keyCode)) else { return }
             used(except: Int(event.keyCode))
+            // Oct 19, Ryan: ⌘ with a key (⌘C, ⌘V…) is never a press.
+            for id in holding { actions[id]?.interrupted() }
         case .leftMouseDown, .rightMouseDown, .otherMouseDown:
             used(except: nil)
         default:
@@ -523,6 +528,8 @@ final class ShortcutMonitor {
                     release(id, at: t)
                 } else if !new.subtracting(pattern.allowed).isEmpty {
                     gestures[id]?.used()
+                    // Oct 19, Ryan: nor is ⌘ with another modifier (⌘⇧, on the way to ⌘⇧4).
+                    if !new.subtracting(old).subtracting(pattern.allowed).isEmpty { actions[id]?.interrupted() }
                 }
             } else if pattern.matches(new), !pattern.held(old), !paused() {
                 holding.insert(id)

@@ -206,7 +206,7 @@ public enum Copy {
     public static var exitPractice: String { L("Exit practice") }
 
     /// What to do now, typed out on the board as the step goes (Oct 9: letter by letter, as if
-    /// Fovea were talking). `armed`: ⌥ is already pressed, so what's left is a drag.
+    /// Fovea were talking). `armed`: ⌘ is already pressed, so what's left is a drag.
     /// `tab`: the browser tab showing, for a part to take from a tab.
     public static func instruction(_ beat: Beat?, step: Step, armed: Bool = false, tab: PracticeTab? = nil,
                                    keys: KeyMap = .current, agent: String? = nil) -> String? {
@@ -226,7 +226,7 @@ public enum Copy {
             return nil
         case (_, .requestKey):
             return L("Press \(request) to start.")
-        // Oct 17, Ryan (round 2): ⌥ once each; no whole screen. Oct 18: two parts.
+        // Oct 19, Ryan: ⌘ once each (the person's screenshot key). Oct 18: two parts.
         case (_, .numbers), (_, .prs):
             let wanted = beat.tab ?? .github
             let what = beat == .numbers ? L("this week's numbers") : L("the merged pull requests")
@@ -283,10 +283,10 @@ public enum Copy {
 
     public static var whileDictatingLead: String { L("While you talk") }
 
-    /// What works while dictating, with the person's own keys: ⌥ for part of the screen, ⌘ twice for
+    /// What works while dictating, with the person's own keys: ⌘ for part of the screen, ⌘ twice for
     /// the whole screen (Oct 18), and words or a file with no key. All of it lands after the words.
     public static func whileDictating(keys: KeyMap = .current) -> [TakeLine] {
-        // Oct 17, Ryan (round 2): ⌥ once only (twice is Claude's); a file is dragged onto the notch.
+        // Oct 19, Ryan: ⌘ once for a part, ⌘ twice for the whole screen; a file is dragged onto the notch.
         // Oct 18, Ryan: named for what they take, how in a quiet second line.
         // Oct 18, Ryan: ⌘ twice for the whole screen joins them.
         [TakeLine(caps: keys.caps(.screenshot), presses: 1, title: L("Screenshot"),

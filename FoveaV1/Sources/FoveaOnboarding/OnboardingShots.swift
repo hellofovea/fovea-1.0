@@ -171,7 +171,7 @@ package enum OnboardingShots {
             m.host?.listeningLevel(0.5)
         }
         await shoot("27-dictation-feedback", after: 1.2)
-        // Oct 17, Ryan: something taken while talking (⌥ and a drag), waiting to land after the words.
+        // Oct 17, Ryan: something taken while talking (⌘ and a drag), waiting to land after the words.
         model.islandDidEmit(.referentTaken(kind: .region, rect: OT.Layout.messagesFrame.insetBy(dx: 40, dy: 80)))
         await shoot("27a-dictation-taken", after: 0.8)
         page(.dictation) { m in

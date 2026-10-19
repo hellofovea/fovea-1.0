@@ -63,7 +63,7 @@ public enum Step: String, CaseIterable, Sendable, Codable {
         case .microphone: [[.allowedMicrophone], [.heard]]
         case .agents: [[.agentsConnected]]
         // The weekly update: this week's numbers from one tab and the merged pull requests from
-        // another, then the words, then return. Oct 17, Ryan (round 2): ⌥ twice brings up Claude,
+        // another, then the words, then return (Oct 19, Ryan: ⌘ once each). Oct 17, round 2:
         // so no whole screen. Oct 18, Ryan: "only have two screenshot tasks": the tickets went.
         case .weeklyUpdate: [[.requestKey], [.numbers], [.prs], [.finish], [.review], [.send]]
         // While the agent works: the notch, and its answer, in either order.
@@ -72,7 +72,7 @@ public enum Step: String, CaseIterable, Sendable, Codable {
         case .packList: [[.requestKey], [.passage], [.file], [.finish], [.review], [.send], [.answer]]
         case .followUp: [[.followKey], [.followAnswer]]
         // Two windows: the feedback first, then Messages (Oct 9). Oct 17, Ryan: in the feedback,
-        // something taken while talking (⌥ and a drag), which lands after the words.
+        // something taken while talking (⌘ and a drag, Oct 19), which lands after the words.
         case .dictation: [[.feedbackKey], [.feedbackTaken], [.feedbackLanded], [.replyKey], [.replyLanded]]
         }
     }
@@ -107,7 +107,7 @@ public enum Step: String, CaseIterable, Sendable, Codable {
     public var keys: [KeyName] {
         switch self {
         case .weeklyUpdate: [.request, .screenshot, .send]
-        // Oct 17, Ryan: words and files need no key; dictation takes pictures too, with ⌥.
+        // Oct 17, Ryan: words and files need no key; dictation takes pictures too, with ⌘ (Oct 19).
         case .packList: [.request, .send]
         case .followUp: [.dictation]
         // Oct 18, Ryan: and ⌘ twice for the whole screen.
@@ -173,7 +173,7 @@ public enum Skip: Equatable, Sendable {
     public var allowed: Bool { self != .never }
 }
 
-/// Something the person did that a step can be waiting for. Pressing a capture key isn't one: ⌥
+/// Something the person did that a step can be waiting for. Pressing a capture key isn't one: ⌘
 /// only arms what comes next, a drag.
 public enum Beat: String, CaseIterable, Sendable, Codable {
     /// An email to sign in with, and a name to be called by.
@@ -185,10 +185,10 @@ public enum Beat: String, CaseIterable, Sendable, Codable {
     case agentsConnected
     /// fn ⌃ opened the voice bar.
     case requestKey
-    /// ⌥ and a drag, in the Analytics tab: this week's numbers (Oct 17, Ryan: ⌥, not ⌘, which
-    /// Codex uses; once only, ⌥ twice is Claude's, so no whole screen).
+    /// ⌘ once and a drag, in the Analytics tab: this week's numbers (Oct 19, Ryan: ⌘ once a part,
+    /// twice the whole screen).
     case numbers
-    /// ⌥ once and a drag, in the GitHub tab: the pull requests merged this week.
+    /// ⌘ once and a drag, in the GitHub tab: the pull requests merged this week.
     case prs
     /// Words selected while Fovea listens (Oct 17, Ryan: no key).
     case passage
@@ -279,10 +279,10 @@ public enum KeyName: String, CaseIterable, Sendable, Codable {
     }
 }
 
-/// The keys as FoveaKit's `FoveaKeys` has them after Oct 17 (Ryan): ⌥ takes part of the screen,
-/// not ⌘, which Codex uses, and once only (⌥ twice brings up Claude: no whole screen); words are
-/// selected and files dragged onto the notch, no key; fn is Voice Flow, fn ⌃ Dispatch. This table
-/// is the one place in the first run to change.
+/// The keys as FoveaKit's `FoveaKeys` has them. Oct 19, Ryan: "pressing ⌘ once take a screenshot
+/// of the selected area, ⌘ twice the entire screen" (⌥ does nothing any more); words are selected
+/// and files dragged onto the notch, no key; fn is Voice Flow, fn ⌃ Dispatch. This table is the one
+/// place in the first run to change.
 public struct KeyMap: Equatable, Sendable {
     public var request: [String]
     public var screenshot: [String]
@@ -291,7 +291,7 @@ public struct KeyMap: Equatable, Sendable {
     public var send: [String]
     public var dictation: [String]
 
-    public init(request: [String] = ["fn", "⌃"], screenshot: [String] = ["⌥"], wholeScreen: [String] = FoveaKeys.wholeScreen.keys,
+    public init(request: [String] = ["fn", "⌃"], screenshot: [String] = ["⌘"], wholeScreen: [String] = FoveaKeys.wholeScreen.keys,
                 send: [String] = ["return"], dictation: [String] = ["fn"]) {
         self.request = request; self.screenshot = screenshot; self.wholeScreen = wholeScreen
         self.send = send; self.dictation = dictation
@@ -337,25 +337,27 @@ public struct KeyMap: Equatable, Sendable {
     public func keys(for beat: Beat) -> [String] {
         switch beat {
         case .requestKey, .finish: request
-        // Oct 17, Ryan: ⌥ for pictures, in dictation too; words and files light nothing (no key).
-        // Oct 18, Ryan: dictation's take may be the whole screen too, ⌘ twice.
+        // Oct 19, Ryan: ⌘ for pictures (once, a part; twice, the whole screen), in dictation too;
+        // words and files light nothing (no key).
         case .numbers, .prs: screenshot
-        case .feedbackTaken: screenshot + wholeScreen
+        case .feedbackTaken: screenshot + wholeScreen.filter { !screenshot.contains($0) }
         case .send: send
         case .followKey, .followAnswer, .feedbackKey, .feedbackLanded, .replyKey, .replyLanded: dictation
         default: []
         }
     }
 
-    /// How many presses a beat takes: one (the weekly update's parts are ⌥ once each).
+    /// How many presses a beat takes: one (the weekly update's parts are ⌘ once each).
     public func presses(for beat: Beat) -> Int { 1 }
 
     /// How many presses a key takes: the whole screen is ⌘ twice (Oct 18, Ryan), the rest once.
     public func presses(_ key: KeyName) -> Int { key == .wholeScreen ? FoveaKeys.wholeScreen.presses : 1 }
 
-    /// The "×2" on the keyboard for what a beat waits on: ⌘ where the whole screen is named.
+    /// The "×2" on the keyboard for what a beat waits on: the whole screen's key where the whole
+    /// screen is named. Oct 19, Ryan: when it's the screenshot key too (⌘ once, ⌘ twice), the key
+    /// lights plain, for once; twice is in the words.
     public func badges(for beat: Beat) -> [String: String] {
-        guard beat == .feedbackTaken else { return [:] }
+        guard beat == .feedbackTaken, !wholeScreen.contains(where: screenshot.contains) else { return [:] }
         return Dictionary(wholeScreen.map { ($0, "×\(presses(.wholeScreen))") }, uniquingKeysWith: { a, _ in a })
     }
 }

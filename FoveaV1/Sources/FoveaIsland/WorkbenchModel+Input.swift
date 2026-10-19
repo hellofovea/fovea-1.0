@@ -58,7 +58,8 @@ extension WorkbenchModel {
         guard capturing, let live, rect.width >= T.minimumSide, rect.height >= T.minimumSide else { return }
         Task {
             await liveCaptureOther(live, rect, on: screen)
-            capturing = false
+            // Oct 19, Ryan: held, capture stays for the next (`finishSelection(_:)`).
+            if commandTurnedOn == nil { capturing = false }
         }
     }
 }

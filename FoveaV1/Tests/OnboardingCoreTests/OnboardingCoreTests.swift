@@ -71,7 +71,9 @@ final class OnboardingCoreTests: XCTestCase {
         XCTAssertEqual(keys.dictation, FoveaKeys.voiceflow.keys)
         XCTAssertEqual(keys.screenshot, FoveaKeys.region.keys)
         // Oct 17, Ryan: ⌥ takes pictures, not ⌘; words and files need no key.
-        XCTAssertEqual(keys.screenshot, ["⌥"])
+        // Oct 19, Ryan: ⌘ once a part, ⌘ twice the whole screen.
+        XCTAssertEqual(keys.screenshot, ["⌘"])
+        XCTAssertEqual(keys.screenshot, FoveaKeys.region.keys)
         XCTAssertEqual(FoveaKeys.highlighter.keys, [])
         XCTAssertNil(FoveaKeys.chord(FoveaKeys.highlighter.id, FoveaPrefs()))
         XCTAssertEqual(keys.keys(for: .passage), [], "select the words: no key lights")
@@ -81,8 +83,8 @@ final class OnboardingCoreTests: XCTestCase {
         XCTAssertTrue(FoveaKeys.whileSpeaking.contains(FoveaKeys.wholeScreen))
         XCTAssertEqual(keys.wholeScreen, FoveaKeys.wholeScreen.keys)
         XCTAssertEqual(keys.presses(.wholeScreen), FoveaKeys.wholeScreen.presses)
-        XCTAssertEqual(keys.presses(.screenshot), 1, "⌥ once")
-        XCTAssertTrue(Beat.allCases.allSatisfy { keys.presses(for: $0) == 1 }, "the weekly update's parts are ⌥ once each")
+        XCTAssertEqual(keys.presses(.screenshot), 1, "⌘ once")
+        XCTAssertTrue(Beat.allCases.allSatisfy { keys.presses(for: $0) == 1 }, "the weekly update's parts are ⌘ once each")
     }
 
     /// Oct 17, Ryan (round 2): "right now it just jumps over". The permissions page is never passed
@@ -152,8 +154,8 @@ final class OnboardingCoreTests: XCTestCase {
             XCTAssertTrue(beats.contains(kind), "\(kind) is practiced")
         }
         // Oct 18, Ryan: "only have two screenshot tasks".
-        XCTAssertEqual(Step.weeklyUpdate.beats.filter { group in group.contains { KeyMap.current.keys(for: $0) == ["⌥"] } }.count, 2,
-                       "the work task takes two parts with ⌥")
+        XCTAssertEqual(Step.weeklyUpdate.beats.filter { group in group.contains { KeyMap.current.keys(for: $0) == ["⌘"] } }.count, 2,
+                       "the work task takes two parts with ⌘")
         XCTAssertNotEqual(Beat.numbers.tab, Beat.prs.tab, "from two different tabs")
         XCTAssertTrue(Step.packList.beats.contains([.passage]) && Step.packList.beats.contains([.file]),
                       "the other takes words and a file")
@@ -164,7 +166,7 @@ final class OnboardingCoreTests: XCTestCase {
         var flow = Flow(start: .weeklyUpdate)
         XCTAssertTrue(flow.record(.requestKey))
         XCTAssertEqual(flow.waitingFor, [.numbers], "the keyboard asks for this week's numbers first")
-        XCTAssertEqual(KeyMap.current.keys(for: .numbers), ["⌥"])
+        XCTAssertEqual(KeyMap.current.keys(for: .numbers), ["⌘"])
         XCTAssertEqual(KeyMap.current.presses(for: .numbers), 1, "once")
         XCTAssertEqual(Beat.numbers.tab, .analytics)
         XCTAssertEqual(Set([Beat.numbers, .prs].compactMap(\.tab)).count, 2, "a part from each tab")
@@ -206,26 +208,27 @@ final class OnboardingCoreTests: XCTestCase {
     /// while talking, and it lands after the words.
     func testDictationTeachesTakingWhileTalking() {
         let lines = Copy.whileDictating()
-        XCTAssertEqual(lines.map(\.caps), [["⌥"], ["⌘"], []], "⌥, ⌘ twice, and no key for words or a file")
+        XCTAssertEqual(lines.map(\.caps), [["⌘"], ["⌘"], []], "⌘ once, ⌘ twice, and no key for words or a file")
         XCTAssertEqual(lines.map(\.presses), [1, 2, 1])
         // Oct 18, Ryan: named for what they take, how in a second line.
         XCTAssertEqual(lines.map(\.title), ["Screenshot", "Whole screen", "Selected text and files"])
-        XCTAssertEqual(lines.map(\.detail), ["Press ⌥, then drag over it.", "Press ⌘ twice.", "Select words, or drag a file onto the notch."])
+        XCTAssertEqual(lines.map(\.detail), ["Press ⌘, then drag over it.", "Press ⌘ twice.", "Select words, or drag a file onto the notch."])
         XCTAssertTrue(Copy.step(.dictationIntro).body.contains("what you take lands after them"))
         var recorded = FoveaPrefs()
         recorded.shortcutChords[FoveaKeys.region.id] = KeyChord(modifiers: ["right ⌥"])
         XCTAssertEqual(Copy.whileDictating(keys: KeyMap(prefs: recorded))[0].caps, ["right ⌥"], "the person's own keys")
-        XCTAssertEqual(KeyMap.current.keys(for: .feedbackTaken), ["⌥", "⌘"], "the keyboard lights ⌥, and ⌘ for the whole screen")
-        XCTAssertEqual(KeyMap.current.badges(for: .feedbackTaken), ["⌘": "×2"], "⌘ twice")
-        XCTAssertEqual(KeyMap.current.badges(for: .numbers), [:], "the weekly update's parts: ⌥ once")
-        XCTAssertTrue(Copy.instruction(.feedbackTaken, step: .dictation)!.contains("press ⌥, then drag"))
+        XCTAssertEqual(KeyMap.current.keys(for: .feedbackTaken), ["⌘"], "the keyboard lights ⌘, once or twice")
+        XCTAssertEqual(KeyMap.current.badges(for: .feedbackTaken), [:], "the same key: lit plain, twice is in the words")
+        XCTAssertEqual(KeyMap(screenshot: ["⌥"]).badges(for: .feedbackTaken), ["⌘": "×2"], "another key for a part: ⌘ ×2 for the whole screen")
+        XCTAssertEqual(KeyMap.current.badges(for: .numbers), [:], "the weekly update's parts: ⌘ once")
+        XCTAssertTrue(Copy.instruction(.feedbackTaken, step: .dictation)!.contains("press ⌘, then drag"))
         XCTAssertTrue(Copy.instruction(.feedbackTaken, step: .dictation)!.contains("press ⌘ twice for all of it"))
 
         var flow = Flow(start: .dictation)
         XCTAssertTrue(flow.record(.feedbackKey))
         XCTAssertFalse(flow.record(.feedbackLanded), "words landed before anything was taken")
         XCTAssertEqual(flow.missedBeat, .feedbackLanded, "missed: said, and tried again")
-        XCTAssertTrue(Copy.dictationMissed().contains("press ⌥ and drag"))
+        XCTAssertTrue(Copy.dictationMissed().contains("press ⌘ and drag"))
         flow.retry()
         for beat in [Beat.feedbackKey, .feedbackTaken, .feedbackLanded] { XCTAssertTrue(flow.record(beat), "\(beat)") }
         XCTAssertEqual(Step.dictation.skip, .now, "skippable, as the rest of dictation")
@@ -330,9 +333,9 @@ final class OnboardingCoreTests: XCTestCase {
         var flow = Flow(start: .weeklyUpdate)
         XCTAssertEqual(keys.keys(for: flow.waitingFor!.first!), ["fn", "⌃"], "first, fn ⌃")
         flow.record(.requestKey)
-        XCTAssertEqual(keys.keys(for: flow.waitingFor!.first!), ["⌥"], "then ⌥ for the numbers")
+        XCTAssertEqual(keys.keys(for: flow.waitingFor!.first!), ["⌘"], "then ⌘ for the numbers")
         flow.record(.numbers)
-        XCTAssertEqual(keys.keys(for: flow.waitingFor!.first!), ["⌥"], "then ⌥ once in the GitHub tab")
+        XCTAssertEqual(keys.keys(for: flow.waitingFor!.first!), ["⌘"], "then ⌘ once in the GitHub tab")
         flow.record(.prs)
         XCTAssertEqual(keys.keys(for: flow.waitingFor!.first!), ["fn", "⌃"], "fn ⌃ again to finish")
         XCTAssertEqual(keys.keys(for: .send), ["return"])
@@ -345,10 +348,10 @@ final class OnboardingCoreTests: XCTestCase {
 
     func testInstructionsFollowTheStepTheTabAndWhetherAKeyIsArmed() {
         XCTAssertEqual(Copy.instruction(.prs, step: .weeklyUpdate, tab: .analytics), "Now click the GitHub tab.")
-        XCTAssertEqual(Copy.instruction(.prs, step: .weeklyUpdate, tab: .github), "Press ⌥ once, then drag over the merged pull requests.")
+        XCTAssertEqual(Copy.instruction(.prs, step: .weeklyUpdate, tab: .github), "Press ⌘ once, then drag over the merged pull requests.")
         XCTAssertEqual(Copy.instruction(.prs, step: .weeklyUpdate, armed: true, tab: .github), "Drag over the merged pull requests.")
         XCTAssertEqual(Copy.instruction(.numbers, step: .weeklyUpdate, tab: .github), "Now click the Analytics tab.")
-        XCTAssertEqual(Copy.instruction(.numbers, step: .weeklyUpdate, tab: .analytics), "Press ⌥ once, then drag over this week's numbers.")
+        XCTAssertEqual(Copy.instruction(.numbers, step: .weeklyUpdate, tab: .analytics), "Press ⌘ once, then drag over this week's numbers.")
         // The weekly update's parts are ⌥ once each (⌥ twice is Claude's; ⌘ twice, the whole screen,
         // is dictation's, Oct 18).
         for beat in Step.weeklyUpdate.beats.flatMap({ $0 }) {
@@ -567,7 +570,7 @@ final class OnboardingCoreTests: XCTestCase {
     // MARK: The keys as recorded (Oct 15 review, ST-03.1)
 
     func testTheCopyNamesThePersonsOwnKeys() {
-        XCTAssertEqual(KeyMap(prefs: FoveaPrefs()), KeyMap.current, "the defaults, left ⌥ drawn as ⌥")
+        XCTAssertEqual(KeyMap(prefs: FoveaPrefs()), KeyMap.current, "the defaults (Oct 19: ⌘ for a part)")
         var prefs = FoveaPrefs()
         prefs.shortcutChords[FoveaKeys.dispatch.id] = KeyChord(modifiers: ["right ⌥"])
         prefs.shortcutChords[FoveaKeys.voiceflow.id] = KeyChord(modifiers: ["⌃"], keyCode: 49, keyCap: "Space")

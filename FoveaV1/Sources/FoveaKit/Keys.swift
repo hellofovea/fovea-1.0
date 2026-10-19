@@ -36,8 +36,9 @@ public enum FoveaKeys {
         detail: "Send what you say, and what you point at, to Claude Code or Codex.", keys: ["fn", "⌃"])
 
     /// While you speak.
+    /// Oct 19 (Ryan): ⌘ once takes a part of the screen, ⌘ twice the whole screen (⌥ does nothing).
     public static let region = FoveaShortcut(id: "region", title: "Take part of the screen",
-        detail: "Press ⌥, then drag over what to take. Hold ⌥ to take more than one.", keys: ["⌥"])
+        detail: "Press ⌘, then drag over what to take. Hold ⌘ to take more than one.", keys: ["⌘"])
     /// Oct 18 (Ryan): ⌘ pressed twice takes the whole screen (⌥ twice is the Claude app's). Fixed,
     /// not recorded: a double press, which the recorder doesn't take.
     public static let wholeScreen = FoveaShortcut(id: "wholeScreen", title: "Take the whole screen",
@@ -67,7 +68,7 @@ public enum FoveaKeys {
     public static let defaultChords: [String: KeyChord] = [
         voiceflow.id: KeyChord(modifiers: ["fn"]),
         dispatch.id: KeyChord(modifiers: ["fn", "⌃"]),
-        region.id: KeyChord(modifiers: ["⌥"]),
+        region.id: KeyChord(modifiers: ["⌘"]),
     ]
 
     /// The chord a shortcut answers to now: the recorded one, or its default.

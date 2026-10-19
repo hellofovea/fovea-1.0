@@ -620,8 +620,9 @@ extension WorkbenchModel {
     }
 
     /// The region's key on a voice bar: a screenshot, one region per press (decided Oct 6, round
-    /// two). Held, capture is on while held. ⌘ until Oct 17, then ⌥ (Ryan: ⌘ clashed with Codex), or
-    /// whatever Settings › Shortcuts records; the Workbench's mock keeps ⌘.
+    /// two). Held, capture is on while held. ⌘ until Oct 17, then ⌥ (Ryan: ⌘ clashed with Codex),
+    /// and ⌘ again from Oct 19 (Ryan: "⌘ once the selected area, ⌘ twice the entire screen"), or
+    /// whatever Settings › Shortcuts records.
     func regionDown() {
         guard notchState.collects else { commandTurnedOn = nil; return }
         if highlighting { highlighting = false }
@@ -633,7 +634,17 @@ extension WorkbenchModel {
         guard let turnedOn = commandTurnedOn else { return }
         commandTurnedOn = nil
         guard notchState.collects else { return }
-        if click ? !turnedOn : turnedOn { capturing = false }
+        // Oct 19, Ryan: a tap leaves capture on if it turned it on (one region), off if it was on;
+        // a hold was capture while held, so its release ends it.
+        if click ? !turnedOn : true { capturing = false }
+    }
+
+    /// Oct 19, Ryan: the region's key used with another (⌘C, ⌘V) was never a press: capture it
+    /// turned on goes off at once, and its release does nothing.
+    func regionInterrupted() {
+        guard let turnedOn = commandTurnedOn else { return }
+        commandTurnedOn = nil
+        if turnedOn, notchState.collects { capturing = false }
     }
 
     func setHighlighting(_ on: Bool) {

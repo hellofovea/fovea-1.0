@@ -97,7 +97,7 @@ package enum LiveSmoke {
     }
 
     // Oct 15 review, ST-03.1: the keys go to the island's shortcuts (`ShortcutMonitor`), which
-    // answer to the chords recorded in Settings › Shortcuts (fn, fn ⌃, ⌘ and left ⌥ by default),
+    // answer to the chords recorded in Settings › Shortcuts (fn, fn ⌃ and ⌘ by default, Oct 19),
     // and left ⌃ alone to its own monitor, as macOS would send them to both.
 
     /// fn, pressed and let go.
@@ -120,12 +120,13 @@ package enum LiveSmoke {
         for e in [flags(down, kVK_Control), flags([], kVK_Control)] { model.leftControlKey.handle(e); model.live?.shortcuts.handle(e) }
     }
 
+    /// ⌘ pressed and let go: the region's key again (Oct 19).
     private static func command(_ model: WorkbenchModel) {
         let down = NSEvent.ModifierFlags(rawValue: NSEvent.ModifierFlags.command.rawValue | ModifierHoldMonitor.leftCommandDeviceFlag)
         for e in [flags(down, kVK_Command), flags([], kVK_Command)] { model.live?.shortcuts.handle(e) }
     }
 
-    /// ⌥ pressed and let go: the region's key since Oct 17.
+    /// ⌥ pressed and let go: the region's key from Oct 17 to Oct 19, nothing now.
     private static func option(_ model: WorkbenchModel) {
         let down = NSEvent.ModifierFlags(rawValue: NSEvent.ModifierFlags.option.rawValue | ModifierHoldMonitor.leftOptionDeviceFlag)
         for e in [flags(down, kVK_Option), flags([], kVK_Option)] { model.live?.shortcuts.handle(e) }
@@ -263,34 +264,45 @@ package enum LiveSmoke {
         check("fn ⌃ listens for an agent (Dispatch)", model.notchState == .v2Voice, "\(model.notchState)")
         check("…its bar flows with the voice, as Voiceflow's", !model.v2AsksOver && model.notchState.collects)
 
-        // Oct 17, Ryan: ⌥ takes the screen now (⌘ clashed with Codex); ⌘ does nothing special.
-        command(model); await settle(0.1)
-        check("⌘ does nothing special any more", !model.capturing && model.liveReferents.isEmpty)
-        // ⌥ once, then a drag: a part of the screen.
+        // Oct 19, Ryan: ⌘ once takes a part of the screen, ⌘ twice the whole screen; ⌥ does nothing.
         option(model); await settle(0.1)
-        check("⌥ once turns on capture", model.capturing)
+        check("⌥ does nothing any more", !model.capturing && model.liveReferents.isEmpty)
+        await settle(0.4)
+        option(model); option(model); await settle(0.4)
+        check("…nor ⌥ twice", !model.capturing && model.liveReferents.isEmpty)
+        // ⌘ once, then a drag: a part of the screen.
+        command(model); await settle(0.1)
+        check("⌘ once turns on capture", model.capturing)
         model.finishSelection(CGRect(x: 300, y: 300, width: 240, height: 160))
         let part = await until(3) { model.liveReferents.count == 1 }
         check("…a drag takes that part, and capture goes off", part && !model.capturing, "\(model.liveReferents.count)")
-        // Oct 17, Ryan: ⌥ twice is the Claude app's shortcut: never the whole screen for Fovea, just
-        // capture on, then off.
-        option(model); option(model); await settle(0.3)
-        check("⌥ twice is never the whole screen: capture on, then off, nothing taken",
-              !model.capturing && model.liveReferents.count == 1, "\(model.liveReferents.count)")
-        // ⌥ used with another key (⌥ E, an accent being typed) is never a press.
-        optionWithKey(model); await settle(0.2)
-        check("…⌥ used with a key is never a press: capture stays off", !model.capturing && model.liveReferents.count == 1)
-        // Oct 18, Ryan: ⌘ twice takes the whole screen; once, or with a key (⌘C), nothing.
+        // ⌘ held: capture while it's held, a part for each drag; let go, it ends.
         await settle(0.4)
-        command(model); await settle(0.5)
-        check("⌘ once takes nothing", !model.capturing && model.liveReferents.count == 1)
-        commandWithKey(model, kVK_ANSI_C, "c"); await settle(0.1)
+        let rightDown = NSEvent.ModifierFlags(rawValue: NSEvent.ModifierFlags.command.rawValue | ModifierHoldMonitor.rightCommandDeviceFlag)
+        model.live?.shortcuts.handle(flags(rightDown, kVK_RightCommand)); await settle(0.1)
+        check("⌘ held (the right one): capture while it's held", model.capturing)
+        model.finishSelection(CGRect(x: 320, y: 500, width: 200, height: 120))
+        let held = await until(3) { model.liveReferents.count == 2 }
+        check("…a drag takes a part, and capture stays while ⌘ is held", held && model.capturing, "\(model.liveReferents.count)")
+        await settle(0.35)
+        model.live?.shortcuts.handle(flags([], kVK_RightCommand)); await settle(0.1)
+        check("…let go, capture ends", !model.capturing && model.liveReferents.count == 2)
+        // ⌘ with a key (⌘C, ⌘V) is never a press: capture its down turned on goes off at the key.
+        await settle(0.4)
+        let leftDown = NSEvent.ModifierFlags(rawValue: NSEvent.ModifierFlags.command.rawValue | ModifierHoldMonitor.leftCommandDeviceFlag)
+        model.live?.shortcuts.handle(flags(leftDown, kVK_Command))
+        model.live?.shortcuts.handle(keyEvent(.keyDown, kVK_ANSI_C, leftDown, "c"))
+        check("⌘C is never a press: capture goes off at the C", !model.capturing)
+        model.live?.shortcuts.handle(flags([], kVK_Command)); await settle(0.1)
         commandWithKey(model, kVK_ANSI_C, "c"); await settle(0.5)
-        check("…⌘C (twice, quickly) takes nothing", !model.capturing && model.liveReferents.count == 1)
+        check("…⌘C twice, quickly, takes nothing", !model.capturing && model.liveReferents.count == 2)
+        // ⌘ twice: the whole screen, capture off, nothing else taken.
         command(model); command(model)
-        let screen = await until(3) { model.liveReferents.count == 2 }
-        check("…⌘ twice takes the whole screen", screen && model.liveReferents.last?.source == L("The whole screen"),
-              "\(model.liveReferents.count)")
+        let screen = await until(3) { model.liveReferents.count == 3 }
+        check("…⌘ twice takes the whole screen, capture off, nothing else", screen && !model.capturing
+              && model.liveReferents.last?.source == L("The whole screen"), "\(model.liveReferents.count)")
+        if let second = model.liveReferents.dropFirst().first?.id { model.removeReferent(second) }
+        _ = await until(2) { model.liveReferents.count == 2 }
         if let whole = model.liveReferents.last?.id { model.removeReferent(whole) }
         _ = await until(2) { model.liveReferents.count == 1 }
         await shot("02-dispatch-voice", model)
@@ -817,7 +829,7 @@ package enum LiveSmoke {
         _ = await until(2) { model.liveReferents.count == 1 }
         check("…a taken passage removed from the stack takes its highlight with it",
               !model.highlights.contains { $0.rects == [gone] } && model.highlights.contains { $0.taken && $0.rects == [quote] })
-        LiveSmoke.option(model); await settle(0.1)
+        LiveSmoke.command(model); await settle(0.1)
         model.finishSelection(CGRect(x: 500, y: 300, width: 200, height: 140))
         _ = await until(3) { model.liveReferents.count == 2 }
         let notes = FileManager.default.temporaryDirectory.appendingPathComponent("fovea-smoke-plan.txt")

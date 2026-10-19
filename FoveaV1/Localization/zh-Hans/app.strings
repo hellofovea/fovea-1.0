@@ -6,7 +6,7 @@
 "Dispatch" = "派发";
 "Send what you say, and what you point at, to Claude Code or Codex." = "把你说的话和你指向的内容一起发给 Claude Code 或 Codex。";
 "Take part of the screen" = "截取部分屏幕";
-"Press ⌥, then drag over what to take. Hold ⌥ to take more than one." = "按下 ⌥，然后拖动选择要截取的区域。按住 ⌥ 可连续截取多处。";
+"Press ⌘, then drag over what to take. Hold ⌘ to take more than one." = "按下 ⌘，然后拖动选择要截取的区域。按住 ⌘ 可连续截取多处。";
 "Take the whole screen" = "截取全屏";
 "Press ⌘ twice." = "按两下 ⌘。";
 "Take words or a file" = "选取文字或文件";

@@ -21,8 +21,9 @@ extension IslandController {
     // MARK: ST-03.1 The shortcuts
 
     /// The shortcuts' actions, as fn, fn ⌃ and ⌘ had them (WorkbenchModel.init), now whatever keys
-    /// they're recorded as. Oct 17, Ryan: the region is ⌥ by default (⌘ clashed with Codex), and
-    /// the highlighter has no key: words and files are taken as they're selected (`startSelectionWatch`).
+    /// they're recorded as. Oct 17, Ryan: the highlighter has no key: words and files are taken as
+    /// they're selected (`startSelectionWatch`). Oct 19, Ryan: the region is ⌘ by default again
+    /// (it was ⌥ from Oct 17), and ⌥ does nothing.
     func installShortcuts() {
         let model = self.model
         let shortcuts = live.shortcuts
@@ -31,16 +32,21 @@ extension IslandController {
         shortcuts.actions = [
             FoveaKeys.voiceflow.id: .init(kind: .toggle, toggle: { [weak self] in self?.shortcutPressed(dispatch: false) ?? false }),
             FoveaKeys.dispatch.id: .init(kind: .toggle, toggle: { [weak self] in self?.shortcutPressed(dispatch: true) ?? false }),
-            // A part of the screen: pressed once, capture for one region; held, capture while held;
-            // a second press turns it off. Used with another key, never a press.
-            // Oct 17, Ryan: never the whole screen on a double press: ⌥ twice is the Claude app's
-            // shortcut, so a double press is only on, then off (Fovea never acts on the double).
+            // A part of the screen: pressed once, capture for one region (a drag takes it, and
+            // capture ends); held, capture while held; a second press turns it off. Used with
+            // another key (⌘C, ⌘V), never a press: capture it turned on goes off at once.
+            // Oct 19, Ryan: "pressing ⌘ once take a screenshot of the selected area, ⌘ twice the
+            // entire screen": ⌘ (either side) by default again, as before Oct 17; ⌥ does nothing.
+            // Twice, the two presses turn capture on and off, and the whole screen's double press
+            // (below) takes the screen: nothing else is taken.
             FoveaKeys.region.id: .init(kind: .hold, active: onBar,
                                        down: { [weak model] in model?.regionDown() },
-                                       up: { [weak model] tap in model?.regionUp(click: tap) }),
+                                       up: { [weak model] tap in model?.regionUp(click: tap) },
+                                       interrupted: { [weak model] in model?.regionInterrupted() }),
             // Oct 18, Ryan: "double clicking command for full-screen screenshot". ⌘ (either side)
-            // pressed twice quickly, nothing between, takes the whole screen the pointer is on; one
-            // press does nothing, and ⌘ with a key (⌘C, ⌘V) is never a press. Fixed, not recorded.
+            // pressed twice quickly, nothing between, takes the whole screen the pointer is on, and
+            // ⌘ with a key (⌘C, ⌘V) is never a press. Fixed, not recorded: with the region recorded
+            // on another key, ⌘ twice still takes the whole screen (and ⌘ once nothing).
             FoveaKeys.wholeScreen.id: .init(kind: .hold, active: onBar,
                                             doublePress: { [weak model] in model?.captureWholeScreen() }),
         ]

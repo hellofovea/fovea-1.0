@@ -61,14 +61,16 @@ target over the island while a file drag is under way, `FileDropView`, "Drop to 
 chat too), never taken by a click; taken words keep an accent highlight over their lines until the
 session ends or the referent leaves the stack.
 
+**Oct 19 (Ryan):** ⌘ (either side) takes the screen again, as before Oct 17: once a region, held while held (a region per drag), twice the whole screen of the pointer's display (capture off, nothing else taken); ⌘ with a key (⌘C, ⌘V) or another modifier is never a press, and ⌥ does nothing. The region stays recordable; ⌘ twice stays fixed.
+
 | Key | Where | Does | Code |
 |---|---|---|---|
 | fn | at rest, or on Voiceflow | Voiceflow: start, then transcribe | `toggleVoiceFlow` |
 | fn⌃ | anywhere | Dispatch Version 2: start; on its voice bar, end (Transcribing, then Choose chat); on Choose chat, send | `v2FunctionKey` |
 | fn | on Dispatch Version 2's expanded chat or board, focused on one of your sessions | ask more in that session | `v2FunctionKey` → `startV2Voice(continuing:)` |
-| ⌥ (either side; ⌘ in the Workbench), press | on either voice bar | capture mode on for one region (a drag takes it and capture ends); another press, off | `regionDown` / `regionUp(click:)`, `finishSelection` |
-| ⌥ (⌘ in the Workbench), held | on either voice bar | capture mode while held | `regionDown` / `regionUp(click:)` |
-| ⌥ (⌘ in the Workbench), pressed twice | on either voice bar | the whole screen as a referent | `captureWholeScreen` |
+| ⌘ (either side), press | on either voice bar | capture mode on for one region (a drag takes it and capture ends); another press, off | `regionDown` / `regionUp(click:)`, `finishSelection` |
+| ⌘, held | on either voice bar | capture mode while held, a region per drag; with a key (⌘C), off at once | `regionDown` / `regionUp(click:)`, `regionInterrupted` |
+| ⌘, pressed twice (fixed) | on either voice bar | the whole screen of the pointer's display as a referent | `captureWholeScreen` |
 | No key (Fovea 1.0, Oct 17); left Option in the Workbench | on either voice bar | words selected and a file clicked are taken (1.0); the Workbench's highlighter: a drag marks words, a click a paragraph or a file | `autoTake`; Workbench: `optionDown` / `optionUp(click:)`, `highlightDrag`, `finishHighlight` |
 | Left ⌃ alone | Choose chat | every chat, and folded again | `toggleV2Browse` |
 | ↑↓ / Return | Choose chat; board | step the pill / send; move focus / open | `v2Key` |

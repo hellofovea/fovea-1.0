@@ -154,7 +154,7 @@ extension OnboardingModel: IslandDirector {
         return true
     }
 
-    /// A drag with ⌥. In the weekly update, a part taken in the Analytics tab is this week's numbers
+    /// A drag with ⌘ (Oct 19, Ryan). In the weekly update, a part taken in the Analytics tab is this week's numbers
     /// (Oct 17, Ryan, round 2: in place of the whole screen), in the GitHub tab the merged pull
     /// requests (Oct 18, Ryan: the two; the tickets went); a drag that misses them there is said,
     /// and not taken.

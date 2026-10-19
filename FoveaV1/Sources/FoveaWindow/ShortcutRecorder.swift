@@ -310,8 +310,9 @@ extension CapturesModel {
         for other in FoveaKeys.changeable where other.id != id {
             if Chords.overlap(chord, self.chord(other.id)) { return .shortcut(id: other.id, title: other.title) }
         }
-        // Oct 18, Ryan: ⌘ by itself is Fovea's too: pressed twice, the whole screen.
-        if chord.keyCap == nil, chord.modifiers.map(Chords.base) == ["⌘"] {
+        // Oct 18, Ryan: ⌘ by itself is Fovea's too: pressed twice, the whole screen. Oct 19, Ryan:
+        // the region's own default (⌘ once a part, twice all of it), so no warning there.
+        if id != FoveaKeys.region.id, chord.keyCap == nil, chord.modifiers.map(Chords.base) == ["⌘"] {
             return .system(L("⌘ pressed twice takes the whole screen while Fovea listens."))
         }
         let loose = Chords.loose(chord)
@@ -371,8 +372,8 @@ struct ShortcutsPane: View {
 
         SettingsSection("While you speak") {
             SettingsCard {
-                // Oct 17, Ryan: ⌥ (either side) by default, since ⌘ clashed with Codex. One press only:
-                // ⌥ twice is the Claude app's, so there's no whole-screen row any more.
+                // Oct 19, Ryan: ⌘ (either side) by default again: once a part of the screen, and ⌘
+                // twice the whole screen (the fixed row under it). It was ⌥ from Oct 17.
                 ShortcutRow(shortcut: FoveaKeys.region, detail: L("Press \(Chords.spoken(model.chord(FoveaKeys.region.id))), then drag over what to take. Hold it to take more than one."))
                 RowDivider()
                 // Oct 18, Ryan: ⌘ twice for the whole screen: fixed (a double press isn't recorded).
@@ -400,7 +401,8 @@ struct ShortcutsPane: View {
 
         SettingsSection(nil) {
             SettingsCard {
-                SettingsRow("Reset All Shortcuts", detail: "Back to fn for Voice Flow, fn ⌃ for Dispatch and ⌥ to take part of the screen.") {
+                // Oct 19, Ryan: ⌘ takes part of the screen again.
+                SettingsRow("Reset All Shortcuts", detail: "Back to fn for Voice Flow, fn ⌃ for Dispatch and ⌘ to take part of the screen.") {
                     TextButton("Reset All…") { panes.confirmResetAll = true }
                         .disabled(model.allShortcutsDefault)
                 }

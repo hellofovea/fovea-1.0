@@ -260,7 +260,7 @@ struct LanguagePicker: View {
 }
 
 /// Oct 17, Ryan: "there should be a part that tells the user all of the hotkeys". What works while
-/// dictating, with the person's own keys: ⌥ for part of the screen, ⌘ twice for the whole screen
+/// dictating, with the person's own keys: ⌘ for part of the screen (Oct 19), ⌘ twice for the whole screen
 /// (Oct 18, Ryan), and words (selected) or a file (dragged onto the notch) with no key. All of it
 /// lands after the words.
 struct WhileDictating: View {

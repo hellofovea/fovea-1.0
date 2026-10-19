@@ -307,7 +307,8 @@ extension WorkbenchModel {
         }
         Task {
             await capture(rect)
-            capturing = false
+            // Oct 19, Ryan: "Hold ⌘ to take more than one": while the key is held, capture stays.
+            if commandTurnedOn == nil { capturing = false }
         }
     }
 

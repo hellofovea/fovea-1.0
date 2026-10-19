@@ -186,15 +186,15 @@ package enum OnboardingSmoke {
         check("no line is ever put under the notch", !island.probeCaptionUnderNotch)
         island.probe(.fn); await settle(0.3)
         check("fn where it isn't taught says so on the bar", model.hintText != nil, model.hintText ?? "nil")
-        // Oct 17, Ryan (round 2): ⌥ once each; no whole screen, no ×2. Oct 18: two parts.
+        // Oct 19, Ryan: ⌘ once each, no ×2. Oct 18: two parts.
         model.islandDidEmit(.voiceOpened(dispatch: true))
-        check("the first part is this week's numbers: ⌥ once, no ×2", model.waitingBeat == .numbers
-              && model.keyboardTargets == ["⌥"] && model.keyboardBadges.isEmpty
+        check("the first part is this week's numbers: ⌘ once, no ×2", model.waitingBeat == .numbers
+              && model.keyboardTargets == ["⌘"] && model.keyboardBadges.isEmpty
               && Copy.instruction(.numbers, step: .weeklyUpdate, tab: .analytics, keys: model.keys) == L("Press \(model.keys.spoken(.screenshot)) once, then drag over \(L("this week's numbers"))."),
               "\(String(describing: model.waitingBeat)) \(model.keyboardTargets)")
         await shot("weekly-update-numbers")
         check("two parts to take, the numbers and the pull requests (Oct 18, Ryan)",
-              model.step.beats.filter { group in group.contains { model.keys.keys(for: $0) == ["⌥"] } }.count == 2
+              model.step.beats.filter { group in group.contains { model.keys.keys(for: $0) == ["⌘"] } }.count == 2
               && model.openTabs == [.analytics, .github], "\(model.openTabs)")
         model.doItForMe(); await settle(1.5)
         check("Do it for me puts the request together at the notch, on Choose chat", island.probeState == "v2Send", island.probeState)
@@ -289,16 +289,16 @@ package enum OnboardingSmoke {
         }
 
         // Oct 17, Ryan: dictation takes things while you talk. The intro lists the keys; in the
-        // feedback, something taken (⌥ and a drag, stood in for as the island would say it) lands
+        // feedback, something taken (⌘ and a drag, stood in for as the island would say it) lands
         // after the words; words first is missed, said, and tried again.
         model.jump(to: .dictationIntro); await settle(0.4)
-        check("dictation's intro lists ⌥, ⌘ twice, and words or a file dragged onto the notch with no key",
-              Copy.whileDictating(keys: model.keys).map(\.caps) == [["⌥"], ["⌘"], []] && model.step.keys.contains(.screenshot))
+        check("dictation's intro lists ⌘, ⌘ twice, and words or a file dragged onto the notch with no key",
+              Copy.whileDictating(keys: model.keys).map(\.caps) == [["⌘"], ["⌘"], []] && model.step.keys.contains(.screenshot))
         model.jump(to: .dictation); await settle(0.6)
         model.pointerOver = .feedback
         model.islandDidEmit(.voiceOpened(dispatch: false))
-        check("fn at the feedback, then the keyboard asks for ⌥, or ⌘ ×2", model.waitingBeat == .feedbackTaken
-              && model.keyboardTargets == ["⌥", "⌘"] && model.keyboardBadges == ["⌘": "×2"],
+        check("fn at the feedback, then the keyboard asks for ⌘ (once a part, twice all of it)", model.waitingBeat == .feedbackTaken
+              && model.keyboardTargets == ["⌘"] && model.keyboardBadges.isEmpty,
               "\(String(describing: model.waitingBeat)) \(model.keyboardTargets)")
         await shot("dictation-take")
         _ = model.paste("Too quick.")
@@ -308,7 +308,7 @@ package enum OnboardingSmoke {
         model.pointerOver = .feedback
         model.islandDidEmit(.voiceOpened(dispatch: false))
         model.islandDidEmit(.referentTaken(kind: .region, rect: OT.Layout.messagesFrame.insetBy(dx: 40, dy: 80)))
-        check("⌥ and a drag while talking: taken, a picture of it", model.flow.done == [.feedbackKey, .feedbackTaken]
+        check("⌘ and a drag while talking: taken, a picture of it", model.flow.done == [.feedbackKey, .feedbackTaken]
               && model.dictationTaken.count == 1 && model.dictationTaken.first?.image != nil, "\(model.flow.done.map(\.rawValue))")
         _ = model.paste("This part was clear.")
         check("…it lands after the words", model.feedbackTaken.count == 1 && model.feedbackText.hasSuffix("This part was clear.")

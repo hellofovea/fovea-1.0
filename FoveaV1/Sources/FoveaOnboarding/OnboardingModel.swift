@@ -395,7 +395,7 @@ final class OnboardingModel {
     /// Words as they're heard, before they land.
     var heardSoFar = ""
     var feedbackSent = false
-    /// Oct 17, Ryan: what's taken while dictating (⌥ and a drag, ⌥ twice), pictures of it, until
+    /// Oct 17, Ryan: what's taken while dictating (⌘ and a drag, ⌘ twice), pictures of it, until
     /// the words land; then it lands after them, in the window the words went to.
     var dictationTaken: [TakenReferent] = []
     var feedbackTaken: [TakenReferent] = []
@@ -989,8 +989,8 @@ final class OnboardingModel {
         return Beat.allCases.first { group.contains($0) }
     }
 
-    /// The keys to press now, lit on the keyboard, in turn (Oct 9): fn and ⌃ to start, ⌥ for each
-    /// part (once its tab is showing; Oct 17, Ryan: ⌥, once), nothing while you drag or click a tab,
+    /// The keys to press now, lit on the keyboard, in turn (Oct 9): fn and ⌃ to start, ⌘ for each
+    /// part (once its tab is showing; Oct 19, Ryan: ⌘, once), nothing while you drag or click a tab,
     /// fn ⌃ to finish, return to send.
     var keyboardTargets: Set<String> {
         switch step {
