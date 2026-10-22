@@ -33,7 +33,7 @@ struct SettingsPage: View {
         case .tabs:
             SettingsColumn { pane(model.settingsPane) }
                 .id(model.settingsPane)
-                .transition(.blockSwap)
+                .transition(.identity)
         case .onePage:
             SettingsColumn {
                 ForEach(SettingsPane.allCases, id: \.self) { p in
@@ -75,7 +75,7 @@ struct SettingsTabs: View {
                                height: T.Layout.toolbarControl - 8, fontSize: fit == .tight ? 12 : 12.5,
                                padding: fit == .roomy ? 12 : (fit == .natural ? 9 : 7), inset: 4,
                                equalWidths: fit == .roomy) { pane in
-            model.animate(.swap) { model.settingsPane = pane }
+            model.animate(.fadeIn) { model.settingsPane = pane }
         }
         .accessibilityLabel("Settings")
     }
@@ -259,7 +259,7 @@ struct PlanPane: View {
 
         SettingsSection("Plans") {
             SettingsSegments(segments: [(false, "Monthly"), (true, "Yearly")], selection: model.yearlyBilling) { yearly in
-                model.animate(.swap) { model.yearlyBilling = yearly }
+                model.yearlyBilling = yearly
             }
         } content: {
             PlanTiles()
@@ -306,10 +306,11 @@ struct PlanPane: View {
     }
 }
 
-/// The plans side by side, shaded as every card is: the one you're on ringed in ink, with
-/// "Current" in its corner; each with who it's for under its name, its price, what it includes,
-/// and the one button that moves you to it (the prominent pill for a move up). Too narrow for
-/// three across, they stack.
+/// The plans side by side, shaded as every card is: each with who it's for under its name, its
+/// price, what it includes, and the one button that moves you to it (the prominent pill for a
+/// move up); the one you're on says "Your plan" where its button would be. Oct 21, Ryan ("simpler
+/// is better"): said once (it was also ringed in ink, with "Current" in its corner). Too narrow
+/// for three across, they stack.
 private struct PlanTiles: View {
     @Environment(CapturesModel.self) private var model
 
@@ -343,7 +344,7 @@ private struct PlanTile: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(plan.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(palette.text)
                 Spacer()
-                if current { Badge(text: "Current") } else if waiting { Badge(text: L("From \(Lines.day(model.usage.resets))")) }
+                if waiting { Badge(text: L("From \(Lines.day(model.usage.resets))")) }
             }
             // Who it's for, under its name.
             Text(plan.line)
@@ -353,7 +354,6 @@ private struct PlanTile: View {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(verbatim: "$\(price)").font(.system(size: 22, weight: .semibold)).foregroundStyle(palette.text)
                     .monospacedDigit()
-                    .contentTransition(.numericText())
                 Text(price == 0 ? "for good" : (yearly ? "a year" : "a month")).font(.system(size: 12)).foregroundStyle(palette.secondary)
             }
             .padding(.top, 12)
@@ -374,7 +374,6 @@ private struct PlanTile: View {
         // Three across wherever 3 × 160 fits (each then takes its share); stacked where not.
         .frame(minWidth: 150, idealWidth: 160, maxWidth: .infinity, minHeight: 250, alignment: .topLeading)
         .settingsSurface(shape)
-        .overlay(shape.strokeBorder(current ? palette.ink(0.85) : .clear, lineWidth: 1.5))
         .confirmationDialog(confirmTitle, isPresented: $confirm) {
             Button(plan > model.plan ? "Upgrade to \(plan.title)" : "Switch on \(Lines.day(model.usage.resets))") { model.choose(plan) }
             Button("Cancel", role: .cancel) {}
@@ -418,7 +417,7 @@ private struct PlanTile: View {
     }
 }
 
-/// A word in a small pill, in the ink: "Current".
+/// A word in a small pill, in the ink: "From Nov 1".
 private struct Badge: View {
     @Environment(\.palette) private var palette
     let text: String

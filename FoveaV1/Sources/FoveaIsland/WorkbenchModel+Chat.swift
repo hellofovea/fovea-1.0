@@ -509,7 +509,7 @@ extension WorkbenchModel {
     func setChatAgent(_ agent: String) {
         guard agent != chatAgent || chatLevel == .chats else { return }
         let C = WorkbenchTokens.Chat.self
-        islandAnimation = reduceMotion ? .easeOut(duration: WorkbenchTokens.Motion.reduceMotionFade) : C.agentSwap
+        islandAnimation = reduceMotion ? WorkbenchTokens.Spring.fade : C.agentSwap
         withAnimation(chatAnimated ? C.agentSwap : nil) { chatAgent = agent }
         if chatLevel == .chats {
             notchState = Self.state(for: .projects)

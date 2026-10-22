@@ -203,8 +203,10 @@ struct StackLayout: Equatable {
     }
 
     /// The bar as it is while listening: the notch's width, 44 pt below it. The first capture
-    /// in front at the left, up to two more peeking out behind it to the right, smaller,
-    /// dimmer and tilted; the rest hidden behind them. The waveform moves right to make room.
+    /// in front at the left, up to two more peeking out behind it to the right, smaller and
+    /// dimmer; the rest hidden behind them. The waveform moves right to make room. Oct 21, Ryan
+    /// ("simpler is better"): a plain offset stack, no tilt at rest and no fan on hover (`peek`
+    /// no longer moves it).
     static func collapsed(state: NotchState, aspects: [CGFloat], shape: ReferentShape, peek: Bool,
                           metrics: ScreenMetrics) -> StackLayout {
         let T = WorkbenchTokens.Referents.self
@@ -219,8 +221,7 @@ struct StackLayout: Equatable {
         let frontW = shape.width(height: h, aspect: aspects.first ?? 1, stacked: true)
         let frontLeft = -half + T.inset
         let frontRight = frontLeft + frontW
-        let offset = peek ? T.peekOffset : T.layerOffset
-        let rotations = peek ? T.peekRotation : T.restRotation
+        let offset = T.layerOffset
         var cards: [Card] = []
         for i in 0..<n {
             let layer = min(i, T.maxLayers - 1)
@@ -230,15 +231,14 @@ struct StackLayout: Equatable {
             let opacity: Double = !voice ? 0 : (i == 0 ? 1 : (i < T.maxLayers ? T.layerOpacity : 0))
             cards.append(Card(cx: right - w / 2, top: bandTop + T.inset + (h - hh) / 2, width: w, height: hh,
                               radius: shape.radius(height: hh, concentric: T.radius * s),
-                              rotation: rotations[layer], opacity: opacity, z: Double(n - i)))
+                              rotation: 0, opacity: opacity, z: Double(n - i)))
         }
         let layers = min(n, T.maxLayers)
-        // The waveform sits between the stack at rest and the band's right inset; a hover
-        // fanning the stack does not push it.
-        let restRight = frontRight + CGFloat(max(0, layers - 1)) * T.layerOffset
-        let fanRight = frontRight + CGFloat(max(0, layers - 1)) * offset
-        // Oct 15 review, VF04: past three, "+N" sits on the stack's right, riding the fan; the
-        // waveform makes room for it at rest.
+        // The waveform sits between the stack and the band's right inset.
+        let restRight = frontRight + CGFloat(max(0, layers - 1)) * offset
+        let fanRight = restRight
+        // Oct 15 review, VF04: past three, "+N" sits on the stack's right; the waveform makes
+        // room for it.
         let hidden = max(0, n - T.maxLayers)
         let moreW = hidden > 0 ? moreWidth(hidden) : 0
         let more: CGRect? = (voice && hidden > 0)
@@ -374,12 +374,10 @@ struct CardVector: VectorArithmetic {
 }
 
 /// Places a card: sized, clipped to its shape with a hairline so it reads on the black,
-/// tilted, faded, and offset from its container's alignment point (top center in the island,
-/// top leading for a capture in flight). Hover scaling rides on top, on its own curve.
+/// faded, and offset from its container's alignment point (top center in the island,
+/// top leading for a capture in flight).
 struct CardPlacement: ViewModifier, Animatable {
     var vector: CardVector
-    var hoverScale: CGFloat = 1
-    var hoverAnimation: Animation? = nil
     /// The card's remove button, shown while `removeVisible`.
     var remove: (() -> Void)? = nil
     var removeVisible = false
@@ -429,8 +427,6 @@ struct CardPlacement: ViewModifier, Animatable {
                         .allowsHitTesting(false)
                 }
             }
-            .scaleEffect(hoverScale)
-            .animation(hoverAnimation, value: hoverScale)
             .rotationEffect(.degrees(v.rot))
             .opacity(min(1, max(0, v.o)))
             .offset(x: v.x, y: v.y)
@@ -469,7 +465,7 @@ struct StackCloseButton: View {
             .background(Capsule(style: .continuous).fill(hovering ? T.closeFillHover : T.closeFill))
             .contentShape(Capsule(style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(IslandPressStyle())
         .onHover { hovering = $0 }
         .help(back ? "All screenshots (esc)" : "Close (esc)")
         .accessibilityLabel(back ? "All screenshots" : "Close")
@@ -478,12 +474,12 @@ struct StackCloseButton: View {
 
 /// Removes one capture: a small disc in the island's raised black with a white cross and a
 /// faint ring, so it reads on white pages and on photos alike; brighter under the pointer.
-/// Fades and grows in with the hover, and takes no clicks while hidden.
+/// Fades in with the hover (Oct 21, Ryan, "simpler is better": it no longer grows in), and
+/// takes no clicks while hidden.
 struct ReferentRemoveButton: View {
     let visible: Bool
     let action: () -> Void
     @State private var hovering = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let T = WorkbenchTokens.Referents.self
@@ -496,10 +492,9 @@ struct ReferentRemoveButton: View {
                 .overlay(Circle().strokeBorder(T.removeRing, lineWidth: 0.75))
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(IslandPressStyle())
         .onHover { hovering = $0 }
         .opacity(visible ? 1 : 0)
-        .scaleEffect(visible || reduceMotion ? 1 : T.removeHiddenScale)
         .animation(T.removeAppear, value: visible)
         .allowsHitTesting(visible)
         .help("Remove this screenshot")

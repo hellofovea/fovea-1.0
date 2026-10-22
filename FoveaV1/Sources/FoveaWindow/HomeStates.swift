@@ -26,7 +26,7 @@ extension CapturesModel {
         guard let i = library.captures.firstIndex(where: { $0.id == id }) else { return }
         if stagedIDs.contains(id) || onSendAgain == nil {
             let agent = library.captures[i].destination?.agent ?? L("your agent")
-            animate(.swap) { library.captures[i].sendFailure = nil }
+            animate(.layout) { library.captures[i].sendFailure = nil }
             say(L("Sent again to \(agent)"))
         } else {
             onSendAgain?(id)
@@ -36,21 +36,21 @@ extension CapturesModel {
     /// Oct 15 review, MW-02a: the session restored, then Home (simulated: 1.0 keeps the account on
     /// this Mac, so it's always there; a stage shows the wait and the failure).
     func restoreSession() {
-        animate(.swap) { session = .restoring }
+        animate(.fadeIn) { session = .restoring }
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(self.motion.seconds(T.Simulated.restore)))
             guard self.session == .restoring else { return }
-            self.animate(.swap) { self.session = .ready }
+            self.animate(.fadeIn) { self.session = .ready }
         }
     }
 
     /// Oct 15 review, HI-01.6: the captures read again (they're already in memory: simulated wait).
     func loadCaptures() {
-        animate(.swap) { capturesLoad = .loading }
+        animate(.fadeIn) { capturesLoad = .loading }
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(self.motion.seconds(T.Simulated.loadCaptures)))
             guard self.capturesLoad == .loading else { return }
-            self.animate(.swap) { self.capturesLoad = .loaded }
+            self.animate(.fadeIn) { self.capturesLoad = .loaded }
         }
     }
 
@@ -72,17 +72,17 @@ extension CapturesModel {
         case .diskFull:
             let free = Diagnostics.freeSpace() ?? 0
             if free >= Diagnostics.neededSpace {
-                animate(.swap) { windowError = nil }
+                animate(.fadeIn) { windowError = nil }
             } else {
                 say(L("Still not enough room: \(ByteCountFormatter.string(fromByteCount: free, countStyle: .file)) free"))
             }
         case .migration:
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(self.motion.seconds(T.Simulated.migrationRetry)))
-                self.animate(.swap) { self.windowError = nil }
+                self.animate(.fadeIn) { self.windowError = nil }
             }
         case .uncleanQuit, .slowClose:
-            animate(.swap) { windowError = nil }
+            animate(.fadeIn) { windowError = nil }
         }
     }
 
@@ -99,7 +99,7 @@ extension CapturesModel {
     func unstage() {
         let ids = stagedIDs
         guard !ids.isEmpty else { return }
-        if let d = detailID, ids.contains(d) { closeDetail() }
+        if let d = detailID, ids.contains(d) { closeDetail(animated: false) }
         library.captures.removeAll { ids.contains($0.id) }
         stagedIDs = []
         retryScheduled.subtract(ids)

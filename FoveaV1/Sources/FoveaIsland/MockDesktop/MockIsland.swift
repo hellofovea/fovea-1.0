@@ -24,21 +24,21 @@ struct MockIsland: View {
         bandAnimation(shown: state.collects)
     }
 
-    /// A band's content coming in a beat behind the shape, or going out on the closing spring.
+    /// A band's content coming in with the shape (Oct 21, Ryan, "simpler is better": no beat
+    /// behind it), or going out quicker. Under Reduce Motion, `Spring.fade` (the strong ease-out).
     private func bandAnimation(shown: Bool) -> Animation {
-        if reduceMotion { return .easeOut(duration: WorkbenchTokens.Motion.reduceMotionFade) }
-        return shown
-            ? WorkbenchTokens.Motion.content.delay(WorkbenchTokens.Motion.contentDelay)
-            : WorkbenchTokens.Motion.contentOut
+        if reduceMotion { return WorkbenchTokens.Spring.fade }
+        return shown ? WorkbenchTokens.Motion.content : WorkbenchTokens.Motion.contentOut
     }
 
-    /// Dispatch Version 2's content: in a beat behind the shape, out on the closing spring.
+    /// Dispatch Version 2's content: in with the shape, out quicker.
     private func v2Content(_ shown: Bool) -> Animation {
-        if reduceMotion { return .easeOut(duration: WorkbenchTokens.Motion.reduceMotionFade) }
+        if reduceMotion { return WorkbenchTokens.Spring.fade }
         return shown ? WorkbenchTokens.V2.contentIn : bandAnimation(shown: false)
     }
 
-    /// A live capture's slot, or where a removed one was, fading and shrinking about its center.
+    /// A live capture's slot, or where a removed one was, fading where it was (Oct 21, Ryan,
+    /// "simpler is better": it no longer shrinks as it goes).
     private func placement(for referent: CapturedReferent, fullIndex: Int, liveIndex: [UUID: Int],
                            layout: StackLayout, departing: StackLayout?) -> StackLayout.Card? {
         if let i = liveIndex[referent.id] {
@@ -46,11 +46,6 @@ struct MockIsland: View {
         }
         guard let departing, departing.cards.indices.contains(fullIndex) else { return nil }
         var card = departing.cards[fullIndex]
-        let k = WorkbenchTokens.Referents.departShrink
-        card.top += card.height * (1 - k) / 2
-        card.width *= k
-        card.height *= k
-        card.radius *= k
         card.opacity = 0
         return card
     }
@@ -69,7 +64,8 @@ struct MockIsland: View {
         ZStack(alignment: .top) {
             Color.clear
 
-            VoiceBarView(level: model.audioLevel, still: model.snapshotMode, paused: !voice)
+            // Oct 21, perf: the level read in a view of its own (`VoiceBarLevel`).
+            VoiceBarLevel(model: model, paused: !voice)
                 .frame(width: WorkbenchTokens.Island.waveformSpan, height: maxH)
                 .modifier(VoiceContentTransition(progress: voice ? 1 : 0))
                 .animation(contentAnimation(for: state), value: state)
@@ -106,7 +102,7 @@ struct MockIsland: View {
                 .accessibilityHidden(!noSpeech)
 
             // Every capture, the fading ones included, each placed by id: a live one in its
-            // slot, a removed one where it was, fading and shrinking while the rest close up.
+            // slot, a removed one where it was, fading while the rest close up.
             let live = model.liveReferents
             let liveIndex = Dictionary(uniqueKeysWithValues: live.enumerated().map { ($0.element.id, $0.offset) })
             let departing = model.removing.isEmpty ? nil : model.departingLayout
@@ -120,8 +116,6 @@ struct MockIsland: View {
                     let number = (liveIndex[referent.id] ?? fullIndex) + 1
                     ReferentCard(referent: referent)
                         .modifier(CardPlacement(vector: card.vector,
-                                                hoverScale: hovered && looking == nil ? T.hoverScale : 1,
-                                                hoverAnimation: model.cardMotion.hover,
                                                 remove: reachable ? { model.removeReferent(referent.id) } : nil,
                                                 removeVisible: hovered,
                                                 number: number, otherDisplay: referent.otherDisplay,
@@ -219,8 +213,9 @@ struct MockIsland: View {
         .overlay(alignment: .top) {
             let paste = state == .pasteNotFound
             PasteNotFoundContent(model: model, layout: model.pasteLayout)
+                .bandShown(paste) // Oct 21, perf
                 .modifier(VoiceContentTransition(progress: paste ? 1 : 0))
-                .animation(paste ? (reduceMotion ? .easeOut(duration: WorkbenchTokens.Motion.reduceMotionFade)
+                .animation(paste ? (reduceMotion ? WorkbenchTokens.Spring.fade
                                                  : WorkbenchTokens.Paste.contentIn)
                                  : bandAnimation(shown: false), value: state)
                 .offset(y: model.metrics.safeAreaTop)
@@ -232,8 +227,9 @@ struct MockIsland: View {
         .overlay(alignment: .top) {
             let shown = state == .voiceError
             VoiceErrorContent(model: model)
+                .bandShown(shown) // Oct 21, perf
                 .modifier(VoiceContentTransition(progress: shown ? 1 : 0))
-                .animation(shown ? (reduceMotion ? .easeOut(duration: WorkbenchTokens.Motion.reduceMotionFade)
+                .animation(shown ? (reduceMotion ? WorkbenchTokens.Spring.fade
                                                  : WorkbenchTokens.Paste.contentIn)
                                  : bandAnimation(shown: false), value: shown)
                 .offset(y: model.metrics.safeAreaTop)
@@ -244,6 +240,7 @@ struct MockIsland: View {
         .overlay(alignment: .top) {
             let shown = state.collects && model.barNotice != nil && !model.stackExpanded
             BarNoticeBand(model: model)
+                .bandShown(shown) // Oct 21, perf
                 .frame(width: WorkbenchTokens.Feedback.barNoticeWidth - 2 * WorkbenchTokens.Island.spec.compactTopRadius,
                        height: WorkbenchTokens.Island.spec.voiceBelow)
                 .modifier(VoiceContentTransition(progress: shown ? 1 : 0))
@@ -284,7 +281,7 @@ struct MockIsland: View {
                 .padding(.trailing, model.v2RouteOpen ? 0 : WorkbenchTokens.Board.routeInset)
                 .frame(width: model.v2RouteOpen ? V2Geometry.contentWidth : notch.width, height: spec.voiceBelow)
                 .offset(y: notch.height)
-                .animation(WorkbenchTokens.V2.resize, value: model.v2RouteOpen)
+                .animation(model.v2RouteOpen ? WorkbenchTokens.V2.resize : WorkbenchTokens.V2.fold, value: model.v2RouteOpen)
                 if model.v2RouteOpen {
                     V2RouteSheet(model: model)
                         .panelScheme()
@@ -293,17 +290,19 @@ struct MockIsland: View {
                 }
             }
             .panelScheme()
+            .bandShown(shown) // Oct 21, perf
             .modifier(VoiceContentTransition(progress: shown ? 1 : 0))
             .animation(v2Content(shown), value: shown)
-            .animation(WorkbenchTokens.V2.resize, value: model.v2RouteOpen)
+            .animation(model.v2RouteOpen ? WorkbenchTokens.V2.resize : WorkbenchTokens.V2.fold, value: model.v2RouteOpen)
             .allowsHitTesting(shown)
             .accessibilityHidden(!shown)
         }
         .overlay(alignment: .top) {
             let thinking = state == .quickThinking
             AgentActivityContent(model: model, layout: model.agentLayout)
+                .bandShown(thinking) // Oct 21, perf
                 .modifier(VoiceContentTransition(progress: thinking ? 1 : 0))
-                .animation(thinking ? (reduceMotion ? .easeOut(duration: WorkbenchTokens.Motion.reduceMotionFade)
+                .animation(thinking ? (reduceMotion ? WorkbenchTokens.Spring.fade
                                                     : WorkbenchTokens.Thinking.contentIn)
                                     : bandAnimation(shown: false), value: state)
                 .allowsHitTesting(thinking && model.agentAction == .needsYou)
@@ -314,8 +313,9 @@ struct MockIsland: View {
         .overlay(alignment: .top) {
             let choosing = state.choosingChat
             ChooseChatContent(model: model, layout: model.chatLayout)
+                .bandShown(choosing) // Oct 21, perf: "Choosing chat" breathes only while it shows
                 .modifier(VoiceContentTransition(progress: choosing ? 1 : 0))
-                .animation(choosing ? (reduceMotion ? .easeOut(duration: WorkbenchTokens.Motion.reduceMotionFade)
+                .animation(choosing ? (reduceMotion ? WorkbenchTokens.Spring.fade
                                                     : WorkbenchTokens.Chat.contentIn)
                                     : bandAnimation(shown: false), value: choosing)
                 .allowsHitTesting(choosing)
@@ -325,19 +325,20 @@ struct MockIsland: View {
         .overlay(alignment: .top) {
             let panel = state == .agentPanel
             AgentPanelContent(model: model, layout: model.panelLayout)
+                .bandShown(panel) // Oct 21, perf: the working rows' rings and typing
                 .modifier(VoiceContentTransition(progress: panel ? 1 : 0))
-                .animation(panel ? (reduceMotion ? .easeOut(duration: WorkbenchTokens.Motion.reduceMotionFade)
+                .animation(panel ? (reduceMotion ? WorkbenchTokens.Spring.fade
                                                  : WorkbenchTokens.Panel.contentIn)
                                  : bandAnimation(shown: false), value: panel)
                 .allowsHitTesting(panel)
                 .accessibilityHidden(!panel)
         }
         // Dispatch Version 2: Choose chat, the control board, the expanded chat (its voice input
-        // is the aura, drawn by AgentEdgeLayer). Overlays too, each fading in a beat behind the shape.
+        // is the aura, drawn by AgentEdgeLayer). Overlays too, each fading in with the shape.
         // Dispatch Version 2 transcribing: the words, over the aura filling the bar's edge.
         .overlay(alignment: .top) {
             let shown = state == .v2Transcribing
-            ThinkingText(still: reduceMotion || model.snapshotMode, label: L("Transcribing"))
+            ThinkingText(label: L("Transcribing"))
                 .frame(width: model.metrics.notchWidth ?? WorkbenchTokens.Island.spec.softwareIslandWidth,
                        height: WorkbenchTokens.Island.spec.voiceBelow)
                 .offset(y: model.metrics.safeAreaTop)
@@ -350,6 +351,7 @@ struct MockIsland: View {
             // Oct 17, Ryan: a file dragged over Choose chat: its drop state in place of the request.
             let shown = state == .v2Send && !model.fileDropTargeted
             V2SendContent(model: model, layout: model.v2SendLayout)
+                .bandShown(shown) // Oct 21, perf
                 .modifier(VoiceContentTransition(progress: shown ? 1 : 0))
                 .animation(v2Content(shown), value: shown)
                 .allowsHitTesting(shown)
@@ -358,6 +360,7 @@ struct MockIsland: View {
         .overlay(alignment: .top) {
             let shown = state == .v2Board
             V2BoardContent(model: model, layout: model.v2BoardLayout)
+                .bandShown(shown) // Oct 21, perf: the sessions' rings and clocks while it's open
                 .modifier(VoiceContentTransition(progress: shown ? 1 : 0))
                 .animation(v2Content(shown), value: shown)
                 .allowsHitTesting(shown)
@@ -368,6 +371,7 @@ struct MockIsland: View {
             let over = model.v2AsksOver && !model.stackExpanded
             let shown = state == .v2Chat || over
             V2ChatContent(model: model, layout: model.v2ChatLayout)
+                .bandShown(shown) // Oct 21, perf
                 .offset(y: over ? WorkbenchTokens.Island.spec.voiceBelow : 0)
                 .animation(model.islandAnimation, value: over)
                 .modifier(VoiceContentTransition(progress: shown ? 1 : 0))
@@ -401,4 +405,63 @@ struct MockIsland: View {
         // docs/island/NATIVE.md).
         .modifier(IslandSurface(model: model, layout: layout))
     }
+}
+
+/// Oct 21, perf: the waveform reading the voice's level itself. Read in MockIsland's body, the
+/// level (the meter, many times a second while listening) re-ran the whole island's body on every
+/// change: every panel's layout and its words looked up again. While the waveform's own clock
+/// runs (40 frames a second) it reads the level on each frame, unobserved, so a new level (30 a
+/// second, out of step) no longer lays the screen-sized island out again between them; held still
+/// (paused, Reduce Motion, a snapshot) it follows the level as before.
+private struct VoiceBarLevel: View {
+    let model: WorkbenchModel
+    let paused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        let ticking = !paused && !model.snapshotMode && !reduceMotion
+        VoiceBarView(level: ticking ? model.drawnLevel : model.audioLevel,
+                     liveLevel: ticking ? { [model] in model.drawnLevel } : nil,
+                     still: model.snapshotMode, paused: paused)
+    }
+}
+
+// Oct 21, perf: every band above is always there, faded to nothing when it isn't the state's; what
+// moves inside one (a TimelineView, a repeating symbol effect) kept the screen-sized layer laying
+// itself out on every frame with the island at rest (the panel even ordered out): ~6–12% CPU doing
+// nothing. Each band now says whether it's showing, and its moving parts hold still once it has
+// faded out (`Motion.bandLinger` after), moving again the moment it shows. Nothing seen changes.
+private struct IslandBandShownKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    /// Oct 21, perf: the band this view is in is showing (or still fading out). Moving parts pause
+    /// their clocks while it's false.
+    var islandBandShown: Bool {
+        get { self[IslandBandShownKey.self] }
+        set { self[IslandBandShownKey.self] = newValue }
+    }
+}
+
+/// Oct 21, perf: a band's `islandBandShown`, true while `shown` and for `Motion.bandLinger` after.
+struct BandShown: ViewModifier {
+    let shown: Bool
+    @Environment(\.islandBandShown) private var outer
+    @State private var lingering = false
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.islandBandShown, outer && (shown || lingering))
+            .task(id: shown) {
+                if shown { lingering = true; return }
+                try? await Task.sleep(for: .seconds(WorkbenchTokens.Motion.bandLinger))
+                if !Task.isCancelled { lingering = false }
+            }
+    }
+}
+
+extension View {
+    /// Oct 21, perf: this band's moving parts run only while it shows (`BandShown`).
+    func bandShown(_ shown: Bool) -> some View { modifier(BandShown(shown: shown)) }
 }

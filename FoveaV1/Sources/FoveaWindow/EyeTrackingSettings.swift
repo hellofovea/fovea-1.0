@@ -16,34 +16,34 @@ extension CapturesModel {
     /// The Gaze Collector opened: about ten minutes of following dots, played quickly (simulated).
     func openCollector() {
         play?.cancel()
-        withAnimation(motion.animation(.swap)) { prefs.gaze = .collecting(0) }
+        withAnimation(motion.animation(.layout)) { prefs.gaze = .collecting(0) }
         play = Task { @MainActor in
             for step in 1...40 {
                 try? await Task.sleep(for: .seconds(motion.seconds(0.1)))
                 guard !Task.isCancelled, case .collecting = prefs.gaze else { return }
                 prefs.gaze = .collecting(Double(step) / 40)
             }
-            withAnimation(motion.animation(.swap)) { prefs.gaze = .reviewing }
+            withAnimation(motion.animation(.layout)) { prefs.gaze = .reviewing }
         }
     }
 
     /// Stops following the dots: nothing is kept.
     func stopCollecting() {
         play?.cancel()
-        withAnimation(motion.animation(.swap)) { prefs.gaze = .downloaded }
+        withAnimation(motion.animation(.layout)) { prefs.gaze = .downloaded }
     }
 
     /// The session sent; the model is fitted, and the controls appear (simulated).
     func sendSession() {
         play?.cancel()
-        withAnimation(motion.animation(.swap)) { prefs.gaze = .sending(0) }
+        withAnimation(motion.animation(.layout)) { prefs.gaze = .sending(0) }
         play = Task { @MainActor in
             for step in 1...20 {
                 try? await Task.sleep(for: .seconds(motion.seconds(0.06)))
                 guard !Task.isCancelled, case .sending = prefs.gaze else { return }
                 prefs.gaze = .sending(Double(step) / 20)
             }
-            withAnimation(motion.animation(.swap)) {
+            withAnimation(motion.animation(.layout)) {
                 prefs.gaze = .collected
                 panes.eyeTrackingOn = true
                 panes.calibratedAt = Date()
@@ -55,7 +55,7 @@ extension CapturesModel {
     /// The session deleted before it was sent.
     func discardSession() {
         play?.cancel()
-        withAnimation(motion.animation(.swap)) { prefs.gaze = .downloaded }
+        withAnimation(motion.animation(.layout)) { prefs.gaze = .downloaded }
         say(L("Deleted the session"))
     }
 }
@@ -161,7 +161,7 @@ private struct EyeTrackingControls: View {
         SettingsSection(nil) {
             SettingsCard {
                 SettingsRow("Eye tracking", detail: "Look at something and say “this”: Fovea knows what you mean.") {
-                    InkToggle(title: "Eye tracking", isOn: $panes.eyeTrackingOn.animation(model.motion.animation(.swap)))
+                    InkToggle(title: "Eye tracking", isOn: $panes.eyeTrackingOn.animation(model.motion.animation(.layout)))
                 }
                 RowDivider()
                 SettingsRow("Status", detail: camera.map { L("Following your eyes with \($0).") }
@@ -273,11 +273,12 @@ private struct CalibrateSheet: View {
             for i in points.indices {
                 dot = i
                 fill = 0
-                withAnimation(.linear(duration: motion.seconds(0.9))) { fill = 1 }
+                // Passage of time: linear (Oct 21, Ryan: the one linear motion in the window).
+                withAnimation(.linear(duration: motion.seconds(T.Motion.calibrationHold))) { fill = 1 }
                 try? await Task.sleep(for: .seconds(motion.seconds(1.0)))
                 if Task.isCancelled { return }
             }
-            withAnimation(motion.animation(.swap)) { done = true }
+            withAnimation(motion.animation(.layout)) { done = true }
             model.panes.calibratedAt = Date()
         }
     }
@@ -370,10 +371,10 @@ private struct CollectorDownload: View {
                     }
                     Text("38 MB · macOS 14 or later").font(.system(size: 11.5)).foregroundStyle(palette.secondary)
                 }
-                .transition(.blockSwap)
+                .transition(.opacity)
             case .downloading(let p):
                 progress(p, L("Downloading… \(Int((p * 38).rounded())) of 38 MB")) { model.cancelCollector() }
-                    .transition(.blockSwap)
+                    .transition(.opacity)
             case .downloaded:
                 VStack(spacing: 6) {
                     HStack(spacing: 12) {
@@ -384,12 +385,12 @@ private struct CollectorDownload: View {
                     }
                     StatusLabel(word: "In your Downloads folder")
                 }
-                .transition(.blockSwap)
+                .transition(.opacity)
             case .collecting(let p):
                 progress(p, L("Following the dots… about \(max(1, Int(((1 - p) * 10).rounded(.up)))) min left"), stop: "Stop") {
                     model.stopCollecting()
                 }
-                .transition(.blockSwap)
+                .transition(.opacity)
             case .reviewing:
                 VStack(spacing: 8) {
                     Text("Your session: 9 min 40 s, 312 dots.").font(.system(size: 12.5, weight: .medium)).foregroundStyle(palette.text)
@@ -400,16 +401,16 @@ private struct CollectorDownload: View {
                     }
                     Text("It's sent only if you choose to.").font(.system(size: 11.5)).foregroundStyle(palette.secondary)
                 }
-                .transition(.blockSwap)
+                .transition(.opacity)
             case .sending(let p):
                 progress(p, L("Sending… \(Int((p * 120).rounded())) of 120 MB"), action: nil)
-                    .transition(.blockSwap)
+                    .transition(.opacity)
             case .collected:
                 HStack(spacing: 12) {
                     StatusLabel(word: "Session sent. The model is fitted to your eyes.")
                     TextButton("Collect Again") { model.openCollector() }
                 }
-                .transition(.blockSwap)
+                .transition(.opacity)
             }
         }
         .frame(minHeight: 56)
@@ -434,13 +435,12 @@ private struct CollectorDownload: View {
     }
 }
 
+/// What eye tracking will do, as a still picture: the eyes on the paragraph, its window ringed,
+/// "this" beside them. Oct 21, Ryan ("simpler is better"): it looped, the gaze hopping from window
+/// to window with a fading trail and a glow, for as long as the pane was open.
 private struct GazeHero: View {
-    @Environment(CapturesModel.self) private var model
     @Environment(\.palette) private var palette
-    @Environment(\.motion) private var motion
-    @State private var focus = 1
-    @State private var trail: [Int] = []
-    @State private var resting = true
+    private let focus = 1
 
     private let screen = CGSize(width: 340, height: 178)
     /// The three windows on the screen, and where on each the eyes land.
@@ -457,7 +457,6 @@ private struct GazeHero: View {
                 .fill(palette.mark.opacity(palette.isDark ? 0.10 : 0.16))
             screenView
         }
-        .task(id: motion.reduce) { await run() }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Coming soon: look at something on screen and say “this.”")
     }
@@ -474,20 +473,11 @@ private struct GazeHero: View {
             chart.frame(width: windows[0].width, height: windows[0].height).offset(x: windows[0].minX, y: windows[0].minY)
             paragraph.frame(width: windows[1].width, height: windows[1].height).offset(x: windows[1].minX, y: windows[1].minY)
             code.frame(width: windows[2].width, height: windows[2].height).offset(x: windows[2].minX, y: windows[2].minY)
-            ForEach(Array(windows.enumerated()), id: \.offset) { i, w in
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .strokeBorder(palette.text, lineWidth: 1.5)
-                    .frame(width: w.width + 4, height: w.height + 4)
-                    .offset(x: w.minX - 2, y: w.minY - 2)
-                    .opacity(focus == i && resting ? 1 : 0)
-                    .animation(motion.animation(.hover), value: focus == i && resting)
-            }
-            ForEach(Array(trail.enumerated()), id: \.offset) { n, i in
-                Circle().fill(palette.text)
-                    .frame(width: 5, height: 5)
-                    .opacity([0.35, 0.18, 0.08][min(n, 2)])
-                    .offset(x: gazes[i].x - 2.5, y: gazes[i].y - 2.5)
-            }
+            let w = windows[focus]
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .strokeBorder(palette.text, lineWidth: 1.5)
+                .frame(width: w.width + 4, height: w.height + 4)
+                .offset(x: w.minX - 2, y: w.minY - 2)
             gaze.offset(x: gazes[focus].x - 18, y: gazes[focus].y - 18)
             Text("this")
                 .font(.system(size: 10.5, weight: .semibold))
@@ -495,20 +485,15 @@ private struct GazeHero: View {
                 .padding(.horizontal, 7)
                 .padding(.vertical, 2.5)
                 .background(Capsule().fill(palette.mark))
-                .scaleEffect(resting ? 1 : 0.9, anchor: .bottomLeading)
-                .opacity(resting ? 1 : 0)
                 .offset(x: gazes[focus].x + 12, y: gazes[focus].y - 26)
         }
         .frame(width: screen.width, height: screen.height)
         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(palette.hairline, lineWidth: 1))
-        .shadow(color: .black.opacity(palette.isDark ? 0.4 : 0.1), radius: 8, y: 3)
     }
 
     private var gaze: some View {
         ZStack {
-            Circle().fill(RadialGradient(colors: [palette.mark.opacity(0.7), palette.mark.opacity(0)],
-                                         center: .center, startRadius: 2, endRadius: 18))
             Circle().fill(palette.text).frame(width: 8, height: 8)
             Circle().strokeBorder(Color.white, lineWidth: 1.5).frame(width: 8, height: 8)
         }
@@ -560,24 +545,5 @@ private struct GazeHero: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(12)
         .background(windowFill)
-    }
-
-    /// A rest of about a second and a half, the "this" fading, a quick jump to the next window,
-    /// "this" again: the rhythm of reading a screen.
-    private func run() async {
-        if motion.reduce {
-            focus = 1; resting = true; trail = []
-            return
-        }
-        while !Task.isCancelled {
-            withAnimation(motion.animation(.content)) { resting = true }
-            try? await Task.sleep(for: .seconds(motion.seconds(1.5)))
-            guard !Task.isCancelled else { return }
-            withAnimation(motion.animation(.press)) { resting = false }
-            try? await Task.sleep(for: .seconds(motion.seconds(0.1)))
-            trail = Array(([focus] + trail).prefix(3))
-            withAnimation(.spring(duration: motion.seconds(0.32), bounce: 0.06)) { focus = (focus + 1) % gazes.count }
-            try? await Task.sleep(for: .seconds(motion.seconds(0.28)))
-        }
     }
 }

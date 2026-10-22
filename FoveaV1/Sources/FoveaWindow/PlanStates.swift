@@ -16,9 +16,9 @@ extension CapturesModel {
     /// says so with Try Again (MW-04d).
     func openBilling() {
         if NSWorkspace.shared.open(FoveaSite.account) {
-            if planAlert == .billingUnavailable { animate(.swap) { planAlert = nil } }
+            if planAlert == .billingUnavailable { animate(.layout) { planAlert = nil } }
         } else {
-            animate(.swap) { planAlert = .billingUnavailable }
+            animate(.layout) { planAlert = .billingUnavailable }
         }
     }
 
@@ -30,7 +30,7 @@ extension CapturesModel {
             try? await Task.sleep(for: .seconds(self.motion.seconds(T.Simulated.refreshPayment)))
             self.refreshingPayment = false
             guard self.planAlert == .paymentProcessing else { return }
-            self.animate(.swap) { self.planAlert = nil; self.plan = .pro; self.nextPlan = nil }
+            self.animate(.layout) { self.planAlert = nil; self.plan = .pro; self.nextPlan = nil }
             self.say(L("Your payment went through. You're on Pro."))
         }
     }
@@ -38,7 +38,7 @@ extension CapturesModel {
     /// A review stage's plan: the alert, on the plan it belongs to, and Plan open.
     func stagePlan(_ alert: PlanAlert?) {
         windowError = nil
-        animate(.swap) {
+        animate(.layout) {
             planAlert = alert
             nextPlan = nil
             switch alert {

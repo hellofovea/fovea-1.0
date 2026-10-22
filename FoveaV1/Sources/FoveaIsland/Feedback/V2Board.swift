@@ -406,7 +406,7 @@ struct V2BoardRow: View {
                 HStack(spacing: B.trailingGap) {
                     if hovering {
                         Button { model.stopTask(task.id) } label: { StopRing(size: B.ring) }
-                            .buttonStyle(.plain)
+                            .buttonStyle(IslandPressStyle())
                             .help("Stop")
                     } else if style == .sections {
                         AgentStateGlyph(task: task, size: B.ring, paused: model.snapshotMode)
@@ -640,10 +640,8 @@ struct V2ChatContent: View {
             ChatAgentIcon(agent: ChatAgent.named(task.agent), size: V.headerIcon)
             Text(model.v2Title(task))
                 .font(V.headerTitle)
-                .foregroundStyle(model.v2Naming.contains(task.id) ? WorkbenchTokens.FeedbackV2.namingColor : V.titleColor)
+                .foregroundStyle(V.titleColor)
                 .lineLimit(1)
-                .id(model.v2Title(task))
-                .transition(.opacity)
             // Oct 15 review, QA16/QA25: the connection when it isn't fine, or read only, in the
             // badge's place.
             if V2HeaderPill.shown(model, task) {
@@ -704,6 +702,8 @@ struct V2ChatContent: View {
 struct V2WorkingLine: View {
     let model: WorkbenchModel
     let task: AgentTaskItem
+    /// Oct 21, perf: its band is showing (MockIsland's `BandShown`); its clock pauses when not.
+    @Environment(\.islandBandShown) private var bandShown
 
     var body: some View {
         let B = WorkbenchTokens.Board.self
@@ -717,9 +717,9 @@ struct V2WorkingLine: View {
                 AgentStateGlyph(task: task, size: B.workingGlyph, paused: model.snapshotMode)
                 V2StepLine(model: model, task: task, size: B.workingSize)
                 Spacer(minLength: 8)
-                TimelineView(.periodic(from: .now, by: 1)) { _ in
+                // Oct 21, perf: ticks only while the board shows (each tick laid the layer out).
+                TimelineView(.periodic(from: .now, by: bandShown ? 1 : WorkbenchTokens.Motion.hiddenTick)) { _ in
                     Text(model.v2RunTime(task, clock: true)).font(B.timeFont).foregroundStyle(B.time).monospacedDigit()
-                        .contentTransition(.numericText())
                 }
             }
         }
@@ -804,8 +804,8 @@ struct V2SessionBar: View {
 }
 
 /// ✕ and back in a session's header: a circle under its glyph, a plate under the pointer (and, in
-/// Spacious, a quiet one at rest, as Fovea Captures' round buttons); the glyph answers the pointer
-/// once.
+/// Spacious, a quiet one at rest, as Fovea Captures' round buttons). Oct 21, Ryan ("simpler is
+/// better"): the glyph no longer bounces as the pointer comes.
 struct NotchIconButton: View {
     let symbol: String
     let glyph: Font
@@ -820,12 +820,11 @@ struct NotchIconButton: View {
             Image(systemName: symbol)
                 .font(glyph)
                 .foregroundStyle(hovering ? V.iconGlyphHover : V.subColor)
-                .symbolEffect(.bounce, value: WorkbenchTokens.density == .spacious && hovering)
                 .frame(width: size, height: size)
                 .background(Circle().fill(hovering ? V.iconPlateHover : V.iconPlate))
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(IslandPressStyle())
         .onHover { hovering = $0 }
         .help(help)
     }
@@ -849,7 +848,7 @@ struct V2RouteButton: View {
                 .frame(width: WorkbenchTokens.Board.routeIcon + 8, height: WorkbenchTokens.Board.routeIcon + 8)
                 .background(Circle().fill(WorkbenchTokens.ink(hovering || model.v2RouteOpen ? 0.16 : 0.08)))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(IslandPressStyle())
         .onHover { hovering = $0 }
         .help("\(pick.title) · \(model.v2ModelLabel(agent: pick.agent)). Click to change where it goes")
         .accessibilityLabel("Where it goes: \(pick.title)")

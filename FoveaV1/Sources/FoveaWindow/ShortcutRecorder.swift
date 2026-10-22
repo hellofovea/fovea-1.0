@@ -298,7 +298,7 @@ extension CapturesModel {
     /// A recorded chord: saved, unless something else uses those keys; then said in place first.
     func offer(_ chord: KeyChord, for id: String) {
         if let clash = clash(chord, for: id) {
-            animate(.swap) { panes.pending = PendingChord(id: id, chord: chord, clash: clash) }
+            animate(.layout) { panes.pending = PendingChord(id: id, chord: chord, clash: clash) }
         } else {
             save(chord, for: id)
         }
@@ -325,7 +325,7 @@ extension CapturesModel {
     /// Keeps a chord (the default kept as no change); a clashing Fovea shortcut it was taken from is
     /// cleared.
     func save(_ chord: KeyChord, for id: String) {
-        animate(.swap) {
+        animate(.layout) {
             if case .shortcut(let other, _)? = panes.pending?.clash, panes.pending?.id == id {
                 prefs.shortcutChords[other] = KeyChord(modifiers: [])
             }
@@ -341,12 +341,12 @@ extension CapturesModel {
     }
 
     func resetShortcut(_ id: String) {
-        animate(.swap) { prefs.shortcutChords[id] = nil; if panes.pending?.id == id { panes.pending = nil } }
+        animate(.layout) { prefs.shortcutChords[id] = nil; if panes.pending?.id == id { panes.pending = nil } }
     }
 
     func resetAllShortcuts() {
         stopRecording()
-        animate(.swap) { prefs.shortcutChords = [:]; panes.pending = nil }
+        animate(.layout) { prefs.shortcutChords = [:]; panes.pending = nil }
         say(L("Every shortcut is back as it was"))
     }
 }
@@ -619,7 +619,7 @@ private struct ChordNotes: View {
             .font(.system(size: 11))
             .fixedSize(horizontal: false, vertical: true)
             .padding(.top, 6)
-            .transition(.opacity)
+            .transition(.arrive)
         } else if let pending = p.pending, pending.id == id {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -627,7 +627,7 @@ private struct ChordNotes: View {
                     Text(line(pending)).foregroundStyle(palette.text).fixedSize(horizontal: false, vertical: true)
                 }
                 HStack(spacing: 6) {
-                    Button("Cancel") { model.animate(.swap) { model.panes.pending = nil } }
+                    Button("Cancel") { model.animate(.layout) { model.panes.pending = nil } }
                     Button(isShortcut(pending) ? L("Use Here") : L("Use Anyway")) { model.save(pending.chord, for: id) }
                         .keyboardShortcut(.defaultAction)
                 }
@@ -635,7 +635,7 @@ private struct ChordNotes: View {
             }
             .font(.system(size: 11.5))
             .padding(.top, 6)
-            .transition(.opacity)
+            .transition(.arrive)
         }
     }
 

@@ -221,11 +221,18 @@ extension WorkbenchModel {
     }
 
     /// ⌃, or the pill: every chat below, as Dispatch's expanded view; again, folded.
+    /// Oct 21, Ryan: the island's outline changing size within a state (every chat, the model
+    /// sheet, the whole session) moves on the resize spring growing and the fold spring back.
+    func reshapeV2(growing: Bool) {
+        islandAnimation = growing ? WorkbenchTokens.V2.resize : WorkbenchTokens.V2.fold
+    }
+
     func toggleV2Browse() {
         guard notchState == .v2Send else { return }
         // Oct 15 review, QA06: while it's sending, the chat is locked.
         guard cases.sending?.isSending != true else { return }
         v2ModelSheet = false
+        reshapeV2(growing: !v2Browsing)
         v2Browsing.toggle()
         if v2Browsing {
             v2BrowseAgent = v2Pick.quick ? ChatBook.predictedAgent : v2Pick.agent
@@ -760,7 +767,9 @@ extension WorkbenchModel {
         guard notchState == .v2Chat, size != v2Size else { return }
         v2ChatInteracted = true
         v2ChatHold?.cancel()
-        withAnimation(WorkbenchTokens.V2.resize) {
+        // Oct 21, Ryan: growing to the whole session with a little bounce, back without.
+        reshapeV2(growing: size == .expanded)
+        withAnimation(size == .expanded ? WorkbenchTokens.V2.resize : WorkbenchTokens.V2.fold) {
             v2Size = size
             v2HistoryHeld = false
             v2HistoryEpoch += 1
@@ -808,12 +817,20 @@ extension WorkbenchModel {
     /// Where the pulled-out chats are laid out: the size of the display they're on.
     var detachedArea: CGSize { liveDetachedArea ?? display.frame.size }
 
-    /// A window dragged by its header.
+    /// A window dragged by its header: it follows the pointer 1:1, and past the screen's edges
+    /// it resists more the further it goes (Oct 21, Ryan: a rubber band, not a wall).
     func moveDetachedV2(_ id: String, to origin: CGPoint) {
         guard let i = v2Detached.firstIndex(where: { $0.id == id }) else { return }
         v2DetachedMoving = true
-        v2Detached[i].origin = origin
+        v2Detached[i].origin = rubberBandedV2(origin, size: v2Detached[i].size)
         v2Detached[i].docked = nil
+    }
+
+    private func rubberBandedV2(_ origin: CGPoint, size: CGSize) -> CGPoint {
+        let inside = clampedV2(origin, size: size)
+        let S = WorkbenchTokens.Spring.self
+        return CGPoint(x: inside.x + S.rubberBand(origin.x - inside.x, dimension: size.width),
+                       y: inside.y + S.rubberBand(origin.y - inside.y, dimension: size.height))
     }
 
     /// The pulled-out chats go to another display (the one the pointer is on, Oct 11): each keeps
@@ -830,22 +847,36 @@ extension WorkbenchModel {
         }
     }
 
-    /// Let go: with the pointer at a side of the screen, it tucks into that side; otherwise it
-    /// stays where it is.
-    func endMoveDetachedV2(_ id: String, pointer: CGPoint) {
+    /// Let go: with the pointer at a side of the screen (or thrown at it), it tucks into that
+    /// side; otherwise it carries on where it was going and settles inside the screen.
+    /// Oct 21, Ryan: the release velocity goes into the spring, and Apple's momentum projection
+    /// says where the throw ends (`Spring.project`); a chat let go past an edge springs back in.
+    func endMoveDetachedV2(_ id: String, pointer: CGPoint, velocity: CGSize = .zero) {
         v2DetachedMoving = false
         guard let i = v2Detached.firstIndex(where: { $0.id == id }) else { return }
-        let V = WorkbenchTokens.V2.self
-        if pointer.x <= V.edgeSnap {
-            v2Detached[i].docked = .left
-        } else if pointer.x >= detachedArea.width - V.edgeSnap {
-            v2Detached[i].docked = .right
-        } else {
-            v2Detached[i].origin = clampedV2(v2Detached[i].origin, size: v2Detached[i].size)
+        let V = WorkbenchTokens.V2.self, S = WorkbenchTokens.Spring.self
+        let ahead = CGPoint(x: pointer.x + S.project(velocity.width), y: pointer.y + S.project(velocity.height))
+        let side: V2Detached.Side? = min(pointer.x, ahead.x) <= V.edgeSnap ? .left
+            : max(pointer.x, ahead.x) >= detachedArea.width - V.edgeSnap ? .right : nil
+        if let side {
+            // The window goes and its tab slides in from that edge, on the thrown spring.
+            withAnimation(S.thrown()) {
+                v2Detached[i].docked = side
+                v2Detached[i].dockY = min(max(metrics.menuBarHeight + 8, ahead.y - V.tabSize.height / 2),
+                                          detachedArea.height - V.tabSize.height - 8)
+            }
             return
         }
-        v2Detached[i].dockY = min(max(metrics.menuBarHeight + 8, pointer.y - V.tabSize.height / 2),
-                                  detachedArea.height - V.tabSize.height - 8)
+        let item = v2Detached[i]
+        let target = clampedV2(CGPoint(x: item.origin.x + S.project(velocity.width),
+                                       y: item.origin.y + S.project(velocity.height)), size: item.size)
+        let dx = target.x - item.origin.x, dy = target.y - item.origin.y
+        let distance = hypot(dx, dy)
+        guard distance > 0.5 else { v2Detached[i].origin = target; return }
+        // SwiftUI's spring takes its start velocity as a fraction of the distance left, per second:
+        // the release velocity along the way it goes, over that distance.
+        let along = (velocity.width * dx + velocity.height * dy) / distance
+        withAnimation(S.thrown(max(0, along) / distance)) { v2Detached[i].origin = target }
     }
 
     /// The tucked tab pulled (or clicked): the window comes back out beside that side.
@@ -888,15 +919,36 @@ extension WorkbenchModel {
     /// A pulled-out chat made bigger or smaller (its corner, or a pinch): the window resizes, its
     /// top-left staying put, and stays on the screen. Its words keep their size and reflow: only
     /// the window changes (Oct 11; everything in it used to scale, the words too).
-    func resizeDetachedV2(_ id: String, to size: CGSize) {
+    /// Oct 21, Ryan: `elastic` while the corner (or a pinch) is under way: past its smallest or
+    /// largest it gives a little, resisting more the further it goes, and on release springs back
+    /// (`endResizeDetachedV2`).
+    func resizeDetachedV2(_ id: String, to size: CGSize, elastic: Bool = false) {
         guard let i = v2Detached.firstIndex(where: { $0.id == id }) else { return }
+        let fitted = fittedSizeV2(size), S = WorkbenchTokens.Spring.self
+        v2Detached[i].size = elastic
+            ? CGSize(width: fitted.width + S.rubberBand(size.width - fitted.width, dimension: fitted.width),
+                     height: fitted.height + S.rubberBand(size.height - fitted.height, dimension: fitted.height))
+            : fitted
+        v2Detached[i].origin = clampedV2(v2Detached[i].origin, size: fitted)
+    }
+
+    /// The corner (or the pinch) let go: back within its sizes, critically damped.
+    func endResizeDetachedV2(_ id: String) {
+        guard let i = v2Detached.firstIndex(where: { $0.id == id }) else { return }
+        let fitted = fittedSizeV2(v2Detached[i].size)
+        guard fitted != v2Detached[i].size else { return }
+        withAnimation(WorkbenchTokens.Spring.reposition) {
+            v2Detached[i].size = fitted
+            v2Detached[i].origin = clampedV2(v2Detached[i].origin, size: fitted)
+        }
+    }
+
+    private func fittedSizeV2(_ size: CGSize) -> CGSize {
         let base = V2DetachedLayout.size, range = WorkbenchTokens.V2.detachedResize
         let area = detachedArea
-        let width = min(max(size.width, base.width * range.lowerBound), base.width * range.upperBound, area.width - 8)
-        let height = min(max(size.height, base.height * range.lowerBound), base.height * range.upperBound,
-                         area.height - metrics.menuBarHeight - 8)
-        v2Detached[i].size = CGSize(width: width, height: height)
-        v2Detached[i].origin = clampedV2(v2Detached[i].origin, size: v2Detached[i].size)
+        return CGSize(width: min(max(size.width, base.width * range.lowerBound), base.width * range.upperBound, area.width - 8),
+                      height: min(max(size.height, base.height * range.lowerBound), base.height * range.upperBound,
+                                  area.height - metrics.menuBarHeight - 8))
     }
 
     /// ✕ on a pulled-out chat: it goes. Oct 15 review, QA21/QA23/DSP-24 (Ryan: "Close never

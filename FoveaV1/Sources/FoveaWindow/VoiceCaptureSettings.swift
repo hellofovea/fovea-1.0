@@ -44,7 +44,7 @@ struct VoicePane: View {
                 SettingsRow("Tidy my words", detail: model.prefs.tidyWords
                             ? "Fillers out, capitals and punctuation in."
                             : "Exactly what you said, word for word.") {
-                    InkToggle(title: "Tidy my words", isOn: $model.prefs.tidyWords.animation(model.motion.animation(.swap)))
+                    InkToggle(title: "Tidy my words", isOn: $model.prefs.tidyWords.animation(model.motion.animation(.layout)))
                 }
                 RowDivider()
                 TidyExample(tidy: model.prefs.tidyWords)
@@ -61,7 +61,7 @@ struct VoicePane: View {
                 }
                 RowDivider()
                 SettingsRow("The window you're speaking into", detail: "Its app, its title, its web address, or the file it shows.") {
-                    InkToggle(title: "The window you're speaking into", isOn: $model.prefs.dictationWindow.animation(model.motion.animation(.swap)))
+                    InkToggle(title: "The window you're speaking into", isOn: $model.prefs.dictationWindow.animation(model.motion.animation(.layout)))
                 }
                 if model.prefs.dictationWindow {
                     VStack(spacing: 0) {
@@ -70,7 +70,7 @@ struct VoicePane: View {
                             InkToggle(title: "The text in that window", isOn: $model.prefs.dictationWindowText)
                         }
                     }
-                    .transition(.opacity)
+                    .transition(.arrive)
                 }
             } footer: {
                 HStack(spacing: 4) {
@@ -171,8 +171,9 @@ private struct MicrophoneRow: View {
         let options = [""] + p.microphones.map(\.id)
         let name = p.microphoneName ?? L("That microphone")
         SettingsRow("Microphone", detail: missing ? L("\(name) isn't connected. Fovea uses the system default until it is.") : nil) {
+            // Oct 21, Ryan ("simpler is better"): no meter beside it; it moved on its own, with no
+            // microphone behind it.
             HStack(spacing: 10) {
-                LevelMeter()
                 InlinePicker(options: options,
                              selection: Binding(get: { missing ? "" : (p.microphoneID ?? "") },
                                                 set: { id in
@@ -188,25 +189,6 @@ private struct MicrophoneRow: View {
         .onAppear { p.readMicrophones() }
         .onReceive(NotificationCenter.default.publisher(for: AVCaptureDevice.wasConnectedNotification)) { _ in p.readMicrophones() }
         .onReceive(NotificationCenter.default.publisher(for: AVCaptureDevice.wasDisconnectedNotification)) { _ in p.readMicrophones() }
-    }
-}
-
-/// A small input meter, moving as a microphone would (simulated; still under Reduce Motion).
-private struct LevelMeter: View {
-    @Environment(\.palette) private var palette
-    @Environment(\.motion) private var motion
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 0.08, paused: motion.reduce)) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            HStack(alignment: .center, spacing: 2) {
-                ForEach(0..<5, id: \.self) { i in
-                    let v = motion.reduce ? 0.3 : 0.25 + 0.75 * abs(sin(t * (2.1 + Double(i) * 0.7) + Double(i)))
-                    Capsule().fill(palette.text.opacity(0.55)).frame(width: 2.5, height: 4 + 10 * v)
-                }
-            }
-            .frame(height: 14)
-        }
-        .accessibilityHidden(true)
     }
 }
 
@@ -299,8 +281,8 @@ extension CapturesModel {
                 }
             }
         }
-        if detailID != nil { closeDetail() }
-        animate(.swap) { library.captures = [] }
+        if detailID != nil { closeDetail(animated: false) }
+        animate(.layout) { library.captures = [] }
         say(n == 1 ? L("Deleted 1 capture") : L("Deleted \(n.formatted()) captures"))
     }
 }
@@ -322,7 +304,9 @@ struct PermissionRows: View {
         ForEach(Array(permissions.enumerated()), id: \.element) { i, permission in
             if i > 0 { RowDivider() }
             SettingsRow(permission.paneName, detail: detail(permission)) {
-                switch model.panes.stagedMissing.contains(permission) ? .denied : (state[permission] ?? Self.standing(permission)) {
+                // Oct 21, perf: what's known (`Permission.known`), not two reads of macOS per row per draw.
+                switch model.panes.stagedMissing.contains(permission) ? .denied
+                    : (state[permission] ?? Self.standing(Permission.known(permission))) {
                 case .allowed:
                     StatusLabel(word: "Allowed")
                 case .notAsked:
@@ -333,16 +317,26 @@ struct PermissionRows: View {
             }
         }
         .onAppear { refresh() }
-        .onReceive(tick) { _ in refresh() }
+        // Oct 21, perf: the poll reads macOS off the main thread.
+        .onReceive(tick) { _ in
+            Permission.readInBackground(permissions) { read in
+                for (p, s) in read where state[p] != Self.standing(s) { state[p] = Self.standing(s) }
+            }
+        }
     }
 
     private func refresh() {
-        for p in permissions { state[p] = Self.standing(p) }
+        // Oct 21, perf: one read of each (`Permission.standing`), not two.
+        for (p, s) in Permission.read(permissions) { state[p] = Self.standing(s) }
     }
 
     static func standing(_ p: Permission) -> Standing {
-        if p.granted { return .allowed }
-        return p.denied ? .denied : .notAsked
+        standing(p.standing)
+    }
+
+    static func standing(_ s: PermissionStanding) -> Standing {
+        if s.granted { return .allowed }
+        return s.denied ? .denied : .notAsked
     }
 
     /// macOS's own prompt, where there is one.
@@ -409,7 +403,7 @@ struct PrivacyRulesCard: View {
                         Spacer()
                         Toggle(rule.label, isOn: isOn(rule.id)).toggleStyle(.switch).controlSize(.mini).labelsHidden()
                         Button {
-                            model.animate(.swap) { model.prefs.privacyRules.removeAll { $0.id == rule.id } }
+                            model.animate(.layout) { model.prefs.privacyRules.removeAll { $0.id == rule.id } }
                         } label: {
                             Image(systemName: "minus.circle").foregroundStyle(palette.secondary)
                         }
@@ -465,7 +459,7 @@ struct PrivacyRulesCard: View {
     private func commit(_ kind: PrivacyRule.Kind) {
         let value = text.trimmingCharacters(in: .whitespaces)
         guard !value.isEmpty else { return }
-        model.animate(.swap) {
+        model.animate(.layout) {
             model.prefs.privacyRules.append(PrivacyRule(id: "r-\(UUID().uuidString.prefix(6))", kind: kind, value: value))
         }
         adding = nil
@@ -578,7 +572,7 @@ struct AppChooserSheet: View {
     }
 
     private func add(_ app: AppChoice) {
-        model.animate(.swap) {
+        model.animate(.layout) {
             model.prefs.privacyRules.append(PrivacyRule(id: "r-\(UUID().uuidString.prefix(6))", kind: .app, value: app.name, bundleID: app.bundleID))
         }
         model.panes.choosingApp = false

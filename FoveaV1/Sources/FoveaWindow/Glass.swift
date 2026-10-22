@@ -95,9 +95,8 @@ extension EnvironmentValues {
 }
 
 /// A surface Aside's way (`T.Shade`): its fill, a 0.5 pt edge just inside it (the ink at 8 %),
-/// and two soft shadows, a tight one where it touches and a wide one around it; in dark, a rim of
-/// light along its top edge as well, as a lit edge catches it. Changing the level (a hover)
-/// animates the shadows; nothing moves.
+/// and one soft shadow. Oct 21, Ryan ("simpler is better"): one shadow, not a tight one under a
+/// wide one, and no rim of light along the top in dark.
 struct Shading<S: InsettableShape>: ViewModifier {
     @Environment(\.palette) private var palette
     let shape: S
@@ -106,25 +105,11 @@ struct Shading<S: InsettableShape>: ViewModifier {
 
     func body(content: Content) -> some View {
         let (contact, wide) = T.Shade.layers(level, dark: palette.isDark)
-        let color = fill ?? palette.card
+        let shadow = wide.opacity > 0 ? wide : contact
         content
-            .background {
-                ZStack {
-                    shape.fill(color).shadow(color: .black.opacity(wide.opacity), radius: wide.radius, y: wide.y)
-                    shape.fill(color).shadow(color: .black.opacity(contact.opacity), radius: contact.radius, y: contact.y)
-                }
-            }
-            .overlay {
-                shape.strokeBorder(palette.edge, lineWidth: 0.5)
-                if palette.isDark { shape.strokeBorder(Rim.gradient, lineWidth: 1) }
-            }
+            .background(shape.fill(fill ?? palette.card).shadow(color: .black.opacity(shadow.opacity), radius: shadow.radius, y: shadow.y))
+            .overlay(shape.strokeBorder(palette.edge, lineWidth: 0.5))
     }
-}
-
-/// The light a surface's top edge catches in dark: white at 9 %, gone a quarter of the way down.
-enum Rim {
-    static let gradient = LinearGradient(colors: [.white.opacity(0.09), .white.opacity(0)],
-                                         startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.25))
 }
 
 extension View {
@@ -182,8 +167,7 @@ extension View {
 }
 
 /// A round glass button with a symbol, as Aside's settings gear and the system's glass buttons:
-/// 32 pt, the symbol in the label's color, the glass responding to the pointer, the symbol
-/// answering it once (Aside's icons move on hover).
+/// 32 pt, the symbol in the label's color, the glass responding to the pointer.
 struct RoundGlassButton: View {
     let symbol: String
     let help: String
@@ -192,7 +176,6 @@ struct RoundGlassButton: View {
     var foreground: Color?
     let action: () -> Void
     @State private var hover = false
-    @State private var bumps = 0
     @Environment(\.palette) private var palette
 
     var body: some View {
@@ -200,43 +183,14 @@ struct RoundGlassButton: View {
             Image(systemName: symbol)
                 .font(.system(size: size * 0.42, weight: .medium))
                 .foregroundStyle(foreground ?? (hover ? palette.text : palette.secondary))
-                .symbolEffect(.bounce, value: bumps)
                 .frame(width: size, height: size)
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .glass(Circle(), tint: tint, interactive: true)
-        .onHover { h in
-            hover = h
-            if h { bumps += 1 }
-        }
+        .onHover { hover = $0 }
         // Oct 18, Ryan: in the primary language (a literal help is looked up as it's drawn).
         .help(L(key: help))
         .accessibilityLabel(L(key: help))
-    }
-}
-
-/// A capsule glass button with a word (and maybe a symbol): Aside's "Start recording", the
-/// system's glass buttons.
-struct CapsuleGlassButton: View {
-    let title: String
-    var symbol: String?
-    var prominent = false
-    let action: () -> Void
-    @Environment(\.palette) private var palette
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                if let symbol { Image(systemName: symbol).font(.system(size: 12, weight: .semibold)) }
-                Text(L(key: title)).font(.system(size: 13, weight: .semibold))
-            }
-            .foregroundStyle(prominent ? Color.white : palette.text)
-            .padding(.horizontal, 14)
-            .frame(height: 32)
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .glass(Capsule(), tint: prominent ? palette.accent : nil, interactive: true)
     }
 }

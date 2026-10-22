@@ -201,7 +201,8 @@ struct PasteCloseButton: View {
             .contentShape(Circle())
             .padding(.horizontal, -(P.closeHitSize - P.ringDiameter) / 2)
         }
-        .buttonStyle(.plain)
+        // Oct 21 motion review: the ✕ gives under a press, as the error notice's ✕ does.
+        .buttonStyle(IslandPressStyle())
         .onHover { hovering = $0 }
         .animation(P.hover, value: hovering)
         .help("Dismiss (esc)")
@@ -250,7 +251,8 @@ struct PasteExpandButton: View {
                 .background(Capsule(style: .continuous).fill(hovering ? P.expandFillHover : .clear))
                 .contentShape(Capsule(style: .continuous))
         }
-        .buttonStyle(.plain)
+        // Oct 21 motion review: it gives under a press, as the island's other controls do.
+        .buttonStyle(IslandPressStyle())
         .onHover { hovering = $0 }
         .animation(P.hover, value: hovering)
         .help(expanded ? "Show less" : "Show the whole transcript")
@@ -268,13 +270,15 @@ struct PasteCopyButton: View {
         let P = WorkbenchTokens.Paste.self
         Button(action: action) {
             HStack(spacing: P.copySpacing) {
+                // Oct 21, Ryan ("simpler is better"): the checkmark and the word fade (no pop from
+                // 0.6, no morph).
                 if copied {
                     Image(systemName: "checkmark")
                         .font(P.copyGlyph)
-                        .transition(.opacity.combined(with: .scale(scale: 0.6)))
+                        .transition(.opacity)
                 }
                 Text(copied ? "Copied" : "Copy")
-                    .contentTransition(.interpolate)
+                    .contentTransition(.opacity)
             }
             .font(P.copyFont)
             .foregroundStyle(P.copyText)
@@ -304,7 +308,7 @@ struct PastePasteButton: View {
             if !model.pasteHeldWords() { showMissed() }
         } label: {
             Text(missed ? "No field" : "Paste")
-                .contentTransition(.interpolate)
+                .contentTransition(.opacity)
                 .font(P.copyFont)
                 .foregroundStyle(P.pasteText)
                 .padding(.horizontal, P.copyPaddingH)
@@ -328,6 +332,29 @@ struct PastePasteButton: View {
     }
 }
 
+/// Oct 21, Ryan: press feedback for the island's controls (docs/motion/SPRINGS.md): pressed, a
+/// control gives a little (0.97) and comes back, on the strong ease-out (`Spring.press`, 0.14 s; Oct
+/// 21 motion review: a curve, not a spring as this said); with Reduce Motion it only dims.
+struct IslandPress: ViewModifier {
+    let pressed: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        let S = WorkbenchTokens.Spring.self
+        content
+            .scaleEffect(pressed && !reduceMotion ? S.pressScale : 1)
+            .opacity(pressed && reduceMotion ? S.pressDim : 1)
+            .animation(reduceMotion ? S.fade : S.press, value: pressed)
+    }
+}
+
+/// A plain button that gives under the press (`IslandPress`): the island's icons, pills and chips.
+struct IslandPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.modifier(IslandPress(pressed: configuration.isPressed))
+    }
+}
+
 /// Paste's quieter capsule: the ink's own fill, lighter under the pointer, darker while pressed.
 struct PasteQuietStyle: ButtonStyle {
     let hovering: Bool
@@ -338,6 +365,7 @@ struct PasteQuietStyle: ButtonStyle {
             .background(Capsule(style: .continuous)
                 .fill(configuration.isPressed ? P.pasteFillPressed : (hovering ? P.pasteFillHover : P.pasteFill)))
             .contentShape(Capsule(style: .continuous))
+            .modifier(IslandPress(pressed: configuration.isPressed))
     }
 }
 
@@ -351,6 +379,7 @@ struct PasteCapsuleStyle: ButtonStyle {
             .background(Capsule(style: .continuous)
                 .fill(configuration.isPressed ? P.copyFillPressed : (hovering ? P.copyFillHover : P.copyFill)))
             .contentShape(Capsule(style: .continuous))
+            .modifier(IslandPress(pressed: configuration.isPressed))
     }
 }
 

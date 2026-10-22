@@ -145,7 +145,7 @@ struct ErrorCloseButton: View {
             .frame(width: P.ringDiameter, height: P.ringDiameter)
             .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(IslandPressStyle())
         .onHover { hovering = $0 }
         .animation(P.hover, value: hovering)
         .help("Dismiss (esc)")

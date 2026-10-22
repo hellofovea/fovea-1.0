@@ -296,7 +296,7 @@ extension HomeWindowController {
         }
         Review.stage("ST-07.1", "Memory: Memory Link off (paused)", area: .settings) {
             open("memory", part: "memory-about")
-            later { model.animate(.swap) { model.prefs.memoryLink = false } }
+            later { model.animate(.layout) { model.prefs.memoryLink = false } }
         }
         Review.stage("ST-07.3", "Access Log", area: .settings) {
             open("memory")
@@ -425,7 +425,7 @@ extension HomeWindowController {
         // Appearance.
         Review.stage("IS02", "Appearance: Motion set to Reduce", area: .settings) {
             open("appearance")
-            later { model.animate(.swap) { model.prefs.motion = .reduce } }
+            later { model.animate(.fadeIn) { model.prefs.motion = .reduce } }
         }
 
         // Eye tracking.
@@ -435,15 +435,15 @@ extension HomeWindowController {
         }
         Review.stage("ST-08.1", "Eye tracking: review, then send", area: .settings) {
             open("eyeTracking", part: "eye-beta")
-            later { model.play?.cancel(); model.animate(.swap) { model.prefs.gaze = .reviewing } }
+            later { model.play?.cancel(); model.animate(.layout) { model.prefs.gaze = .reviewing } }
         }
         Review.stage("ST-08.1", "Eye tracking: after your session", area: .settings) {
             open("eyeTracking", part: "eye-controls")
-            later { p.stagedNoCamera = false; model.play?.cancel(); model.animate(.swap) { model.prefs.gaze = .collected } }
+            later { p.stagedNoCamera = false; model.play?.cancel(); model.animate(.layout) { model.prefs.gaze = .collected } }
         }
         Review.stage("ST-08.1", "Eye tracking: no camera (not connected)", area: .settings) {
             open("eyeTracking", part: "eye-controls")
-            later { p.stagedNoCamera = true; model.play?.cancel(); model.animate(.swap) { model.prefs.gaze = .collected } }
+            later { p.stagedNoCamera = true; model.play?.cancel(); model.animate(.layout) { model.prefs.gaze = .collected } }
         }
         Review.stage("ST-08.2", "Eye tracking: Calibrate…", area: .settings) {
             open("eyeTracking")
@@ -455,7 +455,7 @@ extension HomeWindowController {
         }
         Review.stage("ST-08.1", "Eye tracking: before your session", area: .settings) {
             open("eyeTracking")
-            later { model.play?.cancel(); model.animate(.swap) { model.prefs.gaze = .idle } }
+            later { model.play?.cancel(); model.animate(.layout) { model.prefs.gaze = .idle } }
         }
     }
 }

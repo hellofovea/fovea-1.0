@@ -420,12 +420,11 @@ enum WorkbenchSmoke {
         model.v2ReviewBeforeSend = true
         model.notchState = .silent; await settle(window, 0.3)
 
-        // #15: a new chat is named a moment after it goes.
+        // #15: a new chat is named as it goes (Oct 21: at once, no naming beat).
         model.stageFeedback(.titles)
         let named = model.v2Session
-        check("#15 until it is named, a new chat shows its request", named.map { model.v2Naming.contains($0) } ?? false)
-        await settle(window, WorkbenchTokens.FeedbackV2.titleDelay + 0.4)
-        check("#15 …then the name made from it", named.flatMap { model.v2Titles[$0] } == model.v2Request.generatedTitle)
+        await settle(window, 0.4)
+        check("#15 a new chat has the name made from it", named.flatMap { model.v2Titles[$0] } == model.v2Request.generatedTitle)
         model.notchState = .silent; await settle(window, 0.3)
 
         // #9–10, #17: the board's Done line is the answer's first sentence, not a quote's.
@@ -450,19 +449,19 @@ enum WorkbenchSmoke {
         model.feedbackStepsStage = .session
         model.stageFeedback(.steps); await settle(window, 0.4)
         if let task = model.v2FocusTask, model.v2LiveStep(task) != nil {
-            // Over one full cycle: every step comes up, one at a time, most with what they act on,
+            // Over its whole run: every step comes up, one at a time, most with what they act on,
             // and an edit's lines once it ends.
-            let tick = model.v2LiveTick
+            let started = model.v2Started[task.id]
             var seen: [Int: AgentLiveStep] = [:]
             var editLines = false
             for t in 0..<40 {
-                model.v2LiveTick = tick + t
+                model.v2Started[task.id] = Date().addingTimeInterval(-(Double(t) + 0.5) * WorkbenchTokens.Steps.tick)
                 if let live = model.v2LiveStep(task) {
                     seen[live.index] = live.step
                     if live.showsResult, live.step.added != nil { editLines = true }
                 }
             }
-            model.v2LiveTick = tick
+            model.v2Started[task.id] = started
             let steps = model.v2LiveSequence(task)
             let named = steps.filter { $0.object != nil }.map { "\($0.kind.verb) \($0.object!)" }
             check("#16 a session at work shows its steps one at a time, each with what it acts on, an edit's lines when it ends",

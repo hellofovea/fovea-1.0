@@ -283,3 +283,7 @@ goes with it; fn starts Voiceflow.
     enlarged;
   - `workbench-thinking` and `workbench-thinking-beside`;
   - `workbench-action-<action>` for each action, staged mid-way with what it draws.
+
+## Oct 21 (Ryan: "simpler is better")
+
+The aura keeps Ryan's palettes, Custom and the hue drift (still only when Customize asks for it), and it keeps following the voice: the inner light, the bloom and the lit edge. Removed from it: the band (the red, green and blue fringed ridge and its wide halo), the strips warped sideways under it, and the resting breath. Silent, the glow holds still at its idle and the colors stop flowing (the flow follows the level, not the idle). "Transcribing…" over it is still text, as "Thinking…" is (PROGRESS.md).

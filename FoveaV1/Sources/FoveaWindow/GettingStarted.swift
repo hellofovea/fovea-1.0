@@ -85,12 +85,13 @@ private struct PermissionCheck: View {
     private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        let missing = Permission.allCases.filter { !(states[$0]?.granted ?? $0.granted) }.count
+        // Oct 21, perf: what's known (`Permission.known`), not two reads of macOS per row per draw.
+        let missing = Permission.allCases.filter { !(states[$0]?.granted ?? Permission.known($0).granted) }.count
         SettingsSection("What Fovea needs", note: missing == 0 ? "Everything is on." : L("\(missing) of 5 still off. Fovea works without them, but less.")) {
             SettingsCard {
                 ForEach(Array(Permission.allCases.enumerated()), id: \.element) { i, permission in
                     if i > 0 { RowDivider() }
-                    let state = states[permission] ?? (permission.granted, permission.denied)
+                    let state = states[permission] ?? Self.pair(Permission.known(permission))
                     SettingsRow(permission.paneName, detail: Self.why(permission)) {
                         if state.granted {
                             StatusLabel(word: "Allowed")
@@ -105,17 +106,29 @@ private struct PermissionCheck: View {
             }
         }
         .onAppear { refresh() }
-        .onReceive(tick) { _ in refresh() }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in refresh() }
+        // Oct 21, perf: the poll, and a window coming forward, read macOS off the main thread.
+        .onReceive(tick) { _ in refreshInBackground() }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in refreshInBackground() }
         .onChange(of: model.permissionsChecked) { refresh() }
     }
 
     private func refresh() {
-        for p in Permission.allCases {
-            let now = (p.granted, p.denied)
+        // Oct 21, perf: one read of each (`Permission.standing`), not two.
+        apply(Permission.read(Permission.allCases))
+    }
+
+    private func refreshInBackground() {
+        Permission.readInBackground(Permission.allCases) { read in apply(read) }
+    }
+
+    private func apply(_ read: [Permission: PermissionStanding]) {
+        for (p, standing) in read {
+            let now = Self.pair(standing)
             if states[p]?.granted != now.0 || states[p]?.denied != now.1 { states[p] = now }
         }
     }
+
+    private static func pair(_ s: PermissionStanding) -> (granted: Bool, denied: Bool) { (s.granted, s.denied) }
 
     /// macOS's own prompt, where it still asks (the microphone, speech, input monitoring); the
     /// list in System Settings everywhere else.

@@ -15,6 +15,9 @@ import FoveaPlatform
 /// 13-inch MacBook Air they're the same).
 struct RealStage: View {
     let model: OnboardingModel
+    /// Oct 21, perf: drawn by ImageRenderer (`renderStage`), which can't draw a layer of its own:
+    /// the loops stay SwiftUI's.
+    var picture = false
 
     var body: some View {
         let size = OT.Display.size
@@ -28,13 +31,9 @@ struct RealStage: View {
             if let name = model.previewFile, let frame = model.fileFrames[name] {
                 FilePreview(model: model, name: name)
                     .position(x: frame.minX - OT.Layout.previewSize.width / 2 - 14, y: frame.minY + OT.Layout.previewSize.height / 2)
-                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .trailing)))
+                    .transition(model.windowTransition)
             }
             BoardView(model: model)
-            OT.Colors.flash
-                .frame(width: size.width, height: size.height)
-                .opacity(model.flash ? OT.Marks.captureFlash : 0)
-                .allowsHitTesting(false)
         }
         .frame(width: size.width, height: size.height, alignment: .topLeading)
         .coordinateSpace(name: ScreenSpace.name)
@@ -42,6 +41,9 @@ struct RealStage: View {
             if case .active(let point) = phase { model.pointerMoved(point) }
         }
         .environment(\.colorScheme, .light)
+        .environment(\.firstRunReduced, model.reduceMotion)
+        // Oct 21, perf: on screen, the keys' pulse runs on Core Animation (KeyboardView).
+        .environment(\.firstRunLayerLoops, !picture && !model.options.harness)
         // A click works the first time, even with System Settings in front.
         .clicksWhenInactive()
     }
@@ -54,25 +56,26 @@ struct RealStage: View {
         case .empty:
             EmptyView()
         case .page:
+            // Each window fades in, and out quicker (Oct 21, Ryan ("simpler is better")).
             PracticeWindow(model: model)
                 .frame(width: OT.Layout.practiceFrame.width, height: OT.Layout.practiceFrame.height)
+                .transition(model.windowTransition)
                 .offset(x: OT.Layout.practiceFrame.minX, y: OT.Layout.practiceFrame.minY)
-                .transition(.opacity)
             if model.chatShown {
                 ChatWindow()
                     .frame(width: OT.Layout.chatFrame.width, height: OT.Layout.chatFrame.height)
+                    .transition(model.windowTransition)
                     .offset(x: OT.Layout.chatFrame.minX, y: OT.Layout.chatFrame.minY)
-                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
         case .dictation:
             FeedbackWindow(model: model)
                 .frame(width: OT.Layout.feedbackFrame.width, height: OT.Layout.feedbackFrame.height)
+                .transition(model.windowTransition)
                 .offset(x: OT.Layout.feedbackFrame.minX, y: OT.Layout.feedbackFrame.minY)
-                .transition(.opacity)
             MessagesWindow(model: model)
                 .frame(width: OT.Layout.messagesFrame.width, height: OT.Layout.messagesFrame.height)
+                .transition(model.windowTransition)
                 .offset(x: OT.Layout.messagesFrame.minX, y: OT.Layout.messagesFrame.minY)
-                .transition(.opacity)
         }
     }
 

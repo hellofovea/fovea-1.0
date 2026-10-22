@@ -108,7 +108,8 @@ package final class IslandController {
             guard let self, granted, permission == .accessibility else { return }
             self.restartKeys()
         }
-        watcher.start(interval: 1)
+        // Oct 21, perf: Accessibility only, the one this acts on (KeyboardTap.swift, PermissionWatcher).
+        watcher.start(interval: 1, watching: [.accessibility])
         // An app taken full screen: the band beside the notch black, as on the Mac (Oct 11; the
         // Workbench's full-screen shots, real).
         let workspace = NSWorkspace.shared.notificationCenter
@@ -302,6 +303,7 @@ package final class IslandController {
                 panel.reassert()
                 panel.orderFrontRegardless()
             }
+            noteOffScreen()
             return
         }
         guard panel.isVisible, hideTask == nil else { return }
@@ -312,12 +314,21 @@ package final class IslandController {
             let still = self.model.notchState == .silent && !self.model.previewing && !self.model.capturing
                 && !self.model.highlighting && self.model.v2DragOut == nil
             if still { self.panel?.orderOut(nil) }
+            self.noteOffScreen()
         }
+    }
+
+    /// Oct 21, perf: whether anything of the island is on the screen, for the model's simulated
+    /// work to animate only when it can be seen (`WorkbenchModel.islandOffScreen`).
+    private func noteOffScreen() {
+        let off = live.smoke == nil && panel?.isVisible != true && detachedPanel?.isVisible != true
+        if model.islandOffScreen != off { model.islandOffScreen = off }
     }
 
     /// The pulled-out chats' layer is up while any is out. One being pulled out of the notch lands
     /// on the notch's display, so the layer comes back there first; with none left, it rests there.
     private func updateDetachedPresence() {
+        defer { noteOffScreen() }
         guard let detached = detachedPanel else { return }
         if model.v2DragOut != nil || model.v2Detached.isEmpty, let screen = detachedScreen,
            Screens.displayID(screen) != Screens.displayID(live.screen) {

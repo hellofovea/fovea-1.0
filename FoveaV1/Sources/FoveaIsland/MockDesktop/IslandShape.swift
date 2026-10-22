@@ -54,9 +54,10 @@ struct IslandShape: Shape {
     }
 }
 
-/// How the bar's content shows and hides: opacity with a light blur and a small scale from
-/// the top, one modifier for both directions so the exit is the entrance played backwards.
-/// Driven as a plain animatable value (`progress`), never as an insert/remove transition.
+/// How the bar's content shows and hides: a fade, one modifier for both directions so the exit
+/// is the entrance played backwards. Driven as a plain animatable value (`progress`), never as an
+/// insert/remove transition. Oct 21, Ryan ("simpler is better"): opacity alone; the light blur and
+/// the 0.97 scale from the top it had too are gone.
 struct VoiceContentTransition: ViewModifier, Animatable {
     /// 0 = hidden, 1 = shown.
     var progress: CGFloat
@@ -67,10 +68,7 @@ struct VoiceContentTransition: ViewModifier, Animatable {
     }
 
     func body(content: Content) -> some View {
-        content
-            .opacity(progress)
-            .blur(radius: (1 - progress) * WorkbenchTokens.Motion.contentBlur)
-            .scaleEffect(WorkbenchTokens.Motion.contentScale + (1 - WorkbenchTokens.Motion.contentScale) * progress, anchor: .top)
+        content.opacity(progress)
     }
 }
 

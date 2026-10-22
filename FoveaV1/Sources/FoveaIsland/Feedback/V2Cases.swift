@@ -78,7 +78,7 @@ extension WorkbenchTokens {
         static let memoryDelay: Double = 1.2
         static var memoryGlyph: Font { pick(Font.system(size: 11, weight: .semibold), .system(size: 12, weight: .semibold)) }
         /// A state changing in place: a line, a row of chips, a pill.
-        static let change: Animation = .easeOut(duration: 0.18)
+        static var change: Animation { WorkbenchTokens.Spring.fadeIn(0.18) }
     }
 }
 
@@ -684,7 +684,7 @@ extension WorkbenchModel {
             withAnimation(WorkbenchTokens.V2.resize) { model.cases.memoryNotice = notice }
             if model.notchState == .silent, model.live != nil { model.showAgentPanel(pinned: false, sent: model.v2Session) }
             model.caseTask("memory-hold", after: WorkbenchTokens.Cases.memoryHold) { model in
-                withAnimation(WorkbenchTokens.V2.resize) { model.cases.memoryNotice = nil }
+                withAnimation(WorkbenchTokens.V2.fold) { model.cases.memoryNotice = nil }
             }
         }
     }
@@ -698,7 +698,7 @@ extension WorkbenchModel {
     }
 
     func dismissMemoryNotice() {
-        withAnimation(WorkbenchTokens.V2.resize) { cases.memoryNotice = nil }
+        withAnimation(WorkbenchTokens.V2.fold) { cases.memoryNotice = nil }
     }
 }
 

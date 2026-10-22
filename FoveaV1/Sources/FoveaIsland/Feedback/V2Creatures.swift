@@ -103,6 +103,8 @@ struct AgentCreature: View {
     /// contact sheets).
     var clock: Double? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Oct 21, perf: its band is showing (MockIsland's `BandShown`); its clock pauses when not.
+    @Environment(\.islandBandShown) private var bandShown
     /// The stroke drawing on: from where it was to where it is going, since when.
     @State private var arcFrom: Double?
     @State private var arcSince = Date.distantPast
@@ -115,7 +117,7 @@ struct AgentCreature: View {
             if let clock {
                 figure(t: clock + traits.phase, arc: target, notice: .infinity, beat: clock, onset: clock)
             } else {
-                TimelineView(.animation(minimumInterval: 1 / C.frameRate, paused: frozen)) { context in
+                TimelineView(.animation(minimumInterval: 1 / C.frameRate, paused: frozen || !bandShown)) { context in
                     let now = context.date
                     let since = { (date: Date?) in frozen ? .infinity : date.map { now.timeIntervalSince($0) } ?? .infinity }
                     // The stroke draws on to where the work has got, eased.

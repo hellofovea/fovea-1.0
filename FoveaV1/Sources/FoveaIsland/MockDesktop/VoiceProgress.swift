@@ -7,10 +7,10 @@ import FoveaKit
 // the undo window, a 4 pt line that drains. Progress is read from the clock through a
 // TimelineView, so it moves on the display's frames, never through state churn.
 
-/// "Thinking" and Apple's ellipsis lighting its dots in turn: the only words while the voice is
-/// turned into words (the transcript is kept, never shown). Still under Reduce Motion.
+/// "Thinking…": the only words while the voice is turned into words (the transcript is kept, never
+/// shown). Oct 21, Ryan ("simpler is better"): the ellipsis holds still; it lit its dots in turn,
+/// over the line that already shows the progress.
 struct ThinkingText: View {
-    let still: Bool
     // Oct 18, Ryan: in the primary language.
     var label = L("island.thinking", english: "Thinking")
 
@@ -19,7 +19,6 @@ struct ThinkingText: View {
         HStack(alignment: .firstTextBaseline, spacing: 1) {
             Text(label)
             Image(systemName: "ellipsis")
-                .symbolEffect(.variableColor.iterative.dimInactiveLayers.nonReversing, options: .repeating, isActive: !still)
         }
         .font(P.text)
         .foregroundStyle(P.labelPeak)
@@ -33,7 +32,6 @@ struct ThinkingText: View {
 /// Transcribing: "Thinking…" over the line filling leading to trailing.
 struct TranscribingBand: View {
     let model: WorkbenchModel
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let P = WorkbenchTokens.Progress.self
@@ -41,7 +39,7 @@ struct TranscribingBand: View {
         TimelineView(.animation(minimumInterval: 1 / 60, paused: !running)) { context in
             let p = model.transcribeProgress(at: context.date)
             VStack(spacing: P.rowGap) {
-                ThinkingText(still: reduceMotion || model.snapshotMode)
+                ThinkingText()
                     .frame(height: P.rowHeight)
                 ProgressLine(fraction: p)
             }
@@ -121,7 +119,7 @@ struct UndoPill: View {
             .background(Capsule(style: .continuous).fill(hovering ? P.pillFillHover : P.pillFill))
             .contentShape(Capsule(style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(IslandPressStyle())
         .onHover { hovering = $0 }
         .help("Undo (⌘Z)")
         .accessibilityLabel("Undo")

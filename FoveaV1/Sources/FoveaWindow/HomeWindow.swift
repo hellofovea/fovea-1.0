@@ -40,7 +40,8 @@ package struct WindowStores {
 package final class HomeWindowController: NSObject {
     package let window: NSWindow
     let model: CapturesModel
-    private let stores: WindowStores
+    /// Read by the expanded card's smoke too (WindowShots.swift), to see a deletion reach them.
+    let stores: WindowStores
     private let options = WindowOptions.parse()
     private let libraryToolbarDelegate = LibraryToolbarDelegate()
     /// Set while the stores' own change is being shown, so it isn't written back.
@@ -411,6 +412,31 @@ package final class HomeWindowController: NSObject {
     @objc func sendFeedback(_ sender: Any?) { NSWorkspace.shared.open(FoveaSite.feedback) }
     @objc func manageSubscription(_ sender: Any?) { NSWorkspace.shared.open(FoveaSite.account) }
     @objc func goBack(_ sender: Any?) { model.back() }
+    /// Oct 21, Ryan: Edit › Copy. With the expanded card out and nothing else to copy (no words
+    /// selected in it, no field holding the keyboard with a selection), it copies the capture as
+    /// its Copy button does; otherwise it's the Mac's own Copy, for whatever holds the keyboard.
+    @objc func copyCommand(_ sender: Any?) {
+        // The window holds the keyboard (or none of Fovea's does, as when the smoke sends it).
+        let ours = window.isKeyWindow || NSApp.keyWindow == nil
+        if ours, model.page != .settings, let capture = model.detail, !model.detailClosing,
+           !Self.somethingElseCopies(sender) {
+            model.copy(capture)
+            return
+        }
+        NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: sender)
+    }
+
+    /// Whether something holding the keyboard would copy now: a field or a text with words
+    /// selected (whatever takes Copy in the responder chain and, asked, says it can).
+    static func somethingElseCopies(_ sender: Any?) -> Bool {
+        guard let target = NSApp.target(forAction: #selector(NSText.copy(_:)), to: nil, from: sender) as AnyObject? else { return false }
+        if let text = target as? NSTextView { return text.selectedRange().length > 0 }
+        if let check = target as? NSUserInterfaceValidations, let item = sender as? NSValidatedUserInterfaceItem {
+            return check.validateUserInterfaceItem(item)
+        }
+        return true
+    }
+
     @objc func find(_ sender: Any?) {
         show()
         if model.page != .captures { model.back() }
@@ -465,7 +491,8 @@ package final class HomeWindowController: NSObject {
             item(L("Redo"), Selector(("redo:")), "z", [.command, .shift]),
             .separator(),
             item(L("Cut"), #selector(NSText.cut(_:)), "x"),
-            item(L("Copy"), #selector(NSText.copy(_:)), "c"),
+            // Oct 21, Ryan: ⌘C copies the expanded card while nothing in it is selected.
+            item(L("Copy"), #selector(copyCommand(_:)), "c", target: self),
             item(L("Paste"), #selector(NSText.paste(_:)), "v"),
             item(L("Select All"), #selector(NSText.selectAll(_:)), "a"),
             .separator(),

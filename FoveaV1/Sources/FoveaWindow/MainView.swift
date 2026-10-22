@@ -67,7 +67,6 @@ struct MainView: View {
                 if sidebar {
                     SettingsSidebar()
                         .frame(width: T.Native.sidebarWidth)
-                        .transition(.move(edge: .leading).combined(with: .opacity))
                     if !inset { Rectangle().fill(palette.hairline).frame(width: 0.5).ignoresSafeArea() }
                 }
                 canvas(palette, inset: inset)
@@ -98,11 +97,11 @@ struct MainView: View {
                 ZStack(alignment: .top) {
                     switch model.page {
                     case .captures:
-                        CapturesPage().transition(.page(forward: model.pageForward))
+                        CapturesPage()
                     case .day:
-                        CapturesPage(day: true).transition(.page(forward: model.pageForward))
+                        CapturesPage(day: true)
                     case .settings:
-                        SettingsPage().transition(.page(forward: model.pageForward))
+                        SettingsPage()
                     }
                 }
                 .frame(width: geo.size.width, height: geo.size.height)
@@ -347,7 +346,7 @@ struct AppFilter: View {
         Menu {
             // The tags (row 25), most used first; the rest under More.
             let tags = CaptureSearch.tags(in: captures)
-            Picker("Tag", selection: Binding(get: { tag }, set: { v in model.animate(.swap) { model.query.tag = v } })) {
+            Picker("Tag", selection: Binding(get: { tag }, set: { v in model.animate(.fadeIn) { model.query.tag = v } })) {
                 Label("All Tags", systemImage: "tag")
                     .labelStyle(.titleAndIcon)
                     .tag(String?.none)
@@ -358,7 +357,7 @@ struct AppFilter: View {
             .pickerStyle(.inline)
             if tags.count > 8 {
                 Menu("More Tags") {
-                    Picker("More Tags", selection: Binding(get: { tag }, set: { v in model.animate(.swap) { model.query.tag = v } })) {
+                    Picker("More Tags", selection: Binding(get: { tag }, set: { v in model.animate(.fadeIn) { model.query.tag = v } })) {
                         ForEach(tags.dropFirst(8), id: \.tag) { t in
                             Text(t.tag).tag(String?.some(t.tag))
                         }
@@ -370,7 +369,7 @@ struct AppFilter: View {
             // The cards' period: the last three days (the default), or today. Any other day is
             // the calendar's, above the cards.
             Picker("Show", selection: Binding(get: { model.scope },
-                                              set: { v in model.animate(.swap) { model.query.date = v == .threeDays ? nil : v } })) {
+                                              set: { v in model.animate(.fadeIn) { model.query.date = v == .threeDays ? nil : v } })) {
                 ForEach([CaptureQuery.DateFilter.threeDays, .today], id: \.self) { d in
                     Text(d.title).tag(d)
                 }
@@ -408,7 +407,6 @@ struct ExpandingSearch: View {
     @FocusState private var focused: Bool
     @State private var open = false
     @State private var hover = false
-    @State private var bumps = 0
 
     var body: some View {
         @Bindable var model = model
@@ -423,7 +421,6 @@ struct ExpandingSearch: View {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(expanded ? palette.secondary : (hover ? palette.text : palette.secondary))
-                    .symbolEffect(.bounce, value: bumps)
                     .frame(width: 18)
                 if expanded {
                     TextField("Search", text: $model.query.text)
@@ -432,18 +429,16 @@ struct ExpandingSearch: View {
                         .focused($focused)
                         .onSubmit { focused = false }
                         .onExitCommand { close(clear: true) }
-                        // AppKit draws the text field at its final size at once, so its text waits
-                        // for the field to finish opening, and leaves first when it closes.
-                        .transition(.asymmetric(
-                            insertion: .opacity.animation(motion.animation(.content).delay(motion.seconds(0.17))),
-                            removal: .opacity.animation(.easeOut(duration: motion.seconds(0.05)))))
+                        // Its words come and go with the field (Oct 21, Ryan, "simpler is better":
+                        // they waited for it to open).
+                        .transition(.opacity)
                     if !model.query.text.isEmpty {
                         Button { model.query.text = "" } label: {
                             Image(systemName: "xmark.circle.fill").font(.system(size: 12)).foregroundStyle(palette.tertiary)
                         }
                         .buttonStyle(.plain)
                         .help("Clear")
-                        .transition(.asymmetric(insertion: .opacity, removal: .opacity.animation(.easeOut(duration: motion.seconds(0.05)))))
+                        .transition(.opacity)
                     }
                 }
             }
@@ -452,24 +447,24 @@ struct ExpandingSearch: View {
             .clipped()
             .modifier(SearchSurface(expanded: expanded, hover: hover, focused: expanded && focused))
             .contentShape(shape)
-            .onHover { h in
-                hover = h
-                if h && !expanded { bumps += 1 }
-            }
-            .onTapGesture { if !expanded { openSearch() } }
+            .onHover { hover = $0 }
+            .onTapGesture { if !expanded { openSearch(animated: true) } }
         }
         .onChange(of: focused) { _, now in
             if !now && model.query.text.isEmpty { close(clear: false) }
         }
-        .onChange(of: model.searchRequest) { _, n in n < 0 ? close(clear: true) : openSearch() }
+        // ⌘F is there at once: a keyboard step doesn't animate.
+        .onChange(of: model.searchRequest) { _, n in n < 0 ? close(clear: true) : openSearch(animated: false) }
         .animation(motion.animation(.hover), value: hover)
         .help("Search your words and what you took (⌘F)")
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Search")
     }
 
-    private func openSearch() {
-        withAnimation(.interpolatingSpring(duration: motion.seconds(0.26), bounce: 0)) { open = true }
+    /// Oct 21, Ryan ("simpler is better"): a click opens it out of the icon on the ease-out
+    /// (`T.Motion.searchOpen`, 0.2 s; back in 0.15 s); ⌘F and Reduce Motion open it at once.
+    private func openSearch(animated: Bool) {
+        withAnimation(motion.reduce || !animated ? nil : motion.animation(.searchOpen)) { open = true }
         // Focus once the field exists.
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(20))
@@ -480,7 +475,7 @@ struct ExpandingSearch: View {
     private func close(clear: Bool) {
         if clear { model.query.text = "" }
         focused = false
-        withAnimation(.interpolatingSpring(duration: motion.seconds(0.2), bounce: 0)) { open = false }
+        withAnimation(motion.reduce ? nil : motion.animation(.searchClose)) { open = false }
     }
 }
 
@@ -515,9 +510,18 @@ private struct SearchSurface: ViewModifier {
 extension View {
     /// A toolbar item's palette, and the appearance its glass takes: dark over the Notch
     /// scheme's ink band, as the system's own items there are.
+    /// Oct 21, Ryan: and the window's motion, which toolbar items don't inherit either (the kinds'
+    /// pill and search ignored Reduce Motion without it).
     func toolbarScheme(_ palette: Palette) -> some View {
         environment(\.palette, palette).environment(\.colorScheme, palette.isDark ? .dark : .light)
+            .modifier(WindowMotion())
     }
+}
+
+/// The window's motion (its speed, and Reduce Motion), for views outside the window's environment.
+private struct WindowMotion: ViewModifier {
+    @Environment(CapturesModel.self) private var model
+    func body(content: Content) -> some View { content.environment(\.motion, model.motion) }
 }
 
 /// A toolbar control's own glass circle, on macOS 26 and later (before, the toolbar draws none).
@@ -608,7 +612,7 @@ struct Avatar: View {
         .onHover { h in
             hover = h
             Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(h ? 400 : 150))
+                try? await Task.sleep(for: .seconds(h ? T.Motion.popoverWait : T.Motion.popoverLinger))
                 if hover == h { model.usageShown = h }
             }
         }
@@ -748,14 +752,15 @@ struct CapturesPage: View {
             ZStack(alignment: .topLeading) {
                 CaptureGrid(matches: model.matches(on: d), columns: layout.columns, dayHeaders: false, emptyNote: "")
                     .id(DayKey(day: d, kind: model.query.kind))
-                    .transition(.blockSwap)
+                    .transition(.identity)
             }
         } else {
-            // A filter or a search swaps the page as one layer: out, then in.
+            // A filter or a search swaps the page at once (Oct 21, Ryan, "simpler is better": it
+            // faded out, then in).
             ZStack(alignment: .topLeading) {
                 HomeFeed(layout: layout)
                     .id(GridKey(query: model.query, fixture: model.fixture))
-                    .transition(.blockSwap)
+                    .transition(.identity)
             }
         }
     }
@@ -816,7 +821,7 @@ struct FilteredLine: View {
             Text("Filtered by").foregroundStyle(palette.secondary)
             Text(parts.joined(separator: " · ")).foregroundStyle(palette.text).fontWeight(.medium)
             PillButton("Clear", symbol: "xmark", kind: .plain) {
-                model.animate(.swap) { model.query.app = nil; model.query.date = nil; model.query.tag = nil }
+                model.animate(.fadeIn) { model.query.app = nil; model.query.date = nil; model.query.tag = nil }
             }
         }
         .font(.system(size: 12))
@@ -939,30 +944,7 @@ struct EmptyState: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 120)
-        // Texture only where there's nothing else: a faint grid of dots.
-        .background(DotGrid().mask(RadialGradient(colors: [.black, .clear], center: .center, startRadius: 40, endRadius: 320)))
         .padding(.top, 30)
-    }
-}
-
-/// A faint grid of ink dots, for empty places only.
-struct DotGrid: View {
-    @Environment(\.palette) private var palette
-    var body: some View {
-        Canvas { context, size in
-            let step: CGFloat = 14
-            var y: CGFloat = step / 2
-            while y < size.height {
-                var x: CGFloat = step / 2
-                while x < size.width {
-                    context.fill(Path(ellipseIn: CGRect(x: x - 0.75, y: y - 0.75, width: 1.5, height: 1.5)), with: .color(palette.text.opacity(0.14)))
-                    x += step
-                }
-                y += step
-            }
-        }
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
     }
 }
 
@@ -979,8 +961,8 @@ struct KeyCap: View {
     }
 }
 
-/// A short notice at the window's foot, with Undo after a delete: it rises 8 pt out of a slight
-/// blur and sinks back the same way, quicker.
+/// A short notice at the window's foot, with Undo after a delete. Oct 21, Ryan ("simpler is
+/// better"): it fades in and out where it is (it rose out of a blur).
 struct Toast: View {
     @Environment(CapturesModel.self) private var model
     var body: some View {
@@ -994,6 +976,13 @@ struct Toast: View {
                             .font(.system(size: 12.5, weight: .semibold))
                             .foregroundStyle(Color.white)
                             .keyboardShortcut("z", modifiers: .command)
+                            .help("Undo (⌘Z)")
+                    } else if let action = model.toastAction {
+                        // Oct 21, Ryan: Saved to Downloads · Show in Finder.
+                        Button(action.title) { model.runToastAction() }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 12.5, weight: .semibold))
+                            .foregroundStyle(Color.white)
                     }
                 }
                 .foregroundStyle(Color.white.opacity(0.9))
@@ -1002,23 +991,10 @@ struct Toast: View {
                 .background(Capsule().fill(Color.black.opacity(0.78)))
                 .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
                 .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
-                .transition(.modifier(active: ToastRise(progress: 0), identity: ToastRise(progress: 1)))
+                .transition(.opacity)
             }
         }
         .padding(.bottom, 20)
-    }
-}
-
-struct ToastRise: ViewModifier, Animatable {
-    @Environment(\.motion) private var motion
-    var progress: CGFloat
-    var animatableData: CGFloat {
-        get { progress }
-        set { progress = newValue }
-    }
-    func body(content: Content) -> some View {
-        let travel = motion.reduce ? 0 : 1 - progress
-        content.opacity(progress).offset(y: 8 * travel).blur(radius: 2 * travel)
     }
 }
 

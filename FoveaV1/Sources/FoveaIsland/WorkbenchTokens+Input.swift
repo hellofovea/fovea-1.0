@@ -21,7 +21,7 @@ extension WorkbenchTokens.Referents {
     static let numberInset: CGFloat = 5
     static let numberWidePadding: CGFloat = 3
     static let numberFont = Font.system(size: 9.5, weight: .bold).monospacedDigit()
-    static let numberFade: Animation = .easeOut(duration: 0.15)
+    static var numberFade: Animation { WorkbenchTokens.Spring.fadeIn(0.15) }
     /// VF05: the other display's glyph, on the same disc (lower left).
     static let otherDisplayGlyph = Font.system(size: 7.5, weight: .bold)
 
@@ -101,5 +101,5 @@ extension WorkbenchTokens.Feedback {
     static let dropWellRadius: CGFloat = 9
     static let dropWellStroke: CGFloat = 1.5
     static let dropWellFill: Double = 0.16
-    static let dropIn: Animation = .easeOut(duration: 0.14)
+    static var dropIn: Animation { WorkbenchTokens.Spring.fadeIn(0.14) }
 }

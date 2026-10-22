@@ -84,14 +84,14 @@ extension CapturesModel {
         let id: String
         if !draft.isNew, let i = library.dictionary.firstIndex(where: { $0.id == draft.id }) {
             id = draft.id
-            animate(.swap) {
+            animate(.layout) {
                 library.dictionary[i].word = word
                 library.dictionary[i].heardAs = variants.first
             }
             say(L("Saved “\(word)”"))
         } else {
             id = "w-\(UUID().uuidString.prefix(8))"
-            animate(.swap) {
+            animate(.layout) {
                 library.dictionary.insert(DictionaryWord(id: id, word: word, heardAs: variants.first, source: .added, date: Date()), at: 0)
             }
             say(L("Added “\(word)”"))
@@ -120,7 +120,7 @@ extension CapturesModel {
         let now = Date()
         let new = words.map { DictionaryWord(id: "w-\(UUID().uuidString.prefix(8))", word: $0.word, heardAs: $0.heardAs, source: .added, date: now) }
         guard !new.isEmpty else { return }
-        animate(.swap) { library.dictionary.insert(contentsOf: new, at: 0) }
+        animate(.layout) { library.dictionary.insert(contentsOf: new, at: 0) }
         say(new.count == 1 ? L("Brought in 1 word") : L("Brought in \(new.count) words"))
     }
 }
@@ -156,7 +156,7 @@ struct DictionaryPane: View {
                     let n = t == .all ? all.count : all.filter { $0.source == (t == .learned ? .learned : .added) }.count
                     return (t, t == .added ? L("Added \(n)") : (t == .learned ? L("Learned \(n)") : L("All \(n)")))
                 }, selection: tab, inset: 3, padding: 8) { t in
-                    model.animate(.swap) { model.dictionaryTab = t }
+                    model.animate(.fadeIn) { model.dictionaryTab = t }
                 }
             }
         } content: {

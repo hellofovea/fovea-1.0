@@ -129,8 +129,10 @@ struct V2Work: Equatable {
     }
 
     static func duration(_ s: Int) -> String {
-        // Oct 18, Ryan: in the primary language.
-        s < 60 ? L("\(s) s") : (s % 60 == 0 ? L("\(s / 60) m") : L("\(s / 60) m \(s % 60) s"))
+        // Oct 18, Ryan: in the primary language. Oct 21: written as the board writes its times
+        // ("2m 41s", as "10m"), not "2 m 41 s"; minutes keep their seconds, "2m" being the
+        // board's "2 minutes ago" in Chinese.
+        s < 60 ? L("\(s)s") : L("\(s / 60)m \(s % 60)s")
     }
 
     /// Whose fold is open: the session's id for the exchange now, this for an earlier one.
@@ -221,8 +223,10 @@ extension WorkbenchModel {
     }
 
     /// The step a working session is on now, which of its steps it is, and whether its result is in.
-    /// Each step takes two ticks, three with a result (the last showing it); the sessions start at
-    /// different points so the board isn't in step. Snapshots hold the first step with a result.
+    /// Each step takes two ticks from the session's start, three with a result (the last showing
+    /// it). Oct 21, Ryan ("simpler is better"): it moves on as the session works and stays on its
+    /// last step until the answer comes; it no longer loops through the steps. A session with no
+    /// start (a sample) shows its last. Snapshots hold the first step with a result.
     func v2LiveStep(_ task: AgentTaskItem) -> (index: Int, step: AgentLiveStep, showsResult: Bool)? {
         guard task.state == .working, !task.statusUnknown, !task.stopped else { return nil }
         let steps = v2LiveSequence(task)
@@ -231,14 +235,17 @@ extension WorkbenchModel {
             let i = steps.firstIndex(where: \.hasResult) ?? 0
             return (i, steps[i], steps[i].hasResult)
         }
-        let ticks = steps.map { $0.hasResult ? 3 : 2 }
-        let offset = task.id.unicodeScalars.reduce(0) { $0 + Int($1.value) }
-        var t = (v2LiveTick + offset) % ticks.reduce(0, +)
-        for (i, n) in ticks.enumerated() {
-            if t < n { return (i, steps[i], steps[i].hasResult && t == n - 1) }
+        // The clock that moves it on (`startLiveSteps`).
+        _ = v2LiveTick
+        let last = (steps.count - 1, steps[steps.count - 1], steps[steps.count - 1].hasResult)
+        guard let start = v2Started[task.id] else { return last }
+        var t = Int(max(0, Date().timeIntervalSince(start)) / WorkbenchTokens.Steps.tick)
+        for (i, step) in steps.enumerated() {
+            let n = step.hasResult ? 3 : 2
+            if t < n { return (i, step, step.hasResult && t == n - 1) }
             t -= n
         }
-        return (0, steps[0], false)
+        return last
     }
 
     /// The tick the steps move on, while the workbench runs (not in snapshots).
@@ -248,14 +255,16 @@ extension WorkbenchModel {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(WorkbenchTokens.Steps.tick))
                 guard let self else { return }
-                withAnimation(WorkbenchTokens.Steps.change) { self.v2LiveTick += 1 }
+                // Oct 21, perf: unanimated while the island is off the screen (`islandOffScreen`).
+                self.withIslandAnimation(WorkbenchTokens.Steps.change) { self.v2LiveTick += 1 }
             }
         }
     }
 }
 
 /// One step, in a line: its glyph, what it is doing and to what, and when it ended, the edit's
-/// lines or the command's outcome. A new step pushes the last one up and out.
+/// lines or the command's outcome. A new step crossfades with the last (Oct 21, Ryan, "simpler is
+/// better": it pushed the last one up and out).
 struct V2StepLine: View {
     let model: WorkbenchModel
     let task: AgentTaskItem
@@ -283,7 +292,7 @@ struct V2StepLine: View {
                         .fixedSize(horizontal: false, vertical: lines > 1)
                 }
                 .id(live.index)
-                .transition(.push(from: .bottom))
+                .transition(.opacity)
                 .accessibilityElement(children: .combine)
             } else {
                 Text(task.project).font(.system(size: size)).foregroundStyle(S.verb).lineLimit(1)

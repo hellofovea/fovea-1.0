@@ -8,19 +8,19 @@ import FoveaKit
 /// Oct 6, rows 25, 27 and 28; Oct 15 review, HI-01.3). Words that haven't come back say so first,
 /// while Fovea tries again on its own (VF13).
 ///
-/// How it moves (Quick Look's zoom, and the container transform Material documents):
+/// How it moves (Quick Look's zoom):
 /// - One value, `progress`, drives everything, 0 at the card and 1 open, so nothing can show
 ///   up before the motion or lag behind it.
-/// - The surface grows from the card's own frame to the expanded frame, corners and shadow with
-///   it. The card in the grid is hidden while the surface stands in for it.
-/// - What the card showed (its header and icon riding the growing edge, its words) fades out
-///   over the first 30 % of the way; the expanded content fades in from 16 % to 70 %, out of a
-///   4 pt blur, laid out at its final width so no line re-wraps.
-/// - The regions you took fly from the card's preview to their places in the expanded card.
-/// - Closing runs the same path backwards, a little quicker; the expanded content is gone in
-///   the first third of the time, and the card's own content returns over the last 30 % of the way.
-/// - A click or Esc mid-flight reverses from wherever it is (springs keep their velocity).
-/// - Reduce Motion: no travel, no blur, no scale; a short fade in place.
+/// - The surface grows from the card's own frame to the expanded frame, its corners with it,
+///   and the grid steps back under the grey. The card in the grid is hidden while the surface
+///   stands in for it.
+/// - What the card showed fades out over the first 30 % of the way; the expanded content fades
+///   in from 16 % to 70 %, laid out at its final width so no line re-wraps. Opacity only.
+/// - Closing runs the same path backwards, a little quicker, the grey gone first
+///   (`T.Motion.dimLeaves`); a click on it on its way home turns it round.
+/// - Reduce Motion: a short fade in place.
+/// - Oct 21, Ryan ("simpler is better"): the frame and the grey, nothing else (it also blurred,
+///   scaled, flew the pictures to their places and grew a second shadow); 0.3 s out, 0.25 s home.
 struct DetailOverlay: View {
     @Environment(CapturesModel.self) private var model
     @Environment(\.palette) private var palette
@@ -48,7 +48,7 @@ struct DetailOverlay: View {
         )
         // The expanded content's natural height at its final width, measured off screen.
         .background(alignment: .topLeading) {
-            DetailBody(match: model.match(for: capture), width: contentWidth, lendTiles: false)
+            DetailBody(match: model.match(for: capture), width: contentWidth)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(width: contentWidth)
                 .hidden()
@@ -78,7 +78,9 @@ struct DetailOverlay: View {
             return CGRect(x: 16, y: 10, width: w, height: container.height - 26)
         }
         let maxH = container.height - 2 * T.Layout.detailMargin + 16
-        let h = min(maxH, max(220, DetailMetrics(capture).bar + bodyHeight))
+        // Oct 21, Ryan ("simpler is better"): it hugs what it holds (a line of words stood in a
+        // card at least 220 pt tall, most of it empty).
+        let h = min(maxH, max(120, DetailMetrics(capture).bar + bodyHeight))
         // A little above center, where the eye rests in a window.
         let y = max(T.Layout.detailMargin - 16, (container.height - h) / 2 - 12)
         return CGRect(x: (container.width - w) / 2, y: y, width: w, height: h)
@@ -96,7 +98,7 @@ private struct BodyHeightKey: PreferenceKey {
 }
 
 /// Everything drawn at one `progress`. Animatable, so SwiftUI hands it every in-between value
-/// and the layout follows the spring frame by frame.
+/// and the layout follows the curve frame by frame.
 private struct ExpandingCard: View, Animatable {
     @Environment(CapturesModel.self) private var model
     @Environment(\.palette) private var palette
@@ -126,17 +128,17 @@ private struct ExpandingCard: View, Animatable {
         let radius = Curve.lerp(source == nil ? T.Layout.detailRadius : T.Layout.cardRadius, T.Layout.detailRadius, p)
         let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
 
-        // What the card showed, leaving early (and returning late on the way back).
-        let cardFace: CGFloat = source == nil || reduce ? 0 : 1 - Curve.step(0, 0.3, p)
+        // What the card showed, leaving early; on the way home it comes back from `faceReturns`
+        // of the time, as the expanded content goes, so the surface is never a blank card in flight.
+        let cardFace: CGFloat = source == nil || reduce ? 0 : (closing ? homeward(p, from: T.Motion.faceReturns, within: 0.85) : 1 - Curve.step(0, 0.3, p))
         // What only the expanded card has.
-        let content: CGFloat = reduce ? p : (closing ? Curve.step(0.45, 0.92, p) : Curve.step(0.16, 0.7, p))
-        let flying = source != nil && !reduce && p < 1 && model.attachmentMotion == .fly
-            && model.cardAttachments == .inlineAndPreview
+        let content: CGFloat = reduce ? p : (closing ? 1 - homeward(p, within: T.Motion.contentLeaves) : Curve.step(0.16, 0.7, p))
 
         ZStack(alignment: .topLeading) {
-            // The grid steps back.
+            // The grid steps back. The grey answers the click at once, both ways: it comes and goes
+            // on the ease-out over the zoom's time; on the way home it has gone by `dimLeaves`.
             palette.dim
-                .opacity(model.detailStyle == .page ? 0 : Double(p))
+                .opacity(model.detailStyle == .page ? 0 : Double(dim(p)))
                 .contentShape(Rectangle())
                 .onTapGesture { model.closeDetail() }
                 .accessibilityHidden(true)
@@ -144,51 +146,28 @@ private struct ExpandingCard: View, Animatable {
             ZStack(alignment: .topLeading) {
                 palette.card
 
-                // Kept while it's faded too: its preview's places are where the regions fly from.
-                if let source, cardFace > 0.001 || flying {
-                    CardFace(match: sourceMatch, side: source.width, headerWidth: f.width, lendTiles: flying)
+                if let source, cardFace > 0.001 {
+                    CardFace(match: sourceMatch, side: source.width, headerWidth: f.width)
                         .opacity(Double(cardFace))
-                        .blur(radius: (1 - cardFace) * 3)
                         .allowsHitTesting(false)
                 }
 
-                DetailContent(match: match, width: target.width, barWidth: f.width, lendTiles: flying)
+                DetailContent(match: match, width: target.width, barWidth: f.width)
                     .frame(width: target.width, height: targetHeight, alignment: .topLeading)
                     .opacity(Double(content))
-                    .blur(radius: reduce ? 0 : (1 - content) * T.Motion.contentBlur)
-                    .scaleEffect(reduce ? 1 : 0.985 + 0.015 * content, anchor: .topLeading)
                     .allowsHitTesting(p > 0.5 && !closing)
-            }
-            .overlayPreferenceValue(TileAnchorsKey.self) { anchors in
-                if flying {
-                    GeometryReader { proxy in
-                        ForEach(capture.attachments.filter { $0.kind == .region }, id: \.index) { a in
-                            if let from = anchors["card/\(a.index)"], let to = anchors["detail/\(a.index)"] {
-                                FlyingRegion(attachment: a, frame: Curve.lerp(proxy[from], proxy[to], p), progress: p)
-                            }
-                        }
-                    }
-                    .allowsHitTesting(false)
-                }
             }
             .frame(width: f.width, height: f.height, alignment: .topLeading)
             .clipShape(shape)
-            // Aside's shading, from the card's resting level to floating over the page: the edge
-            // just inside, the contact shadow and the wide one growing with it.
+            // Oct 21, Ryan: caught on its way home, a click turns it round.
+            .contentShape(shape)
+            // Oct 21, Ryan ("the interface is not responsive"): `.none` switched off every gesture in
+            // the card, its buttons too, so ✕, Copy, Save and Delete took no clicks while it was
+            // open. Open, only the card's own buttons answer (`.subviews`); closing, the tap too.
+            .simultaneousGesture(TapGesture().onEnded { if closing { model.reopen() } }, including: closing ? .all : .subviews)
+            // A hairline just inside its edge and one soft shadow, floating over the page.
             .overlay(shape.strokeBorder(palette.edge, lineWidth: 0.5))
-            .overlay { if palette.isDark { shape.strokeBorder(Rim.gradient, lineWidth: 1) } }
-            .background {
-                let (r0, r1) = T.Shade.layers(.resting, dark: palette.isDark)
-                let (f0, f1) = T.Shade.layers(.floating, dark: palette.isDark)
-                ZStack {
-                    shape.fill(palette.card)
-                        .shadow(color: .black.opacity(Curve.lerp(r1.opacity, f1.opacity, Double(p))),
-                                radius: Curve.lerp(r1.radius, f1.radius, p), y: Curve.lerp(r1.y, f1.y, p))
-                    shape.fill(palette.card)
-                        .shadow(color: .black.opacity(Curve.lerp(r0.opacity, f0.opacity, Double(p))),
-                                radius: Curve.lerp(r0.radius, f0.radius, p), y: Curve.lerp(r0.y, f0.y, p))
-                }
-            }
+            .background(shape.fill(palette.card).shadow(color: .black.opacity(palette.isDark ? 0.4 : 0.14), radius: 24, y: 10))
             .opacity(reduce ? Double(p) : 1)
             .offset(x: f.minX, y: f.minY)
         }
@@ -196,17 +175,20 @@ private struct ExpandingCard: View, Animatable {
     }
 }
 
-/// A region on its way between the card's preview and the expanded card: the same picture,
-/// re-cropped as its frame changes shape, its corners and number growing with it.
-private struct FlyingRegion: View {
-    let attachment: Attachment
-    let frame: CGRect
-    let progress: CGFloat
-    var body: some View {
-        RegionImage(attachment: attachment)
-            .frame(width: frame.width, height: frame.height)
-            .clipShape(RoundedRectangle(cornerRadius: Curve.lerp(0, 8, progress), style: .continuous))
-            .offset(x: frame.minX, y: frame.minY)
+extension ExpandingCard {
+    /// How much the grid steps back at `p`.
+    func dim(_ p: CGFloat) -> CGFloat {
+        if reduce { return p }
+        if closing { return 1 - homeward(p, within: T.Motion.dimLeaves) }
+        let time = Curve.timeGone(T.Motion.zoomOpen.curve, at: Double(p))
+        return CGFloat(Curve.bezier(T.Motion.easeOut, time))
+    }
+
+    /// On the way home, something changing on the ease-out between two shares of the zoom's
+    /// time (0 before `from`, 1 by `within`), read from where the card is (`p`, 1 open).
+    func homeward(_ p: CGFloat, from start: Double = 0, within share: Double) -> CGFloat {
+        let time = Curve.timeGone(T.Motion.zoomClose.curve, at: Double(1 - p))
+        return CGFloat(Curve.bezier(T.Motion.easeOut, min(1, max(0, (time - start) / (share - start)))))
     }
 }
 
@@ -218,14 +200,13 @@ struct DetailContent: View {
     let width: CGFloat
     /// The bar spans the surface as it grows, so its trailing buttons ride the edge.
     let barWidth: CGFloat
-    let lendTiles: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             DetailBar(capture: match.capture)
                 .frame(width: barWidth, height: DetailMetrics(match.capture).bar)
             ScrollView {
-                DetailBody(match: match, width: width, lendTiles: lendTiles)
+                DetailBody(match: match, width: width)
             }
             .scrollIndicators(.automatic)
             .frame(width: width)
@@ -254,20 +235,23 @@ struct DetailBar: View {
                     .help(CardHeader.whereItWent(capture))
             }
             Spacer(minLength: 8)
-            // Aside's note actions: one glass capsule. ← and → reach the first two through the
-            // grid, which keeps the keyboard while this is out.
+            // Aside's note actions: one glass capsule. Oct 21, Ryan: "Don't have the left and right
+            // buttons. Make sure copy, download and delete all work as expected." ← and → still
+            // step through the cards from the keyboard (the grid keeps it while this is out).
             GlassBar {
-                IconButton(symbol: "chevron.left", help: "Previous (←)") { model.step(-1) }
-                    .disabled(!model.canStep(-1))
-                IconButton(symbol: "chevron.right", help: "Next (→)") { model.step(1) }
-                    .disabled(!model.canStep(1))
-                BarDivider()
-                // One Copy: the words, with what you took (row 28).
-                IconButton(symbol: model.copiedID == capture.id ? "checkmark" : "doc.on.doc",
-                           help: "Copy", confirmed: model.copiedID == capture.id) { model.copy(capture) }
+                // One Copy: the words, with what you took (row 28). ⌘C copies it too while nothing
+                // in the card is selected (the Edit menu's Copy, `HomeWindowController`).
+                let copied = model.copiedID == capture.id
+                IconButton(symbol: copied ? "checkmark" : "doc.on.doc", help: copied ? "Copied" : "Copy (⌘C)",
+                           confirmed: copied, label: copied ? "Copied" : "Copy") { model.copy(capture) }
                     .disabled(capture.failed)
-                SaveMenu(capture: capture)
-                IconButton(symbol: "trash", help: "Delete (⌘⌫)", role: .destructive) { model.delete(capture.id) }
+                // One click saves it all: the words, or a folder with what you took (Saving.swift).
+                SaveButton(capture: capture)
+                    .keyboardShortcut("s", modifiers: .command)
+                let deleting = model.deleteConfirmID == capture.id
+                IconButton(symbol: deleting ? "checkmark" : "trash", help: deleting ? "Deleted" : "Delete (⌘⌫)",
+                           confirmed: deleting, role: deleting ? nil : .destructive,
+                           label: deleting ? "Deleted" : "Delete") { model.confirmDelete(capture.id) }
                     .keyboardShortcut(.delete, modifiers: .command)
             }
         }
@@ -302,7 +286,6 @@ struct DetailBody: View {
     @Environment(\.palette) private var palette
     let match: CaptureMatch
     let width: CGFloat
-    let lendTiles: Bool
 
     var body: some View {
         let c = match.capture
@@ -326,7 +309,7 @@ struct DetailBody: View {
 
             // Pictures use the card's full width, under a narrower column of words.
             if !c.attachments.isEmpty {
-                DetailAttachments(capture: c, width: inner, lendTiles: lendTiles)
+                DetailAttachments(capture: c, width: inner)
             }
 
             // The tags at the left; the recording and, for a dispatch, its chat, small at the right.
@@ -347,7 +330,6 @@ struct DetailAttachments: View {
     @Environment(\.palette) private var palette
     let capture: Capture
     let width: CGFloat
-    let lendTiles: Bool
 
     var body: some View {
         let regions = capture.attachments.filter { $0.kind == .region }
@@ -362,8 +344,6 @@ struct DetailAttachments: View {
                                 .frame(width: size.width, height: size.height)
                                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                                 .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(palette.hairline, lineWidth: 0.5))
-                                .anchorPreference(key: TileAnchorsKey.self, value: .bounds) { ["detail/\(a.index)": $0] }
-                                .opacity(lendTiles ? 0 : 1)
                                 .contentShape(Rectangle())
                                 .onTapGesture { model.view(capture.id, a.index) }
                                 .help("Open Larger")

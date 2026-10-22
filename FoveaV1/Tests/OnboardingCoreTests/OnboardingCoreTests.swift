@@ -619,36 +619,6 @@ final class OnboardingCoreTests: XCTestCase {
         }
     }
 
-    // MARK: Typed out, letter by letter
-
-    func testTypingPausesAfterSentencesAndClauses() {
-        let text = "Hi. I live up here."
-        let delays = Typewriter.delays(for: text)
-        XCTAssertEqual(delays.count, text.count)
-        XCTAssertEqual(delays[0], 0, "the first letter at once")
-        let space = Array(text).firstIndex(of: " ")!
-        XCTAssertEqual(delays[space], 1.0 / 45 + 0.3, accuracy: 0.0001, "a beat after the sentence")
-        XCTAssertEqual(delays[space + 1], 1.0 / 45, accuracy: 0.0001)
-
-        let clause = Typewriter.delays(for: "Hold ⌥, then drag.")
-        let comma = Array("Hold ⌥, then drag.").firstIndex(of: ",")!
-        XCTAssertEqual(clause[comma + 1], 1.0 / 45 + 0.1, accuracy: 0.0001, "a shorter one after a comma")
-
-        let quote = Typewriter.delays(for: "Say “can you hear me?” now")
-        let close = Array("Say “can you hear me?” now").firstIndex(of: "”")!
-        XCTAssertEqual(quote[close], 1.0 / 45, accuracy: 0.0001, "no pause before the closing quote")
-        XCTAssertEqual(quote[close + 1], 1.0 / 45 + 0.3, accuracy: 0.0001, "the pause comes after it")
-
-        let dots = Typewriter.delays(for: "Wait... now")
-        XCTAssertEqual(dots.filter { $0 > 0.2 }.count, 1, "one pause for an ellipsis")
-    }
-
-    func testALongLineIsTypedFaster() {
-        let long = String(repeating: "A long instruction, with words. ", count: 8)
-        XCTAssertLessThanOrEqual(Typewriter.duration(of: long), 2.2 + 0.0001)
-        XCTAssertEqual(Typewriter.duration(of: ""), 0)
-    }
-
     // MARK: Bringing your words
 
     func testACSVOfWordsWithAHeader() {

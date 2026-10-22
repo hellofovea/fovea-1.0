@@ -67,7 +67,7 @@ struct NotchPane: View {
             SettingsCard {
                 SettingsRow("Glass", detail: prefs.notchAppearance == .light ? "Light glass, dark words." : "Dark glass, white words.") {
                     SettingsSegments(segments: NotchAppearance.allCases.map { ($0, $0.title) }, selection: prefs.notchAppearance) { a in
-                        model.animate(.swap) { model.prefs.notchAppearance = a }
+                        model.animate(.fadeIn) { model.prefs.notchAppearance = a }
                     }
                 }
                 RowDivider()
@@ -75,7 +75,7 @@ struct NotchPane: View {
                             ? "What opens below hangs from the top of the screen, one shape with the notch."
                             : "What opens below floats just under the notch.") {
                     SettingsSegments(segments: NativePanels.allCases.map { ($0, $0.title) }, selection: prefs.panels) { p in
-                        model.animate(.swap) { model.prefs.panels = p }
+                        model.animate(.fadeIn) { model.prefs.panels = p }
                     }
                 }
                 RowDivider()
@@ -83,7 +83,7 @@ struct NotchPane: View {
                             ? "Roomy rows and larger words, as the Mac's own panels have."
                             : "Tighter rows: more of the board at once.") {
                     SettingsSegments(segments: NotchDensity.allCases.map { ($0, $0.title) }, selection: prefs.density) { d in
-                        model.animate(.swap) { model.prefs.density = d }
+                        model.animate(.fadeIn) { model.prefs.density = d }
                     }
                 }
             }
@@ -97,7 +97,7 @@ struct NotchPane: View {
         // and only it shows Hue, Spread and Drift, as the first run shows it.
         SettingsSection("Glow", note: "The light in the voice bar while you talk to an agent. The notch glows with it as you choose.") {
             SettingsCard {
-                GlowTiles(selection: $model.prefs.glow.animation(motion.animation(.swap)), prefs: prefs)
+                GlowTiles(selection: $model.prefs.glow.animation(motion.animation(.layout)), prefs: prefs)
                     .cardPadding()
                 if glow == .custom {
                     VStack(spacing: 0) {
@@ -126,7 +126,7 @@ struct NotchPane: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
                     }
-                    .transition(.opacity)
+                    .transition(.arrive)
                 }
             }
         }
@@ -136,7 +136,7 @@ struct NotchPane: View {
             SettingsCard {
                 SettingsRow("Open when the pointer reaches the notch",
                             detail: "The board shows what your agents are doing; with nothing running, it says hello.") {
-                    InkToggle(title: "Open when the pointer reaches the notch", isOn: $model.prefs.hoverOpens.animation(motion.animation(.swap)))
+                    InkToggle(title: "Open when the pointer reaches the notch", isOn: $model.prefs.hoverOpens.animation(motion.animation(.layout)))
                 }
                 if prefs.hoverOpens {
                     // Only while the pointer opens it: a wait for nothing would look broken.
@@ -148,7 +148,7 @@ struct NotchPane: View {
                             }
                         }
                     }
-                    .transition(.opacity)
+                    .transition(.arrive)
                 } else {
                     // Never no way in: with the hover off, the key still opens it.
                     VStack(spacing: 0) {
@@ -161,7 +161,7 @@ struct NotchPane: View {
                         }
                         .cardPadding()
                     }
-                    .transition(.opacity)
+                    .transition(.arrive)
                 }
                 RowDivider()
                 SettingsRow("Show an answer as soon as it's back",
@@ -189,7 +189,7 @@ struct NotchPane: View {
                 .disabled(prefs.notchIsDefault)
         }
         .alert("Restore the notch's defaults?", isPresented: $confirmRestore) {
-            Button("Restore Defaults") { model.animate(.swap) { model.prefs.restoreNotch() } }
+            Button("Restore Defaults") { model.animate(.layout) { model.prefs.restoreNotch() } }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("The colorful glow, opening at the notch, and reviewing your words before sending.")
@@ -365,7 +365,7 @@ struct PictureChoices<Value: Hashable, Picture: View>: View {
         HStack(alignment: .top, spacing: 14) {
             ForEach(options, id: \.self) { option in
                 let on = option == selection
-                Button { withAnimation(motion.animation(.swap)) { selection = option } } label: {
+                Button { selection = option } label: {
                     VStack(spacing: 6) {
                         picture(option, on)
                             .frame(maxWidth: .infinity)

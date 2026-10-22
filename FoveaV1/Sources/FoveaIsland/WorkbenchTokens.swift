@@ -85,24 +85,116 @@ enum WorkbenchTokens {
         static let snapshotLevel: Float = 0.6
     }
 
-    /// Island motion: critically damped springs for the shape, a short ease-out crossfade for
-    /// the content a beat behind it. The shipping island opens in 0.34 s; the bar is its
-    /// smallest growth and answers a key press, so it moves faster (docs/island/VOICE_BAR.md).
-    /// Interpolating springs on purpose: measured frame by frame, `.smooth` and
-    /// `.spring(duration:bounce:)` hand the outline about 85% of a growth on its first frame
-    /// and then creep; the interpolating spring moves through the whole range both ways.
+    /// Oct 21, Ryan: "research what spring animation is, then apply it to our Dynamic Island as
+    /// well as all the other places that need this", and then "don't always use spring
+    /// animations; use the correct animations": springs for the island's own morphs, its small
+    /// parts and a thrown chat; inside its panels, the curve each thing calls for (content in and
+    /// out on the strong ease-out, a move on the strong ease-in-out, hovers on `ease`, press
+    /// feedback on ease-out, anything timed linear). The island's motion, one palette
+    /// (docs/motion/SPRINGS.md › Island has each one's settling time and overshoot, computed from
+    /// SwiftUI's own `Spring`). Interpolating springs, so a morph re-aimed mid-flight keeps its
+    /// velocity; a subtle bounce because the island is alive: the most on its smallest, most
+    /// frequent move (rest to a voice bar, so the bounce reads), less on the large panels (which
+    /// settle longer), and next to none on the way home (exits shorter, simpler). Content only
+    /// fades, on the strong ease-out curve. With Reduce Motion each one is a short ease-out with
+    /// nothing bouncing (`reduced`, the person's Appearance › Motion or the Mac's).
+    enum Spring {
+        /// Whether motion is reduced now: the model says (WorkbenchModel.init).
+        nonisolated(unsafe) static var reduced: () -> Bool = { false }
+        /// With Reduce Motion, a short ease-out instead: nothing moves on a spring or bounces.
+        static func or(_ spring: Animation) -> Animation { reduced() ? fade : spring }
+        // Oct 21 motion review: the strong ease-out the window and the first run fade on under
+        // Reduce Motion, not SwiftUI's weaker built-in `.easeOut`; every Reduce Motion fade in the
+        // island (views and model alike) asks for this one.
+        static var fade: Animation { fadeIn(Motion.reduceMotionFade) }
+
+        /// Rest → a voice bar (fn, fn ⌃): the smallest growth, seen tens of times a day; at 98% in
+        /// 0.12 s. Oct 21, Ryan ("simpler is better"): the one spring left with a little life, a
+        /// touch of overshoot (bounce 0.12, under a point); it was 0.3.
+        static var barGrow: Animation { or(.interpolatingSpring(duration: 0.24, bounce: 0.12)) }
+        /// A bar → rest: quicker than it came, no visible bounce; the outline swallows the content.
+        static var barShrink: Animation { or(.interpolatingSpring(duration: 0.18, bounce: 0.06)) }
+        /// Rest or a bar → a panel (held words, Choose chat, the board on hover, a session): larger,
+        /// so a longer settle. Oct 21, Ryan ("simpler is better"): no bounce on a panel.
+        static var panelGrow: Animation { or(.interpolatingSpring(duration: 0.34, bounce: 0)) }
+        /// Rest → the board, when the pointer comes to the notch (Oct 21, Ryan: "expand faster when
+        /// my mouse hovers"): the same shape as `panelGrow`, shorter: at 98% in about 0.16 s.
+        static var boardOpen: Animation { or(.interpolatingSpring(duration: 0.26, bounce: 0)) }
+        /// A panel → rest (or a bar): shorter than its entrance, no visible bounce.
+        static var panelShrink: Animation { or(.interpolatingSpring(duration: 0.26, bounce: 0.06)) }
+        /// The island changing size within a state (the stack opening, a notice, Choose chat's
+        /// list, the board to a session), critically damped.
+        static var resize: Animation { or(.interpolatingSpring(duration: 0.3, bounce: 0)) }
+        /// …and folding back within a state: shorter, no visible bounce.
+        static var fold: Animation { or(.interpolatingSpring(duration: 0.24, bounce: 0.06)) }
+        /// The island's small parts (cards opening, the +N, chips), critically damped.
+        static var part: Animation { or(.interpolatingSpring(duration: 0.28, bounce: 0)) }
+        /// …and going back: quick, no visible bounce.
+        static var partBack: Animation { or(.interpolatingSpring(duration: 0.22, bounce: 0.08)) }
+        /// A capture flying from the screen into the stack: a long way, landing without overshoot.
+        static var flight: Animation { or(.interpolatingSpring(duration: 0.42, bounce: 0)) }
+        /// A pulled-out chat let go: it carries the pointer's velocity (relative to the distance
+        /// left) into a spring with a little bounce, because it was thrown (0.1; it was 0.2).
+        static func thrown(_ velocity: Double = 0) -> Animation {
+            or(.interpolatingSpring(duration: 0.4, bounce: 0.1, initialVelocity: velocity))
+        }
+        /// Moved, not thrown (a chat's corner let go past its sizes, back within them): the end
+        /// of a gesture, so a spring, critically damped.
+        static var reposition: Animation { or(.spring(duration: 0.4, bounce: 0)) }
+
+        // Curves, inside the panels (Oct 21, Ryan: "don't always use spring animations").
+        /// Moving on screen, not alive or thrown: the board's rows reordering, a scroll to a
+        /// request. The strong ease-in-out (cubic), short.
+        static var rows: Animation { or(.timingCurve(0.645, 0.045, 0.355, 1, duration: 0.28)) }
+        /// A hover: `ease`, quick (seen dozens of times a day), on a fill or a small lean.
+        static var hover: Animation { .timingCurve(0.25, 0.1, 0.25, 1, duration: 0.12) }
+        /// Press feedback: a control gives a little and comes back, ease-out (with Reduce Motion
+        /// it dims instead).
+        static let press: Animation = .timingCurve(0.23, 1, 0.32, 1, duration: 0.14)
+        static let pressScale: CGFloat = 0.97
+        // Oct 21 motion review: the same dim the window (`T.Motion.pressDim`) and the first run
+        // (`OT.Motion.pressDim`) give a press under Reduce Motion, so a press reads alike everywhere.
+        static let pressDim: Double = 0.75
+        /// Content appearing or going (text, icons, glows, notices' words, the drop well, Copied):
+        /// the strong ease-out curve; exits shorter than entrances.
+        static func fadeIn(_ duration: Double) -> Animation { .timingCurve(0.23, 1, 0.32, 1, duration: duration) }
+        static func fadeOut(_ duration: Double) -> Animation { .timingCurve(0.23, 1, 0.32, 1, duration: duration) }
+        /// Its control points, for what AppKit fades (the marks over other apps' windows).
+        static let easeOutPoints: (Float, Float, Float, Float) = (0.23, 1, 0.32, 1)
+        /// A pulled-out chat's momentum: Apple's projection (Designing Fluid Interfaces), with a
+        /// window's quicker deceleration (0.99, not a scroll view's 0.998): a flick of 1000 pt/s
+        /// glides about 100 pt on.
+        static let deceleration: Double = 0.99
+        static func project(_ velocity: Double) -> Double { velocity / 1000 * deceleration / (1 - deceleration) }
+        /// Past the screen's edges a dragged chat resists more the further it goes (Apple's
+        /// rubber band, 0.55).
+        static let rubber: Double = 0.55
+        static func rubberBand(_ overshoot: Double, dimension: Double) -> Double {
+            guard dimension > 0 else { return 0 }
+            return overshoot * dimension * rubber / (dimension + rubber * abs(overshoot))
+        }
+    }
+
+    /// Island motion: the shape on the palette's springs (`Spring`), the content a short
+    /// strong ease-out crossfade with it (docs/island/VOICE_BAR.md). Interpolating springs
+    /// on purpose: measured frame by frame, `.smooth` and `.spring(duration:bounce:)` hand the
+    /// outline about 85% of a growth on its first frame and then creep; the interpolating spring
+    /// moves through the whole range both ways. Oct 21, Ryan: a touch of bounce on the voice bar
+    /// alone (`Spring.barGrow`).
     enum Motion {
-        static let open: Animation = .interpolatingSpring(duration: 0.18, bounce: 0)
-        static let close: Animation = .interpolatingSpring(duration: 0.15, bounce: 0)
-        /// The waveform coming in: a short ease-out crossfade a beat behind the shape.
-        static let content: Animation = .timingCurve(0.23, 1, 0.32, 1, duration: 0.10)
-        static let contentDelay: Double = 0.02
-        /// The waveform going out: on the shape's own closing spring, so the outline swallows
-        /// the fading bars and both are home together.
-        static let contentOut: Animation = close
-        static let contentBlur: CGFloat = 4
-        static let contentScale: CGFloat = 0.97
+        static var open: Animation { Spring.barGrow }
+        static var close: Animation { Spring.barShrink }
+        /// The waveform coming in: a short strong ease-out crossfade, with the shape.
+        static var content: Animation { Spring.fadeIn(0.14) }
+        /// The waveform (and a panel's content) going out: Oct 21, Ryan: a curve, not the
+        /// closing spring: the strong ease-out, shorter than it came in, gone as the outline closes.
+        static var contentOut: Animation { Spring.fadeOut(0.1) }
         static let reduceMotionFade: Double = 0.12
+        /// Oct 21, perf: how long a band's moving parts keep moving after it stops showing, so
+        /// they hold still only once it has faded out (longer than any band's way out).
+        static let bandLinger: Double = 1
+        /// Oct 21, perf: a once-a-second clock's tick while its band is hidden (in effect, none).
+        static let hiddenTick: Double = 3600
     }
 
     /// The referent stack in the voice bar and its expansion; docs/island/REFERENT_STACK.md
@@ -124,14 +216,9 @@ enum WorkbenchTokens {
         static let layerOffset: CGFloat = 5
         /// …is this much smaller…
         static let layerShrink: CGFloat = 0.08
-        /// …dimmer, like the reference's back cards at half opacity…
+        /// …and dimmer, like the reference's back cards at half opacity (Oct 21, Ryan, "simpler is
+        /// better": no tilt, no fan on hover, no growing under the pointer).
         static let layerOpacity: Double = 0.6
-        /// …and tilted, a small pile at rest (degrees, front first).
-        static let restRotation: [Double] = [0, 4, -3]
-        /// Hovered, the pile fans further to the right, the reference's hover.
-        static let peekOffset: CGFloat = 11
-        static let peekRotation: [Double] = [0, 8, -6]
-        static let hoverScale: CGFloat = 1.04
         /// Room between the stack and the waveform, which moves right to make it.
         static let waveformGap: CGFloat = 8
 
@@ -157,27 +244,27 @@ enum WorkbenchTokens {
         static var closeText: Color { ink(0.75) }
         static var border: Color { ink(0.2) }
         static let borderWidth: CGFloat = 0.75
-        /// One card after another, front first; the tail never waits past the sixth.
-        static let stagger: Double = 0.03
-        static let staggerCap = 6
         /// The island opening to show every capture, and closing, both critically damped; the
-        /// cards start a beat behind it so the surface leads.
-        static let expand: Animation = .interpolatingSpring(duration: 0.24, bounce: 0)
-        static let collapse: Animation = .interpolatingSpring(duration: 0.24, bounce: 0).delay(0.06)
-        static let cardDelay: Double = 0.06
+        /// cards move with it (Oct 21, Ryan, "simpler is better": no beat behind, no stagger).
+        static var expand: Animation { Spring.resize }
+        static var collapse: Animation { Spring.fold }
         /// A capture joining the stack, and the stack changing shape.
-        static let settle: Animation = .interpolatingSpring(duration: 0.3, bounce: 0)
-        static let closeIn: Animation = .easeOut(duration: 0.18).delay(0.14)
+        static var settle: Animation { Spring.resize }
+        /// The stack getting smaller (one removed): back without a bounce.
+        static var shrink: Animation { Spring.fold }
+        /// A card taking its new place (one joined or left): a small part.
+        static var cardSettle: Animation { Spring.part }
+        static var closeIn: Animation { Spring.fadeIn(0.18) }
 
         // One capture, looked at closely: the same card, grown inside the island.
         static let inspectMaxHeight: CGFloat = 300
         static let inspectAspectRange: ClosedRange<CGFloat> = 0.4...3.0
-        static let inspect: Animation = .interpolatingSpring(duration: 0.3, bounce: 0)
+        static var inspect: Animation { Spring.resize }
         static let captionGap: CGFloat = 10
         static let caption = Font.system(size: 11.5)
         static var captionColor: Color { ink(0.55) }
         /// The others step back while one is looked at.
-        static let othersFade: Animation = .easeOut(duration: 0.15)
+        static var othersFade: Animation { Spring.fadeOut(0.15) }
 
         // Removing one: a small dark disc with a white cross, the island's own black and white,
         // in the card's top-right corner, on hover.
@@ -191,13 +278,11 @@ enum WorkbenchTokens {
         // Light, Oct 11).
         static let removeGlyphColor = Color.white.opacity(0.9)
         static let removeRing = Color.white.opacity(0.28)
-        static let removeAppear: Animation = .easeOut(duration: 0.12)
-        static let removeHiddenScale: CGFloat = 0.8
+        static var removeAppear: Animation { Spring.fadeIn(0.12) }
         /// A removed card fades as the rest close the gap, then leaves.
-        static let departFade: Animation = .easeOut(duration: 0.16)
-        static let departShrink: CGFloat = 0.9
+        static var departFade: Animation { Spring.fadeOut(0.16) }
         static let departDelay: Duration = .milliseconds(220)
-        static let closeOut: Animation = .easeOut(duration: 0.1)
+        static var closeOut: Animation { Spring.fadeOut(0.1) }
     }
 
     /// Transcribing's progress and the undo window's countdown, in the 44 pt band
@@ -309,19 +394,19 @@ enum WorkbenchTokens {
         static let copiedHold: Duration = .milliseconds(1000)
         /// The line's frame in snapshots.
         static let still = 0.6
-        // Motion: the island's critically damped springs (bounce 0, WWDC23's advice when in
-        // doubt), a larger surface than the bar so a little longer, all under 0.35 s; the words
-        // a beat behind the shape, the chevron turning on the island's own spring.
-        static let open: Animation = .interpolatingSpring(duration: 0.3, bounce: 0)
-        static let close: Animation = .interpolatingSpring(duration: 0.22, bounce: 0)
-        static let expand: Animation = .interpolatingSpring(duration: 0.32, bounce: 0)
-        static let collapse: Animation = .interpolatingSpring(duration: 0.26, bounce: 0)
+        // Motion (Oct 21, Ryan): a panel's springs, a larger surface than the bar so a little
+        // longer and less bouncy; the words a beat behind the shape, the chevron turning on the
+        // island's own spring.
+        static var open: Animation { Spring.panelGrow }
+        static var close: Animation { Spring.panelShrink }
+        static var expand: Animation { Spring.resize }
+        static var collapse: Animation { Spring.fold }
         /// The last line's ellipsis giving way to the rest of the words, and back.
-        static let textSwap: Animation = .easeOut(duration: 0.18)
-        static let copiedSwap: Animation = .easeOut(duration: 0.16)
-        /// The words coming in once the shape has mostly grown: the band's crossfade, later.
-        static let contentIn: Animation = Motion.content.delay(0.08)
-        static let hover: Animation = .easeOut(duration: 0.1)
+        static var textSwap: Animation { Spring.fadeIn(0.18) }
+        static var copiedSwap: Animation { Spring.fadeIn(0.16) }
+        /// The words coming in with the shape (Oct 21, Ryan, "simpler is better": no beat behind).
+        static var contentIn: Animation { Spring.fadeIn(0.18) }
+        static var hover: Animation { Spring.hover }
         /// The bottom corners: the Island's expanded ones; Spacious, rounder for the larger panel.
         static var bottomRadius: CGFloat { pick(Island.spec.expandedBottomRadius, 28) }
     }
@@ -333,22 +418,20 @@ enum WorkbenchTokens {
     /// (docs/island/AGENT_VOICE_AND_THINKING.md).
     enum VoiceGlow {
         /// The style, Wide (chosen 2026-09-30): the package's chat-input tuning (~350 pt host)
-        /// fitted to the band at scale 0.57. The glow spans the bar, the colors flow sideways with
-        /// the voice, and the ridge rises into the corners.
+        /// fitted to the band at scale 0.57. The glow spans the bar and the colors flow sideways
+        /// with the voice (Oct 21, Ryan, "simpler is better": without the package's chromatic
+        /// ridge or the distortion under it).
         static let wide = VoiceGlowGeometry(
             scale: 0.57, reach: 1.2, spread: 1.05, flow: 48, bend: 60,
-            bandStrength: 1.55, bandWidth: 2.15, bandPosition: 0.35, bandCurve: 1.75, bandSpread: 0.87, bandSkew: 0.12,
-            bandOffset: -27, bandTail: 0.59, bandTailPosition: 0.67, bandTailCurve: 2.4, bandTailOverflow: 15, bandAberration: 0.89,
-            distortion: 0.62, distortionDetail: 2.3, glowWidth: 0.65, glowHeight: 1.25, lobeSpacing: 0.85, rangeWidth: 0.75,
+            glowWidth: 0.65, glowHeight: 1.25, lobeSpacing: 0.85, rangeWidth: 0.75,
             rangeHeight: 1, softness: 1.07, coreSize: 1, strokeScale: 1, innerScale: 1, innerHeight: 1,
             bloomScale: 1, bloomHeight: 1, glowSize: 1,
             strokeOpacity: 1.16, innerOpacity: 0.47, bloomOpacity: 0.89, brightness: 1.15, saturation: 1.2)
-        /// The driver's shape and follow: gate, attack, release; the resting breath.
+        /// The driver's shape and follow: gate, attack, release; the resting glow (held still).
         static let threshold = 0.015
         static let attack = 0.325
         static let release = 0.86
         static let idle = 0.18
-        static let breathe: Double = 5.2
         /// Lobe geometry, px at scale 1 (styles.ts `voiceLobes`): x, width, height, the band each
         /// follows (0 lows, 1 mids, 2 highs).
         static let lobes: [(x: CGFloat, w: CGFloat, h: CGFloat, band: Int)] = [
@@ -365,7 +448,6 @@ enum WorkbenchTokens {
         static let insetBlur: CGFloat = 9
         static let bloomBlur: CGFloat = 10
         static let innerShadow = 0.1
-        static let bandSamples = 56
         /// Hue drift: ± this many degrees over this period, cosine ping-pong.
         static let hueRange = 24.0
         static let hueDuration = 12.0
@@ -373,13 +455,6 @@ enum WorkbenchTokens {
         static let monoOpacity = 0.6
         /// Native's light glass: the layers this much stronger (docs/island/NATIVE.md).
         static let lightGlassBoost = 1.7
-        /// The distortion under the band, drawn as strips (SwiftUI has no displacement filter).
-        static let warpStrip: CGFloat = 2
-        /// The band's colours on dark: a white core, red above, green between, blue below.
-        static let bandCore: (Double, Double, Double) = (255, 255, 255)
-        static let bandAbove: (Double, Double, Double) = (255, 70, 80)
-        static let bandMid: (Double, Double, Double) = (90, 255, 150)
-        static let bandBelow: (Double, Double, Double) = (80, 140, 255)
         /// The eight palettes on dark (styles.ts `voicePalettes`), centre lobe first, as r, g, b.
         static let palettes: [GlowPalette: [(Double, Double, Double)]] = [
             .colorful: [(255, 70, 120), (60, 190, 255), (175, 70, 255), (60, 220, 130), (255, 150, 40), (90, 100, 255), (40, 200, 190)],
@@ -435,7 +510,7 @@ enum WorkbenchTokens {
         static let swapBlur: CGFloat = 2
         static let open: Animation = .interpolatingSpring(duration: 0.3, bounce: 0)
         static let close: Animation = .interpolatingSpring(duration: 0.22, bounce: 0)
-        static let contentIn: Animation = Motion.content.delay(0.08)
+        static let contentIn: Animation = Motion.content
         static let frameRate: Double = 60
         static let stillTime: TimeInterval = 1.1
 
@@ -665,12 +740,14 @@ enum WorkbenchTokens {
         static let collapse: Animation = .interpolatingSpring(duration: 0.26, bounce: 0)
         /// The tab sliding to another agent, its chats crossfading in.
         static let agentSwap: Animation = .interpolatingSpring(duration: 0.22, bounce: 0)
-        static let contentIn: Animation = Motion.content.delay(0.08)
+        static let contentIn: Animation = Motion.content
         /// The list comes in once the island has room for it, and goes at once.
         static let listIn: Animation = .easeOut(duration: 0.16).delay(0.1)
         static let listOut: Animation = .easeOut(duration: 0.1)
         static let nameSwap: Animation = .easeOut(duration: 0.18)
-        static let hover: Animation = .easeOut(duration: 0.1)
+        // Oct 21 motion review: a hover fill, as every other hover in Fovea (`Spring.hover`: `ease`,
+        // 0.12 s); it was SwiftUI's `.easeOut` at 0.1 s, on Dispatch's buttons (AgentPanelButton).
+        static var hover: Animation { Spring.hover }
     }
 
     /// Dispatch's Agent panel (MockDesktop/AgentPanel.swift): the Agent tasks, each readable at a
@@ -769,8 +846,11 @@ enum WorkbenchTokens {
         /// (under `restDistance` over `restWindow`), checked every `dwellCheck`; at `dwellCap` it
         /// opens anyway. A deliberate aim lands at about 120–170 ms; a sweep along the menu bar
         /// never rests. Off the notch under `dwellJitter` (a wobble at its edge) keeps the dwell.
-        static let dwell: Double = 0.12
-        static let dwellCap: Double = 0.3
+        // Oct 21, Ryan ("expand faster when my mouse hovers"): halved from 0.12 / 0.3. The board
+        // still waits for the pointer to be still (a sweep along the menu bar never rests), so it
+        // opens about 60–160 ms after a deliberate aim instead of 120–300 ms.
+        static let dwell: Double = 0.06
+        static let dwellCap: Double = 0.16
         static let dwellCheck: Double = 0.02
         static let dwellJitter: Double = 0.08
         static let restWindow: Double = 0.05
@@ -793,13 +873,14 @@ enum WorkbenchTokens {
         // Motion.
         static let open: Animation = .interpolatingSpring(duration: 0.26, bounce: 0)
         static let close: Animation = .interpolatingSpring(duration: 0.2, bounce: 0)
-        /// The rows come in as the edge uncovers them: a beat after the shape, a little longer
-        /// than the voice bar's for the larger surface; fully in when the shape is at about 95%.
-        static let contentIn: Animation = .timingCurve(0.23, 1, 0.32, 1, duration: 0.16).delay(0.05)
-        /// A task changing: its line, its state, its place in the order.
-        static let change: Animation = .interpolatingSpring(duration: 0.35, bounce: 0)
-        static let sentFade: Animation = .easeOut(duration: 0.24)
-        static let controlsFade: Animation = .easeOut(duration: 0.12)
+        /// The rows come in with the shape, a little longer than the voice bar's for the larger
+        /// surface (Oct 21, Ryan, "simpler is better": no beat behind it).
+        static let contentIn: Animation = .timingCurve(0.23, 1, 0.32, 1, duration: 0.16)
+        /// A task changing: its line, its state, its place in the order (Oct 21: list layout,
+        /// critically damped, `Spring.rows`).
+        static var change: Animation { Spring.rows }
+        static var sentFade: Animation { Spring.fadeOut(0.24) }
+        static var controlsFade: Animation { Spring.fadeIn(0.12) }
     }
 
     /// Dispatch Version 2 (WorkbenchModel+DispatchV2.swift, MockDesktop/DispatchV2.swift). Its
@@ -934,7 +1015,10 @@ enum WorkbenchTokens {
         static let railRow: CGFloat = 26
         static var railCardFill: Color { skin(Color(white: 0.11), Native.card) }
         static var railRowHover: Color { ink(0.07) }
-        static let railMotion: Animation = .easeOut(duration: 0.14)
+        static var railMotion: Animation { Spring.fadeIn(0.14) }
+        /// The rail's card: a light shadow, close in (Oct 21, Ryan, "simpler is better"; it was 12 pt at 0.4).
+        static let railCardShadow = Color.black.opacity(0.25)
+        static let railCardShadowRadius: CGFloat = 8
         /// A turn counts as the one in view once its top is this close to the top of the chat.
         static let railReadLine: CGFloat = 60
         static let turnGap: CGFloat = 18
@@ -942,6 +1026,13 @@ enum WorkbenchTokens {
         static var movedOn: String { L("Moved on to your next question.") }
         static let detachedFill = Color(white: 0.06)
         static var detachedBorder: Color { ink(0.12) }
+        /// The pulled-out chat's shadow, and its tucked tab's: lighter and closer than a window's
+        /// (Oct 21, Ryan, "simpler is better"; they were 22 pt at 0.45 and 10 pt at 0.35).
+        static let detachedShadow = Color.black.opacity(0.3)
+        static let detachedShadowRadius: CGFloat = 12
+        static let detachedShadowY: CGFloat = 6
+        static let tabShadow = Color.black.opacity(0.25)
+        static let tabShadowRadius: CGFloat = 6
         static let edgeSnap: CGFloat = 12
         static let tabSize = CGSize(width: 34, height: 76)
         // Timing.
@@ -954,17 +1045,32 @@ enum WorkbenchTokens {
         static let taskPace: Double = 2.2
         static let typeRate: Double = 28
         static let caretBlink: Double = 1.0
-        // Motion: critically damped, as the island's other states; a wider shape a little slower.
-        static let open: Animation = .interpolatingSpring(duration: 0.34, bounce: 0)
-        static let resize: Animation = .interpolatingSpring(duration: 0.3, bounce: 0)
-        static let fold: Animation = .interpolatingSpring(duration: 0.28, bounce: 0)
-        static let close: Animation = .interpolatingSpring(duration: 0.24, bounce: 0)
-        static let contentIn: Animation = .timingCurve(0.23, 1, 0.32, 1, duration: 0.2).delay(0.08)
+        // Motion (Oct 21, Ryan): the palette's springs (`Spring`), each move by its size.
+        static var open: Animation { Spring.panelGrow }
+        static var resize: Animation { Spring.resize }
+        static var fold: Animation { Spring.fold }
+        static var close: Animation { Spring.panelShrink }
+        static var contentIn: Animation { Spring.fadeIn(0.18) }
+        /// A taken thing in Choose chat opening larger over the window, and closing: a fade.
+        static var inspectFade: Animation { Spring.fadeIn(0.16) }
+        /// A chat tucked into a side, or pulled back out: the tab slides in from that edge.
+        static let tuckScale: CGFloat = 0.96
 
+        /// Each move on the spring for its size: from rest, a bar grows on the bar's spring and a
+        /// panel on a panel's; a bar becoming a panel grows as a panel; home, each on its own
+        /// shrink; a panel becoming a bar folds; the rest resize within the island.
         static func spring(from: NotchState, to: NotchState) -> Animation {
-            switch to {
-            case .silent: return close
-            default: return from == .silent || from.collects ? open : resize
+            let bar: (NotchState) -> Bool = { $0 == .v2Voice || $0 == .v2Transcribing || $0 == .voiceFlow }
+            switch (from, to) {
+            case (_, .silent): return bar(from) ? Spring.barShrink : Spring.panelShrink
+            // Oct 21, Ryan: "the island should expand faster when my mouse hovers over it" — the
+            // board from rest (the hover's open) on its own quicker spring.
+            case (.silent, .v2Board): return Spring.boardOpen
+            case (.silent, _): return bar(to) ? Spring.barGrow : Spring.panelGrow
+            default:
+                if bar(from), !bar(to) { return Spring.panelGrow }
+                if !bar(from), bar(to) { return Spring.fold }
+                return Spring.resize
             }
         }
         // Values that were written in the views, now here so they follow the density
@@ -1052,9 +1158,6 @@ enum WorkbenchTokens {
         static var promptGlyph: Font { pick(Font.system(size: 10, weight: .bold), .system(size: 10, weight: .bold)) }
         static var promptGlyphColor: Color { ink(0.4) }
         static var promptGlyphWidth: CGFloat { pick(14, 16) }
-        /// The agent's creature beside its answer: this big, its middle this far left of the column.
-        static var speakerSize: CGFloat { pick(10.5, 11) }
-        static var speakerHang: CGFloat { pick(25, 28) }
         /// The outline at the right (after Notion's page outline): a short line per request, the
         /// one in view bright. Shown from two requests.
         static let outlineTick: CGFloat = 2
@@ -1076,11 +1179,12 @@ enum WorkbenchTokens {
         static var outlineRequestFontOn: Font { pick(Font.system(size: 12, weight: .semibold), .system(size: 12.5, weight: .semibold)) }
         static var outlineCardFill: Color { skin(Color(white: 0.12), Native.card) }
         static var outlineCardBorder: Color { ink(0.12) }
-        static let outlineCardShadow = Color.black.opacity(0.45)
+        static let outlineCardShadow = Color.black.opacity(0.25)
+        static let outlineCardShadowRadius: CGFloat = 8
         static var outlineRowHover: Color { ink(0.08) }
         static var outlineTextOn: Color { ink(0.94) }
         static var outlineTextOff: Color { ink(0.58) }
-        static let outlineMotion: Animation = .easeOut(duration: 0.14)
+        static var outlineMotion: Animation { Spring.fadeIn(0.14) }
         /// A request counts as the one in view once its top is this close to the top of the history.
         static let outlineReadLine: CGFloat = 96
         /// Expanded, the history is laid out by this long after it opens; then a request too tall
@@ -1179,9 +1283,10 @@ enum WorkbenchTokens {
         static let strokeWidth: CGFloat = 1
         /// Frames for the selection to leave the window before it is captured.
         static let clearDelay: Duration = .milliseconds(50)
-        /// The capture flying into the stack.
-        static let flight: Animation = .interpolatingSpring(duration: 0.45, bounce: 0)
-        static let flightDuration: Duration = .milliseconds(450)
+        /// The capture flying into the stack (Oct 21: `Spring.flight`, hardly any overshoot over
+        /// its long way); it has landed at about 98% of the way.
+        static var flight: Animation { Spring.flight }
+        static let flightDuration: Duration = .milliseconds(420)
         static let flightStartRadius: CGFloat = 4
     }
 
@@ -1191,26 +1296,24 @@ enum WorkbenchTokens {
     /// on its own 48 px move, since a 19 % overshoot on a 300 pt move would fling a card out of
     /// the island (16 pt of padding).
     /// No bounce is the Island's own rule (amendment §14), to compare against.
+    /// Oct 21, Ryan: springs (`spring`, the default), interruptible; "simpler is better": no
+    /// bounce opening or folding, and nothing grows under the pointer.
     enum CardMotion: String, CaseIterable, Identifiable {
-        case reference, noBounce
+        case spring, reference, noBounce
         var id: String { rawValue }
-        var title: String { self == .reference ? "Reference" : "No bounce" }
+        var title: String { self == .spring ? "Spring" : self == .reference ? "Reference" : "No bounce" }
         var fan: Animation {
             switch self {
+            case .spring: return Spring.part
             case .reference: return Animation(CappedOvershoot(x1: 0.31, y1: 1.84, x2: 0.64, y2: 1, duration: 0.41, cap: 12))
             case .noBounce: return .interpolatingSpring(duration: 0.3, bounce: 0)
             }
         }
         var fold: Animation {
             switch self {
+            case .spring: return Spring.partBack
             case .reference: return Animation(CappedOvershoot(x1: 0.34, y1: 1.5, x2: 0.64, y2: 1, duration: 0.36, cap: 8))
             case .noBounce: return .interpolatingSpring(duration: 0.24, bounce: 0)
-            }
-        }
-        var hover: Animation {
-            switch self {
-            case .reference: return .timingCurve(0.22, 1, 0.36, 1, duration: 0.61)
-            case .noBounce: return .interpolatingSpring(duration: 0.2, bounce: 0)
             }
         }
     }
@@ -1356,7 +1459,8 @@ enum WorkbenchTokens {
         static let errorWarningTime: Double = 4
         static let errorActionTime: Double = 8
         static let barNoticeTime: Double = 3
-        static let noticeSpring: Animation = .interpolatingSpring(duration: 0.26, bounce: 0)
+        static var noticeSpring: Animation { Spring.resize }
+        static var noticeAway: Animation { Spring.fold }
 
         // #3, #8: the highlighter's marks in the accent color: a marker's strokes over words,
         // multiplied into the page; a rounded mark round a file, as Finder marks a selection.
@@ -1364,7 +1468,7 @@ enum WorkbenchTokens {
         static let markRadius: CGFloat = 3
         static let fileMarkOpacity: Double = 0.28
         static let fileMarkRadius: CGFloat = 8
-        static let markFade: Animation = .easeOut(duration: 0.18)
+        static var markFade: Animation { Spring.fadeIn(0.18) }
         /// On the real Mac (Oct 9, evening): never the accent. A very light gray, as macOS shades a
         /// ⌘⇧4 selection, with a thin gray outline round a file; the mark goes a moment after what
         /// it marks has flown into the stack, so nothing stays on the screen (or follows you to
@@ -1374,7 +1478,10 @@ enum WorkbenchTokens {
         static let liveMarkStrokeWidth: CGFloat = 1
         static let liveHoverFill = Color(white: 0.5, opacity: 0.14)
         static let liveMarkHold: Double = 0.9
-        static let liveMarkFade: Animation = .easeOut(duration: 0.35)
+        static var liveMarkFade: Animation { Spring.fadeOut(0.3) }
+        /// Oct 21, Ryan: the marks over other apps' windows follow the pointer 1:1 while drawn,
+        /// and fade on the strong ease-out when they go.
+        static let liveMarkFadeOut: Double = 0.18
 
         // #4: ten minutes at most; the last minute counts down at the bar's right.
         static let recordingLimit: Double = 600
@@ -1386,11 +1493,7 @@ enum WorkbenchTokens {
         static var countdownWarnColor: Color { Panel.needsYouColor }
         static let countdownWidth: CGFloat = 32
         static let countdownInset: CGFloat = 10
-        /// The bar's nudge as the last minute begins: a few points taller and back, no bounce.
-        static let nudgeGrowth: CGFloat = 6
-        static let pulseUp: Double = 0.18
-        static let pulseSpring: Animation = .interpolatingSpring(duration: 0.3, bounce: 0)
-        static let countdownIn: Animation = .easeOut(duration: 0.2)
+        static var countdownIn: Animation { Spring.fadeIn(0.2) }
 
         // #7: the words land in the field, it lights up, and this long after, the notch leaves.
         static let landHold: Double = 0.45
@@ -1441,7 +1544,7 @@ enum WorkbenchTokens {
         static var groupGap: CGFloat { pick(8, 9) }
         static var hairline: Color { ink(0.08) }
         static var highlight: Color { pick(ink(0.07), ink(0.06)) }
-        static let move: Animation = .interpolatingSpring(duration: 0.35, bounce: 0)
+        static var move: Animation { Spring.rows }
         // A section's header: its glyph and its word, quiet; the first sits closer to the notch.
         static var header: CGFloat { pick(23, 26) }
         static var headerFirst: CGFloat { pick(18, 20) }
@@ -1505,7 +1608,8 @@ enum WorkbenchTokens {
     enum Steps {
         /// How often the line moves on: a step takes two ticks, three with its result.
         static let tick: Double = 0.9
-        static let change: Animation = .interpolatingSpring(duration: 0.32, bounce: 0)
+        /// The step's line giving way to the next (a crossfade): content, on the strong ease-out.
+        static var change: Animation { Spring.fadeIn(0.2) }
         static var glyph: Color { ink(0.5) }
         static var verb: Color { ink(0.55) }
         static var object: Color { ink(0.92) }
@@ -1731,17 +1835,17 @@ enum WorkbenchTokens {
     /// the model in Choose chat, progress from what agents report, the answer as written, the
     /// queue, the voice bar's chat and model, answer again and stop. White at an opacity on black.
     enum FeedbackV2 {
-        // #1: the referents as one stack, fanned under the pointer; the model pill and its sheet.
+        // #1: the referents as one stack, a row under the pointer; the model pill and its sheet.
         static var pileHeight: CGFloat { pick(35, 40) }
         static let pileAspect: CGFloat = 1.3
         static var pileOffset: CGFloat { pick(5.5, 6) }
-        static let pileRotation: [Double] = [0, 5, -4]
         static let pileShrink: CGFloat = 0.08
         static let pileBackOpacity: Double = 0.65
         static var fanGap: CGFloat { pick(5.5, 6) }
         static var fanPadding: CGFloat { pick(4.5, 5) }
         static var fanFill: Color { skin(Color(white: 0.08), Native.card) }
-        static let fanMotion: Animation = .interpolatingSpring(duration: 0.28, bounce: 0)
+        /// The row fading in over the stack, and out (Oct 21, Ryan, "simpler is better": a fade).
+        static var fanMotion: Animation { Spring.fadeIn(0.15) }
         static var modelPillMax: CGFloat { pick(156, 170) }
         static var chatPillMax: CGFloat { pick(202, 220) }
         static var sheetRow: CGFloat { pick(26, 30) }
@@ -1773,7 +1877,6 @@ enum WorkbenchTokens {
         static var diffEmpty: Color { ink(0.1) }
         static let rowVisual: CGFloat = 40
         static let progressHeight: CGFloat = 168
-        static let pulse: Animation = .easeInOut(duration: 0.9).repeatForever(autoreverses: true)
 
         // #11–13: the answer as written, its steps folded, what it made to open.
         static var answerFont: Font { pick(Font.system(size: answerSize), .system(size: answerSize)) }
@@ -1794,10 +1897,6 @@ enum WorkbenchTokens {
         static var artifactFillHover: Color { ink(0.15) }
         static var chatBodyMax: CGFloat { pick(276, 300) }
 
-        // #15: the name arrives this long after Send, crossfading in for the request's words.
-        static let titleDelay: Double = 1.6
-        static let titleSwap: Animation = .easeOut(duration: 0.3)
-        static var namingColor: Color { ink(0.5) }
 
         // #19: the voice bar's chat, model and effort when the words aren't reviewed.
         static let routeBarWidth: CGFloat = 440

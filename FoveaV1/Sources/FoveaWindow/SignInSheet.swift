@@ -39,7 +39,7 @@ extension CapturesModel {
 
     /// Signed in: the account kept on this Mac, the session ready.
     func finishSignIn(_ provider: AccountProvider, email: String) {
-        animate(.swap) {
+        animate(.layout) {
             signedOut = false
             if session == .failed { session = .ready }
             profileEmail = email.isEmpty ? Self.signedInWith(provider) : email
@@ -89,7 +89,7 @@ struct SignInSheet: View {
         }
         .padding(22)
         .frame(width: 400)
-        .animation(model.motion.animation(.swap), value: stage)
+        .animation(model.motion.animation(.layout), value: stage)
     }
 
     // MARK: Pages

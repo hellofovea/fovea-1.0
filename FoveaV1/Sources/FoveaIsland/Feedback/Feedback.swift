@@ -10,7 +10,10 @@ import FoveaPlatform
 /// and the model sheet's row), looked up by a key of its own so Chinese can say each: the English
 /// as given, the Chinese under `key` in Localization/zh-Hans/island.strings.
 func L(_ key: StaticString, english: String.LocalizationValue) -> String {
-    String(localized: LocalizedStringResource(key, defaultValue: english, locale: FoveaLocale.shared.locale, bundle: .main))
+    // Oct 21, perf: remembered (FoveaKit's `LookupMemo`); the lookup itself is as it was.
+    LookupMemo.shared.value(language: FoveaLocale.shared.language, key: key, english: english) {
+        String(localized: LocalizedStringResource(key, defaultValue: english, locale: FoveaLocale.shared.locale, bundle: .main))
+    }
 }
 
 // The dev team's notch feedback of Oct 6 and Yulun's answers, one panel tab per item
@@ -417,7 +420,6 @@ extension WorkbenchModel {
         v2History = [:]
         v2Followed = [:]
         v2Titles = [:]
-        v2Naming = []
         v2StepsOpen = []
         v2RouteOpen = false
         v2ModelSheet = false
@@ -492,7 +494,8 @@ extension WorkbenchModel {
 
     func dismissBarNotice() {
         barNoticeTask?.cancel()
-        islandAnimation = WorkbenchTokens.Feedback.noticeSpring
+        // Oct 21, Ryan: back to the bar without a bounce.
+        islandAnimation = WorkbenchTokens.Feedback.noticeAway
         barNotice = nil
     }
 
@@ -862,17 +865,9 @@ extension WorkbenchModel {
                 let used = Date().timeIntervalSince(start)
                 if !pulsed, used >= F.recordingLimit - F.countdownFrom {
                     pulsed = true
-                    // The bar grows a few points and settles back: the island's own spring, no bounce.
-                    self.islandAnimation = F.pulseSpring
+                    // Oct 21, Ryan ("simpler is better"): the countdown fades in, and that's all; the
+                    // bar no longer grows a few points and settles back as it does.
                     withAnimation(F.countdownIn) { self.inLastMinute = true }
-                    self.lastMinuteNudge = true
-                    self.lastMinutePulse += 1
-                    Task { [weak self] in
-                        try? await Task.sleep(for: .seconds(F.pulseUp + 0.08))
-                        guard let self else { return }
-                        self.islandAnimation = F.pulseSpring
-                        self.lastMinuteNudge = false
-                    }
                 }
                 if used >= F.recordingLimit {
                     // Time's up: it stops as fn would, and what was said goes on.
@@ -895,7 +890,7 @@ extension WorkbenchModel {
         freshVoiceBar(screen: .fullScreenApp)
         selectTab(2)
         let F = WorkbenchTokens.Feedback.self
-        // Live, it starts a breath before the last minute, so the nudge and the countdown's arrival show.
+        // Live, it starts a breath before the last minute, so the countdown's arrival shows.
         let elapsed = stage == .lastMinute ? F.recordingLimit - F.countdownFrom - (snapshotMode ? -18 : 0.6) : F.recordingLimit - 10
         listenStart = Date().addingTimeInterval(-elapsed)
         startRecordingClock(elapsed: elapsed)

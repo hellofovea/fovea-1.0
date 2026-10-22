@@ -96,7 +96,6 @@ extension WorkbenchModel {
                 let left = stackRight.map { $0 + T.waveformGap } ?? (-half + T.inset)
                 let right = half - F.countdownInset - F.countdownWidth - T.waveformGap / 2
                 layout.waveform.x = (left + right) / 2
-                if lastMinuteNudge { layout.outline.size.height += F.nudgeGrowth }
             }
         }
         return layout
@@ -269,7 +268,7 @@ extension WorkbenchModel {
         // the browser (a project's chats, then the projects), then drops the request; on the
         // board or a result it closes it; beside the notch it rests the island.
         case .v2Voice, .v2Transcribing:
-            if v2RouteOpen { withAnimation(WorkbenchTokens.V2.resize) { v2RouteOpen = false }; return true }
+            if v2RouteOpen { reshapeV2(growing: false); withAnimation(WorkbenchTokens.V2.fold) { v2RouteOpen = false }; return true }
             // Asking more over a session: back to it as it was.
             if v2AsksOver, let id = v2Continuing {
                 if live != nil { live?.cancelListening() }
@@ -279,8 +278,8 @@ extension WorkbenchModel {
             notchState = .silent
             return true
         case .v2Send:
-            if v2Inspecting != nil { withAnimation(cardMotion.fan) { v2Inspecting = nil } }
-            else if v2ModelSheet { withAnimation(WorkbenchTokens.V2.resize) { v2ModelSheet = false } }
+            if v2Inspecting != nil { withAnimation(WorkbenchTokens.V2.inspectFade) { v2Inspecting = nil } }
+            else if v2ModelSheet { reshapeV2(growing: false); withAnimation(WorkbenchTokens.V2.fold) { v2ModelSheet = false } }
             else if v2Browsing, v2BrowseProject != nil { v2BrowseProject = nil }
             else if v2Browsing { v2Browsing = false }
             else { notchState = .silent }
@@ -394,7 +393,7 @@ extension WorkbenchModel {
     /// fits them, then it leaves the list. Removing the last one folds the stack away.
     func removeReferent(_ id: UUID) {
         guard referents.contains(where: { $0.id == id }), !removing.contains(id) else { return }
-        islandAnimation = reduceMotion ? .easeOut(duration: WorkbenchTokens.Motion.reduceMotionFade) : WorkbenchTokens.Referents.settle
+        islandAnimation = reduceMotion ? WorkbenchTokens.Spring.fade : WorkbenchTokens.Referents.shrink
         cardChange = .remove
         if hoveredReferent == id { hoveredReferent = nil }
         if inspectedId == id { inspectedId = nil }
@@ -415,7 +414,8 @@ extension WorkbenchModel {
     /// A close look at one capture in the opened stack, or back to all of them.
     func inspect(_ id: UUID?) {
         guard stackExpanded, id != inspectedId else { return }
-        islandAnimation = reduceMotion ? .easeOut(duration: WorkbenchTokens.Motion.reduceMotionFade) : WorkbenchTokens.Referents.inspect
+        islandAnimation = reduceMotion ? WorkbenchTokens.Spring.fade
+            : (id == nil ? WorkbenchTokens.Referents.shrink : WorkbenchTokens.Referents.inspect)
         cardChange = .inspect(id != nil)
         inspectTransitionId = id ?? inspectedId
         hoveredReferent = nil
@@ -427,7 +427,7 @@ extension WorkbenchModel {
     func setExpanded(_ open: Bool) {
         guard open != stackExpanded, !open || !referents.isEmpty else { return }
         let T = WorkbenchTokens.Referents.self
-        islandAnimation = reduceMotion ? .easeOut(duration: WorkbenchTokens.Motion.reduceMotionFade)
+        islandAnimation = reduceMotion ? WorkbenchTokens.Spring.fade
             : (open ? T.expand : T.collapse)
         cardChange = open ? .expand : .collapse
         stackHovered = false
@@ -447,7 +447,7 @@ extension WorkbenchModel {
         guard layout.scrollMax > 0.5 else { return false }
         let next = min(max(0, layout.scroll + delta), layout.scrollMax)
         guard abs(next - layout.scroll) > 0.01 else { return false }
-        islandAnimation = reduceMotion ? .easeOut(duration: WorkbenchTokens.Motion.reduceMotionFade) : WorkbenchTokens.Referents.scrollFollow
+        islandAnimation = reduceMotion ? WorkbenchTokens.Spring.fade : WorkbenchTokens.Referents.scrollFollow
         cardChange = .scroll
         hoveredReferent = nil
         stackScroll = next
@@ -460,29 +460,27 @@ extension WorkbenchModel {
         stackHovered = inside
     }
 
-    /// How card `index` of `count` moves for the change being made: the reference's fan
-    /// opening, front first, 30 ms apart; its fold closing, last first.
+    /// How a card moves for the change being made. Oct 21, Ryan ("simpler is better"): every card
+    /// moves together, with the island; no fan front first, no fold last first, no beat behind.
     func cardAnimation(index: Int, count: Int, departing: Bool = false, inspected: Bool = false) -> Animation {
-        if reduceMotion { return .easeOut(duration: WorkbenchTokens.Motion.reduceMotionFade) }
+        if reduceMotion { return WorkbenchTokens.Spring.fade }
         let T = WorkbenchTokens.Referents.self
         switch cardChange {
         case .remove:
-            return departing ? T.departFade : T.settle
-        case .inspect(let opening):
-            // The looked-at card grows (or goes back) on the reference's fan; the rest step
-            // back quickly, and come back a beat after it has left.
-            if inspected { return cardMotion.fan }
-            return opening ? T.othersFade : T.othersFade.delay(0.08)
+            return departing ? T.departFade : T.cardSettle
+        case .inspect:
+            // The looked-at card grows in place (or goes back); the rest step back.
+            return inspected ? T.inspect : T.othersFade
         case .state:
             return notchState.collects ? WorkbenchTokens.Motion.open : WorkbenchTokens.Motion.close
         case .expand:
-            return cardMotion.fan.delay(T.cardDelay + Double(min(index, T.staggerCap)) * T.stagger)
+            return cardMotion.fan
         case .collapse:
-            return cardMotion.fold.delay(Double(min(count - 1 - index, T.staggerCap)) * T.stagger)
+            return cardMotion.fold
         case .peek(let inside):
             return inside ? cardMotion.fan : cardMotion.fold
         case .settle:
-            return T.settle
+            return T.cardSettle
         case .scroll:
             return T.scrollFollow
         }

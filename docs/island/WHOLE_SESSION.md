@@ -217,3 +217,7 @@ Here the entries are the person's requests, never the headings in the agent's an
 - **The pulled-out window:** its current exchange has the new fold (it draws the same answer), but
   its earlier exchanges show only their answers.
 - **The shipping app** (`Sources/Fovea`) is unchanged. This is the Workbench's prototype.
+
+## Oct 21 (Ryan: "simpler is better")
+
+No creature in the margin beside each answer. The margin stays; the answer is the only thing there.

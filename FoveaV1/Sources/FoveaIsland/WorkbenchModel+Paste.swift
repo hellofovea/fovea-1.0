@@ -53,7 +53,7 @@ extension WorkbenchModel {
     /// either way: the island rests about 5 s after it appeared, opened or not.
     func setPasteExpanded(_ open: Bool) {
         guard notchState == .pasteNotFound, open != pasteExpanded, !pasteCopied else { return }
-        islandAnimation = reduceMotion ? .easeOut(duration: WorkbenchTokens.Motion.reduceMotionFade)
+        islandAnimation = reduceMotion ? WorkbenchTokens.Spring.fade
             : (open ? WorkbenchTokens.Paste.expand : WorkbenchTokens.Paste.collapse)
         pasteExpanded = open
     }

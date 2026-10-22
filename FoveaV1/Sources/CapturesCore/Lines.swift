@@ -1,6 +1,32 @@
 import Foundation
 import FoveaKit
 
+/// Oct 21, perf: date formatters, each made once for what makes it (its formats, the language,
+/// the calendar) and shared: making one loads ICU's data for its locale (~1 ms), and view bodies
+/// asked for one per line drawn. Formatting with a shared DateFormatter is thread-safe; none is
+/// changed after it's made.
+public final class FormatterMemo: @unchecked Sendable {
+    public static let shared = FormatterMemo()
+    private let lock = NSLock()
+    private var formatters: [[String]: DateFormatter] = [:]
+
+    public func formatter(_ key: [String], make: () -> DateFormatter) -> DateFormatter {
+        lock.lock()
+        if let hit = formatters[key] { lock.unlock(); return hit }
+        lock.unlock()
+        let made = make()
+        lock.lock()
+        formatters[key] = made
+        lock.unlock()
+        return made
+    }
+
+    /// What of a calendar a formatter takes.
+    public static func key(_ calendar: Calendar) -> String {
+        "\(calendar.identifier)|\(calendar.timeZone.identifier)|\(calendar.locale?.identifier ?? "")"
+    }
+}
+
 /// Every line Fovea computes about a capture, worded once, so the card, the detail and search say
 /// the same thing.
 public enum Lines {
@@ -16,16 +42,21 @@ public enum Lines {
     static var chinese: Bool { FoveaLocale.shared.language == .chinese }
 
     static func formatter(_ english: String, chinese template: String) -> DateFormatter {
-        let f = DateFormatter()
-        f.calendar = calendar; f.timeZone = calendar.timeZone
-        if chinese {
-            f.locale = Locale(identifier: "zh-Hans")
-            f.setLocalizedDateFormatFromTemplate(template)
-        } else {
-            f.locale = calendar.locale
-            f.dateFormat = english
+        // Oct 21, perf: made once per format, language and calendar (`FormatterMemo`): Home's year
+        // made one for every day's tooltip on every draw (~50 ms opening a day).
+        let chinese = chinese
+        return FormatterMemo.shared.formatter([chinese ? "zh" : "en", english, template, FormatterMemo.key(calendar)]) {
+            let f = DateFormatter()
+            f.calendar = calendar; f.timeZone = calendar.timeZone
+            if chinese {
+                f.locale = Locale(identifier: "zh-Hans")
+                f.setLocalizedDateFormatFromTemplate(template)
+            } else {
+                f.locale = calendar.locale
+                f.dateFormat = english
+            }
+            return f
         }
-        return f
     }
 
     /// Paste's header time: "just now", "3 minutes ago", "2 hours ago", "Yesterday", "3 days ago",

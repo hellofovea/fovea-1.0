@@ -12,8 +12,6 @@ enum Page: String, CaseIterable {
     /// One day's archive, opened from the calendar.
     case day
     case settings
-    /// How deep a page sits, so a change knows which way to slide.
-    var depth: Int { self == .captures ? 0 : 1 }
 }
 
 /// How the window is laid out.
@@ -223,15 +221,6 @@ enum DetailStyle: String, CaseIterable {
     /// The card grows to fill the window's content.
     case page
     var title: String { self == .quickLook ? "Over the grid" : "Fills the window" }
-}
-
-/// What the expanded card does with what you took while it grows.
-enum AttachmentMotion: String, CaseIterable {
-    /// Each one flies from its place on the card to its place in the expanded card.
-    case fly
-    /// The card's preview fades out as the expanded card's fades in.
-    case crossfade
-    var title: String { self == .fly ? "Fly to place" : "Crossfade" }
 }
 
 enum HitStyle: String, CaseIterable {
@@ -619,6 +608,12 @@ enum DictionaryTab: String, CaseIterable {
     }
 }
 
+/// Oct 21, Ryan: what a toast offers beside Undo: Show in Finder after a save.
+struct ToastAction {
+    let title: String
+    let run: () -> Void
+}
+
 @MainActor @Observable
 final class CapturesModel {
     var fixture: FixtureSet = .typical
@@ -633,8 +628,6 @@ final class CapturesModel {
 
     // What's on screen.
     var page: Page = .captures
-    /// Which way the last page change went, so the pages slide the right way.
-    var pageForward = true
     var settingsPane: SettingsPane = .account
     var query = CaptureQuery() { didSet { if query != oldValue { refresh() } } }
     /// The day open in the archive (its first moment), on the day page or in place.
@@ -649,6 +642,12 @@ final class CapturesModel {
     @ObservationIgnored var detailPending = false
     /// The capture whose card to grow from and shrink back into (stepping changes it).
     var detailSourceID: String?
+    /// Each way home is numbered, so a way home turned round can't take the overlay away.
+    @ObservationIgnored var closeTicket = 0
+    /// Oct 21, Ryan: what to do once the expanded card is home (a deleted card leaving the grid).
+    @ObservationIgnored var afterClose: (() -> Void)?
+    /// The capture deleted from its expanded card, until its card has left the grid.
+    @ObservationIgnored var deletingID: String?
     /// Where each card sits in the window, for the expanded card to grow out of.
     @ObservationIgnored var cardFrames: [String: CGRect] = [:]
     /// Asks the grid to bring a card into view (stepping in the expanded card).
@@ -710,13 +709,13 @@ final class CapturesModel {
     /// move down.
     func choose(_ next: Plan) {
         if next == plan {
-            animate(.swap) { nextPlan = nil }
+            animate(.layout) { nextPlan = nil }
             say(L("You're staying on \(plan.title)"))
         } else if next > plan {
-            animate(.swap) { plan = next; nextPlan = nil }
+            animate(.layout) { plan = next; nextPlan = nil }
             say(L("You're on \(next.title) (simulated: nothing was charged)"))
         } else {
-            animate(.swap) { nextPlan = next }
+            animate(.layout) { nextPlan = next }
             say(L("\(next.title) starts \(Lines.day(usage.resets)) (simulated)"))
         }
     }
@@ -730,8 +729,20 @@ final class CapturesModel {
     /// The capture deleted last, and where it was, until Undo or the toast leaves.
     var lastDeleted: (capture: Capture, index: Int)?
     var toast: String?
+    /// Oct 21, Ryan: what the toast offers beside Undo (Saved to Downloads · Show in Finder).
+    var toastAction: ToastAction?
+    /// Where Save writes without asking: the window's smoke only (`--smoke-detail`); the person
+    /// always gets the Mac's panel.
+    @ObservationIgnored var savePanelOverride: ((String) -> URL?)?
+    /// Where Copy writes: the Mac's pasteboard; the smoke's own, so a smoke run leaves yours alone.
+    @ObservationIgnored var pasteboard: NSPasteboard = .general
     /// The id of the capture just copied, for the Copy button's checkmark.
     var copiedID: String?
+    /// Oct 21, Ryan: "when the user copies, downloads or deletes, the icon changes to a checkmark."
+    /// The capture just saved (Save's checkmark), and the one being deleted (Delete's checkmark,
+    /// for a beat before the card folds away).
+    var savedID: String?
+    var deleteConfirmID: String?
     /// A picture open large over the window (row 28).
     var viewing: Viewing?
     /// Failed recordings being transcribed again.
@@ -834,7 +845,6 @@ final class CapturesModel {
     var detailIcon = false
     var cardAttachments: CardAttachments = .inlineAndPreview
     var detailStyle: DetailStyle = .quickLook
-    var attachmentMotion: AttachmentMotion = .fly
     var hitStyle: HitStyle = .highlight
     var settingsLayout: SettingsLayout = .sidebarPanes
     var settingsArrangement: SettingsArrangement = .beside
@@ -924,16 +934,25 @@ final class CapturesModel {
 
     static func sessions(_ captures: [Capture]) -> [String: Int] {
         var counts: [String: Int] = [:]
-        for c in captures where c.kind == .dispatch {
+        for c in captures where c.kind == .dispatch && !practice(c) {
             guard let d = c.destination, d.chat != "New chat" else { continue }
             counts[sessionKey(d), default: 0] += 1
         }
         return counts
     }
 
+    /// Oct 21, Ryan ("simpler is better"): what the first run made. Every run's practice goes to
+    /// one chat by name ("Fovea practice"), so counted as a session they added up across runs and
+    /// each practice card said "23 requests"; each counts as its own turn instead. The tag is
+    /// written in the language of the day, so both.
+    static func practice(_ c: Capture) -> Bool {
+        c.tags.contains { $0 == "First run" || $0 == L("First run") }
+    }
+
     /// The requests in this capture's Dispatch session: those Home has, or its turn if later.
     func requests(_ c: Capture) -> Int {
         guard c.kind == .dispatch, let d = c.destination else { return 1 }
+        if Self.practice(c) { return d.turn }
         return max(d.turn, requestCounts[Self.sessionKey(d)] ?? 1)
     }
 
@@ -979,7 +998,7 @@ final class CapturesModel {
         // The calendar turns to the year of the day opened.
         calendarYear = Lines.calendar.component(.year, from: d)
         if archiveStyle == .inline && page == .captures {
-            animate(.swap) { archiveDay = archiveDay == d ? nil : d }
+            animate(.layout) { archiveDay = archiveDay == d ? nil : d }
             return
         }
         cut { archiveDay = d }
@@ -1023,7 +1042,14 @@ final class CapturesModel {
     /// In the library, the capture opens in the page instead, as a note.
     func open(_ id: String) {
         if layout == .library { openNote(id); return }
+        // Oct 21, Ryan: caught on its way home, it turns round from where it is instead of
+        // starting again from the card.
+        if detailClosing, detailID == id, detailSourceID == id {
+            reopen()
+            return
+        }
         play?.cancel()
+        closeTicket += 1
         cut {
             selectedID = id
             detailID = id
@@ -1044,25 +1070,73 @@ final class CapturesModel {
     func grow() {
         guard detailPending, detailID != nil, !detailClosing else { return }
         detailPending = false
-        withAnimation(motion.animation(.open)) { detailProgress = 1 }
+        withAnimation(motion.animation(.zoomOpen)) { detailProgress = 1 }
+    }
+
+    /// The expanded card, caught on its way home, open again from where it is.
+    func reopen() {
+        guard detailID != nil, detailClosing, detailSourceID != nil, deletingID != detailID else { return }
+        closeTicket += 1
+        cut { detailClosing = false }
+        withAnimation(motion.animation(.zoomOpen)) { detailProgress = 1 }
     }
 
     /// Shrinks the expanded card back into its card, then takes the overlay away in the same
     /// frame the card shows again.
-    /// Closes the expanded card at once (Ryan, Oct 7): shrinking back into its place in the grid
-    /// took the whole window through grey on the way, so closing has no animation now. Opening
-    /// still grows from the card.
-    func closeDetail() {
-        guard detailID != nil else { return }
+    /// Oct 7, Ryan: closing was made instant (shrinking back took the whole window through grey on
+    /// the way). Oct 21, Ryan: "the card ↔ detail zoom ... from the card's own frame and back to
+    /// it": it goes home again, on `T.Motion.zoomClose` (shorter than the way out, no overshoot
+    /// into the grid), and the grey leads: it has gone by the time the card is
+    /// `T.Motion.dimLeaves` of the way back, so the window doesn't sit in grey while the card
+    /// lands. A click on it on its way home turns it round (`reopen`). With no card to go home
+    /// to (scrolled away, gone), or under Reduce Motion, it fades where it is. `animated: false`
+    /// takes it away at once, for what's about to change the page under it.
+    func closeDetail(animated: Bool = true, then: (() -> Void)? = nil) {
+        guard detailID != nil else { then?(); return }
+        if let then {
+            let before = afterClose
+            afterClose = { before?(); then() }
+        }
+        // The keyboard picks up where the expanded card left off.
+        let back = detailSourceID ?? selectedID
+        if !animated {
+            closeTicket += 1
+            cut {
+                detailPending = false
+                detailProgress = 0
+                selectedID = back
+                detailID = nil
+                detailSourceID = nil
+                detailClosing = false
+            }
+            runAfterClose()
+            return
+        }
+        guard !detailClosing else { return }
+        closeTicket += 1
+        let ticket = closeTicket
         cut {
             detailPending = false
-            detailProgress = 0
-            // The keyboard picks up where the expanded card left off.
-            selectedID = detailSourceID ?? selectedID
-            detailID = nil
-            detailSourceID = nil
-            detailClosing = false
+            selectedID = back
+            detailClosing = true
         }
+        withAnimation(motion.animation(.zoomClose), completionCriteria: .logicallyComplete) {
+            detailProgress = 0
+        } completion: { [weak self] in
+            guard let self, self.closeTicket == ticket, self.detailClosing else { return }
+            self.cut {
+                self.detailID = nil
+                self.detailSourceID = nil
+                self.detailClosing = false
+            }
+            self.runAfterClose()
+        }
+    }
+
+    private func runAfterClose() {
+        let run = afterClose
+        afterClose = nil
+        run?()
     }
 
     /// The next or previous capture in what's shown; the grid scrolls so the way back lands on it.
@@ -1104,9 +1178,9 @@ final class CapturesModel {
     /// Opens a capture in the page, as a note, and selects its row in the list.
     func openNote(_ id: String) {
         play?.cancel()
-        if page == .settings { cut { page = .captures } }
+        if page == .settings { page = .captures }
         listScrollTarget = id
-        animate(.swap) {
+        animate(.fadeIn) {
             selectedID = id
             noteID = id
             usageShown = false
@@ -1116,7 +1190,7 @@ final class CapturesModel {
     /// Back from the note to what the page showed before it (this week, or a day).
     func closeNote() {
         guard noteID != nil else { return }
-        animate(.swap) { noteID = nil }
+        animate(.fadeIn) { noteID = nil }
     }
 
     /// The library's list, in order: every match, newest first.
@@ -1133,7 +1207,7 @@ final class CapturesModel {
         } else {
             next = delta < 0 ? ids.last! : ids.first!
         }
-        if page == .settings { cut { page = .captures } }
+        if page == .settings { page = .captures }
         listScrollTarget = next
         cut { selectedID = next; noteID = next }
     }
@@ -1144,7 +1218,7 @@ final class CapturesModel {
         guard let m = cal.date(byAdding: .month, value: delta, to: calendarMonth) else { return }
         let thisMonth = cal.date(from: cal.dateComponents([.year, .month], from: now))!
         guard m <= thisMonth else { return }
-        animate(.swap) { calendarMonth = m }
+        animate(.fadeIn) { calendarMonth = m }
     }
 
     var canStepMonthForward: Bool {
@@ -1157,7 +1231,9 @@ final class CapturesModel {
 
     func setKind(_ kind: CaptureKind?) {
         guard query.kind != kind else { return }
-        animate(.swap) { query.kind = kind }
+        // Oct 21, Ryan ("simpler is better"): the cards change at once (⌘1–4 too); only the
+        // segment's pill moves.
+        cut { query.kind = kind }
     }
 
     func show(_ page: Page, pane: SettingsPane? = nil) {
@@ -1169,14 +1245,20 @@ final class CapturesModel {
         guard self.page != page else { return }
         if page == .settings { cameFromDay = self.page == .day }
         usageShown = false
+        // Oct 21, Ryan: an expanded card on its way home finishes at once (a card being deleted
+        // leaves the grid now).
+        closeDetail(animated: false)
         cut {
-            pageForward = page.depth >= self.page.depth
             detailID = nil
             detailSourceID = nil
             detailProgress = 0
             if page != .captures { noteID = nil }
         }
-        animate(.page) { self.page = page }
+        // Oct 21, Ryan ("simpler is better"): Home and Settings trade places at once, as a
+        // window's tabs do (the page drifted and faded, the sidebar with it). A plain change, not
+        // `cut`: the toolbar doesn't take a change made with animations switched off, and kept
+        // Home's filter and search over Settings.
+        self.page = page
     }
 
     func back() {
@@ -1197,7 +1279,8 @@ final class CapturesModel {
     func pickSettings(_ category: SettingsCategory) {
         settingsPane = category.pane
         if settingsLayout == .sidebarPanes {
-            animate(.swap) { settingsCategory = category }
+            // Oct 21, Ryan ("simpler is better"): the pane changes at once, arrow keys too.
+            cut { settingsCategory = category }
         } else {
             settingsCategory = category
             settingsScroll = (category, (settingsScroll?.count ?? 0) + 1)
@@ -1207,42 +1290,63 @@ final class CapturesModel {
     /// The Gaze Collector's download, simulated: nothing is fetched.
     func downloadCollector() {
         guard case .idle = prefs.gaze else { return }
-        withAnimation(motion.animation(.swap)) { prefs.gaze = .downloading(0) }
+        withAnimation(motion.animation(.layout)) { prefs.gaze = .downloading(0) }
         play = Task { @MainActor in
             for step in 1...24 {
                 try? await Task.sleep(for: .seconds(motion.seconds(0.09)))
                 guard !Task.isCancelled, case .downloading = prefs.gaze else { return }
                 prefs.gaze = .downloading(Double(step) / 24)
             }
-            withAnimation(motion.animation(.swap)) { prefs.gaze = .downloaded }
+            withAnimation(motion.animation(.layout)) { prefs.gaze = .downloaded }
         }
     }
 
     func cancelCollector() {
         play?.cancel()
-        withAnimation(motion.animation(.swap)) { prefs.gaze = .idle }
+        withAnimation(motion.animation(.layout)) { prefs.gaze = .idle }
     }
 
     // MARK: Actions
 
-    /// One Copy (row 28): the words, then what you took. An app that takes only text pastes the
-    /// words; one that takes pictures gets those too.
+    /// One Copy (row 28): the words, then what you took (`pasteboardItems`, Saving.swift). An app
+    /// that takes only text pastes the words; one that takes pictures or files gets those too.
+    /// Oct 21, Ryan: in one write; the button's symbol turns into a checkmark for
+    /// `T.Motion.copiedHold`, at once, and VoiceOver hears "Copied". ⌘C does the same
+    /// while the card is open and nothing in it is selected (`HomeWindowController.copyCommand`).
     func copy(_ capture: Capture) {
-        var items: [NSPasteboardWriting] = [capture.text as NSString]
-        for a in capture.attachments {
-            switch a.kind {
-            case .region: if let image = Art.region(a) { items.append(image) }
-            case .passage: items.append(a.text as NSString)
-            case .file: break
-            }
-        }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.writeObjects(items)
-        cut { copiedID = capture.id }
+        guard !capture.failed else { return }
+        let board = pasteboard
+        board.clearContents()
+        board.writeObjects(pasteboardItems(capture))
+        copiedID = capture.id
+        NSAccessibility.post(element: NSApp.keyWindow ?? NSApp as Any, notification: .announcementRequested,
+                             userInfo: [.announcement: L("Copied"), .priority: NSAccessibilityPriorityLevel.high.rawValue])
         let id = capture.id
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(1.4))
-            if self.copiedID == id { withAnimation(self.motion.animation(.content)) { self.copiedID = nil } }
+            try? await Task.sleep(for: .seconds(T.Motion.copiedHold))
+            if self.copiedID == id { self.copiedID = nil }
+        }
+    }
+
+    /// The button's checkmark for a moment, then back (Copy's and Save's).
+    func flashConfirmed(_ path: ReferenceWritableKeyPath<CapturesModel, String?>, _ id: String) {
+        self[keyPath: path] = id
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(T.Motion.copiedHold))
+            if self[keyPath: path] == id { self[keyPath: path] = nil }
+        }
+    }
+
+    /// Oct 21, Ryan: Delete answers at once — its trash turns into a checkmark for a beat
+    /// (`T.Motion.deleteBeat`), then the card folds away and the toast offers Undo. From the grid
+    /// (no button in view) it goes at once.
+    func confirmDelete(_ id: String) {
+        guard detailID == id, deleteConfirmID == nil else { delete(id); return }
+        deleteConfirmID = id
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(T.Motion.deleteBeat))
+            self.deleteConfirmID = nil
+            self.delete(id)
         }
     }
 
@@ -1251,23 +1355,24 @@ final class CapturesModel {
         guard let i = library.captures.firstIndex(where: { $0.id == id }) else { return }
         let capture = library.captures[i]
         if detailID == id {
-            // The card it would shrink into is going away: fade the expanded card where it is.
-            cut { detailClosing = true; detailSourceID = nil }
-            withAnimation(motion.animation(.close), completionCriteria: .logicallyComplete) {
-                detailProgress = 0
-            } completion: { [weak self] in
-                guard let self else { return }
-                self.cut { self.detailID = nil; self.detailClosing = false }
-                self.animate(.swap) { self.library.captures.removeAll { $0.id == id } }
-            }
+            // Oct 21, Ryan: the expanded card goes home into its card, and the card then leaves the
+            // grid as the cards after it close up (`layout`). With no card in view to go home to,
+            // it fades where it is.
+            deletingID = id
+            closeDetail(then: { [weak self] in
+                guard let self, self.deletingID == id else { return }
+                self.deletingID = nil
+                self.animate(.layout) { self.library.captures.removeAll { $0.id == id } }
+                if self.selectedID == id { self.selectedID = nil }
+            })
         } else {
-            animate(.swap) { library.captures.removeAll { $0.id == id } }
+            animate(.layout) { library.captures.removeAll { $0.id == id } }
         }
         if noteID == id {
             // The next one down takes its place, as Mail's list does.
             let ids = listed.map(\.capture.id)
             let next = ids.firstIndex(of: id).flatMap { j in ids.indices.contains(j + 1) ? ids[j + 1] : (j > 0 ? ids[j - 1] : nil) }
-            animate(.swap) { noteID = next; selectedID = next }
+            animate(.fadeIn) { noteID = next; selectedID = next }
         }
         lastDeleted = (capture, i)
         say(capture.kind == .dictation ? L("Deleted the dictation") : L("Deleted the dispatch"), undo: true)
@@ -1277,8 +1382,13 @@ final class CapturesModel {
         if !lastDeletedMemories.isEmpty { undoMemoryDelete(); return }
         guard let d = lastDeleted else { return }
         lastDeleted = nil
-        animate(.swap) { library.captures.insert(d.capture, at: min(d.index, library.captures.count)) }
-        withAnimation(motion.animation(.content)) { toast = nil }
+        if deletingID == d.capture.id {
+            // Undone before its card had left: it stays where it is.
+            deletingID = nil
+        } else {
+            animate(.layout) { library.captures.insert(d.capture, at: min(d.index, library.captures.count)) }
+        }
+        withAnimation(motion.animation(.toastOut)) { toast = nil }
     }
 
     // Oct 15 review, IS04: Save writes real files (`saveToDisk`, Saving.swift); VF11 and QA19:
@@ -1311,7 +1421,7 @@ final class CapturesModel {
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(self.motion.seconds(T.Simulated.retranscribing)))
             guard let i = self.library.captures.firstIndex(where: { $0.id == id }) else { return }
-            self.animate(.swap) {
+            self.animate(.layout) {
                 self.transcribing.remove(id)
                 if let back = Self.recovered[id] {
                     self.library.captures[i].text = back.text
@@ -1336,38 +1446,47 @@ final class CapturesModel {
         let tag = text.trimmingCharacters(in: .whitespaces)
         guard !tag.isEmpty, let i = library.captures.firstIndex(where: { $0.id == id }),
               !library.captures[i].tags.contains(tag) else { return }
-        animate(.swap) { library.captures[i].tags.append(tag) }
+        animate(.layout) { library.captures[i].tags.append(tag) }
     }
 
     func removeTag(_ tag: String, from id: String) {
         guard let i = library.captures.firstIndex(where: { $0.id == id }) else { return }
-        animate(.swap) { library.captures[i].tags.removeAll { $0 == tag } }
+        animate(.layout) { library.captures[i].tags.removeAll { $0 == tag } }
     }
 
     /// Shows the captures with one tag (from a tag on a card, or one of Memory's).
     func show(tag: String) {
-        if detailID != nil { closeDetail() }
+        if detailID != nil { closeDetail(animated: false) }
         if page != .captures { back() }
-        animate(.swap) { query.tag = tag }
+        animate(.fadeIn) { query.tag = tag }
     }
 
     func view(_ captureID: String, _ index: Int) {
-        animate(.open) { viewing = Viewing(capture: captureID, index: index) }
+        animate(.fadeIn) { viewing = Viewing(capture: captureID, index: index) }
     }
 
     /// Closed at once, as the expanded card is (Oct 7): fading out took the window through grey.
     func closeViewer() { cut { viewing = nil } }
 
-    /// A short line at the window's foot, for a moment (longer when it offers Undo).
-    func say(_ message: String, undo: Bool = false) {
+    /// A short line at the window's foot, for a moment (longer when it offers Undo, or an
+    /// action such as Show in Finder).
+    func say(_ message: String, undo: Bool = false, action: ToastAction? = nil) {
         toastTask?.cancel()
-        withAnimation(motion.animation(.open)) { toast = message }
+        if !undo { lastDeleted = nil }
+        withAnimation(motion.animation(.toastIn)) { toast = message; toastAction = action }
         toastTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(undo ? 5 : 1.8))
+            try? await Task.sleep(for: .seconds(undo || action != nil ? 5 : 1.8))
             guard !Task.isCancelled, self.toast == message else { return }
-            withAnimation(self.motion.animation(.close)) { self.toast = nil }
+            withAnimation(self.motion.animation(.toastOut)) { self.toast = nil; self.toastAction = nil }
             if undo { self.lastDeleted = nil; self.lastDeletedMemories = [] }
         }
+    }
+
+    /// Runs the toast's action, and lets the toast go.
+    func runToastAction() {
+        guard let action = toastAction else { return }
+        action.run()
+        withAnimation(motion.animation(.toastOut)) { toast = nil; toastAction = nil }
     }
 
     // MARK: Memory and dictionary
@@ -1388,7 +1507,7 @@ final class CapturesModel {
     }
 
     func removeWord(_ id: String) {
-        animate(.swap) {
+        animate(.layout) {
             library.dictionary.removeAll { $0.id == id }
             wordShown = nil
         }
@@ -1397,7 +1516,7 @@ final class CapturesModel {
     func addWord(_ text: String) {
         let word = text.trimmingCharacters(in: .whitespaces)
         guard !word.isEmpty, !library.dictionary.contains(where: { $0.word == word }) else { return }
-        animate(.swap) {
+        animate(.layout) {
             library.dictionary.insert(DictionaryWord(id: "w-\(UUID().uuidString.prefix(6))", word: word, source: .added, date: now), at: 0)
         }
     }

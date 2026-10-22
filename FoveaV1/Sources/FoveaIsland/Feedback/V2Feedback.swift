@@ -386,7 +386,9 @@ extension WorkbenchModel {
     }
 
     func toggleModelSheet() {
-        withAnimation(WorkbenchTokens.V2.resize) {
+        let opening = notchState == .v2Voice ? !v2RouteOpen : !v2ModelSheet
+        reshapeV2(growing: opening)
+        withAnimation(opening ? WorkbenchTokens.V2.resize : WorkbenchTokens.V2.fold) {
             if notchState == .v2Voice {
                 v2RouteOpen.toggle()
                 if v2RouteOpen {
@@ -454,26 +456,14 @@ extension WorkbenchModel {
 
     // MARK: Titles (#15)
 
-    /// A new chat (or a quick answer) is named from its request a moment after it goes, by a
-    /// small model; until then it shows the request's first words. A chosen chat keeps its name.
+    /// A new chat (or a quick answer) is named from its request as it goes. A chosen chat keeps
+    /// its name. Oct 21, Ryan ("simpler is better"): the name shows at once; it waited 1.6 s in a
+    /// grey "naming" ink and then crossfaded in.
     func nameV2(_ id: String, pick: V2Suggestion) {
         guard pick.chat == nil else { return }
         let request = v2Requests[id] ?? v2Request
-        if snapshotMode {
-            v2Titles[id] = request.generatedTitle
-            return
-        }
-        v2Naming.insert(id)
         // Fovea: named from the words as said.
-        let title = live != nil ? TitleNamer.title(for: v2Spoken, maxWords: 6) : request.generatedTitle
-        Task { [weak self] in
-            try? await Task.sleep(for: .seconds(WorkbenchTokens.FeedbackV2.titleDelay))
-            guard let self else { return }
-            withAnimation(WorkbenchTokens.FeedbackV2.titleSwap) {
-                self.v2Titles[id] = title
-                _ = self.v2Naming.remove(id)
-            }
-        }
+        v2Titles[id] = live != nil && !snapshotMode ? TitleNamer.title(for: v2Spoken, maxWords: 6) : request.generatedTitle
     }
 
     /// A session's title: its chat's name, the name made for it, or (being named) its request.
@@ -502,13 +492,13 @@ extension WorkbenchModel {
 
     /// Send now: the session takes it in at once, mid-turn (steering), out of the line.
     func sendQueuedNow(_ id: String, _ ask: V2QueuedAsk) {
-        withAnimation(WorkbenchTokens.V2.resize) { v2Queue[id]?.removeAll { $0 == ask } }
+        withAnimation(WorkbenchTokens.V2.fold) { v2Queue[id]?.removeAll { $0 == ask } }
         v2QueuePaused.remove(id)
         askMoreV2(id, text: ask.text, inWindow: v2Detached.contains { $0.id == id } || notchState == .v2Chat, now: true)
     }
 
     func cancelQueued(_ id: String, _ ask: V2QueuedAsk) {
-        withAnimation(WorkbenchTokens.V2.resize) { v2Queue[id]?.removeAll { $0 == ask } }
+        withAnimation(WorkbenchTokens.V2.fold) { v2Queue[id]?.removeAll { $0 == ask } }
     }
 
     func resumeQueue(_ id: String) {
@@ -523,7 +513,7 @@ extension WorkbenchModel {
         Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(500))
             guard let self else { return }
-            withAnimation(WorkbenchTokens.V2.resize) { self.v2Queue[id]?.removeAll { $0 == next } }
+            withAnimation(WorkbenchTokens.V2.fold) { self.v2Queue[id]?.removeAll { $0 == next } }
             self.askMoreV2(id, text: next.text, inWindow: true, now: true)
         }
         return true

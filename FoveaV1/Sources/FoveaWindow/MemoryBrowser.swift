@@ -280,7 +280,7 @@ extension CapturesModel {
     func organise(_ count: Int) {
         guard count > 0 else { return }
         let p = panes
-        withAnimation(motion.animation(.swap)) {
+        withAnimation(motion.animation(.layout)) {
             p.organising = (p.organising ?? 0) + count
             p.meaningSearchReady = false
         }
@@ -291,7 +291,7 @@ extension CapturesModel {
                 guard !Task.isCancelled else { break }
                 p.organising = left > 1 ? left - 1 : nil
             }
-            withAnimation(self.motion.animation(.swap)) {
+            withAnimation(self.motion.animation(.layout)) {
                 p.organising = nil
                 p.meaningSearchReady = true
             }
@@ -336,7 +336,7 @@ extension CapturesModel {
     /// Takes a tag off every memory, once the person has said yes (ME-01.5). The memories stay.
     func deleteTag(_ tag: String) {
         let n = library.memories.filter { $0.tags.contains(tag) }.count
-        animate(.swap) {
+        animate(.layout) {
             for i in library.memories.indices where library.memories[i].tags.contains(tag) {
                 library.memories[i].tags.removeAll { $0 == tag }
             }
@@ -414,7 +414,7 @@ struct MemorySection: View {
                             Image(systemName: "exclamationmark.triangle").font(.system(size: 18)).foregroundStyle(palette.warning)
                             Text("Couldn't load your memories: the memory file is in use.")
                                 .font(.system(size: 12.5)).foregroundStyle(palette.text)
-                            Button("Try Again") { model.animate(.swap) { model.memoryState = .loaded } }
+                            Button("Try Again") { model.animate(.layout) { model.memoryState = .loaded } }
                         }
                         .frame(maxWidth: .infinity, minHeight: 140)
                     }
@@ -452,7 +452,7 @@ struct MemorySection: View {
         SettingsSection("Remembering") {
             SettingsCard {
                 SettingsRow("Memory Link", detail: "Remember what you send your agents, not only what you ask Fovea to remember. Off pauses it.") {
-                    InkToggle(title: "Memory Link", isOn: $model.prefs.memoryLink.animation(model.motion.animation(.swap)))
+                    InkToggle(title: "Memory Link", isOn: $model.prefs.memoryLink.animation(model.motion.animation(.layout)))
                 }
                 RowDivider()
                 SettingsRow("Remember things when you ask", detail: "Press fn and say “remember that …”.") {
@@ -490,7 +490,7 @@ private struct PausedBanner: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
-            Button("Turn On") { model.animate(.swap) { model.prefs.memoryLink = true } }
+            Button("Turn On") { model.animate(.layout) { model.prefs.memoryLink = true } }
         }
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(palette.fill))
@@ -516,7 +516,7 @@ private struct AllMemoriesSection: View {
                     OrganisingLine(count: n)
                         .cardPadding()
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .transition(.opacity)
+                        .transition(.arrive)
                 }
             }
         }
@@ -533,7 +533,6 @@ private struct OrganisingLine: View {
             Text(count == 1 ? L("Organising 1 new capture…") : L("Organising \(count) new captures…"))
                 .font(.system(size: 12)).foregroundStyle(palette.secondary)
                 .monospacedDigit()
-                .contentTransition(.numericText())
         }
     }
 }
@@ -777,7 +776,7 @@ private struct ListNotes: View {
             if !panes.meaningSearchReady && !panes.memorySearch.isEmpty {
                 Label("Showing word matches: meaning search is still getting ready.", systemImage: "info.circle")
                     .font(.system(size: 11.5)).foregroundStyle(.secondary)
-                    .transition(.opacity)
+                    .transition(.arrive)
             }
             if panes.memoryMissing {
                 HStack(spacing: 6) {

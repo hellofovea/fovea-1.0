@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import QuartzCore
 import FoveaKit
 
 /// The whole keyboard (Oct 8), up the whole time keys are taught (Oct 9), so it's plain where fn,
@@ -11,31 +13,13 @@ struct KeyboardView: View {
     let accent: Color
     var dark = false
     var unit: CGFloat = OT.Keyboard.unit
-    /// What to do with the ringed keys, said above them ("Press fn ⌃ to start."). The board's own
-    /// keyboard has none: its instruction is typed beside it.
-    var caption: String? = nil
     /// A word on a ringed key ("×2" for a key pressed twice).
     var badges: [String: String] = [:]
 
-    @State private var pulse = false
+    @Environment(\.firstRunReduced) private var reduced
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let caption, !caption.isEmpty {
-                HStack(spacing: 6) {
-                    if !targets.isEmpty {
-                        Circle().fill(accent).frame(width: 6, height: 6).opacity(pulse ? 1 : 0.4)
-                    }
-                    Text(caption)
-                        .font(.system(size: max(10, unit * OT.Keyboard.captionSize), weight: .semibold))
-                        .foregroundStyle(dark ? OT.Colors.white(0.88) : OT.Colors.ink(0.8))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .contentTransition(.opacity)
-                }
-                .padding(.horizontal, unit * 0.12)
-                .padding(.bottom, unit * 0.28)
-            }
             ForEach(Array(Self.rows.enumerated()), id: \.offset) { index, row in
                 HStack(spacing: 0) {
                     ForEach(row) { key in cap(key, short: index == 0) }
@@ -47,7 +31,9 @@ struct KeyboardView: View {
             .fill(dark ? OT.Colors.keyboardPlateDark : OT.Colors.keyboardPlate))
         .overlay(RoundedRectangle(cornerRadius: unit * OT.Keyboard.plateRadius, style: .continuous)
             .strokeBorder(dark ? OT.Colors.islandHairline : OT.Colors.ink(0.08)))
-        .onAppear { withAnimation(OT.Motion.keyPulse) { pulse = true } }
+        // Oct 21, perf: the keyboard's geometry as one group, so a key lit doesn't redraw all 76
+        // labels (each its own text layer). It's a fixed size, so nothing moves differently.
+        .geometryGroup()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(pressed.isEmpty ? L("Keyboard, no keys held") : L("Keyboard, \(pressed.sorted().joined(separator: " ")) held"))
     }
@@ -58,21 +44,18 @@ struct KeyboardView: View {
         let gap = unit * OT.Keyboard.gap
         let height = unit * (short ? OT.Keyboard.shortRow : 1)
         let radius = unit * OT.Keyboard.keyRadius
-        // The keys to press now stand out: an accent ring that breathes, a wash of accent, the label
-        // in the accent; the rest step back a little while there are keys to press.
+        // The keys to press now stand out: an accent ring, a wash of accent, the label in the
+        // accent (Oct 21, Ryan ("simpler is better"): held still; they breathed); the rest step
+        // back a little while there are keys to press.
         let quiet = !targets.isEmpty && !lit && !target
         let ink: Color = lit ? OT.Colors.keyCapLitText
             : target ? accent
             : (dark ? OT.Colors.white(quiet ? 0.45 : 0.7) : OT.Colors.ink(quiet ? 0.4 : 0.62))
         return ZStack {
             RoundedRectangle(cornerRadius: radius, style: .continuous)
-                .fill(lit ? accent : (dark ? OT.Colors.white(0.07) : OT.Colors.keyboardKey))
-            if target {
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(accent.opacity(pulse ? 0.22 : 0.1))
-            }
+                .fill(lit ? accent : target ? accent.opacity(0.16) : (dark ? OT.Colors.white(0.07) : OT.Colors.keyboardKey))
             RoundedRectangle(cornerRadius: radius, style: .continuous)
-                .strokeBorder(target ? accent.opacity(pulse ? 1 : 0.45) : (dark ? OT.Colors.white(0.06) : OT.Colors.ink(0.1)),
+                .strokeBorder(target ? accent : (dark ? OT.Colors.white(0.06) : OT.Colors.ink(0.1)),
                               lineWidth: target ? 2 : 0.5)
             VStack(spacing: 0) {
                 Text(key.label)
@@ -96,11 +79,11 @@ struct KeyboardView: View {
                     .frame(height: unit * OT.Keyboard.badgeHeight)
                     .background(Capsule().fill(accent))
                     .offset(x: unit * 0.22, y: -unit * 0.3)
-                    .transition(.scale.combined(with: .opacity))
+                    // Oct 21, Ryan: from 0.6, not from nothing.
+                    .transition(reduced ? .opacity : .opacity.combined(with: .scale(scale: OT.Motion.dotFrom)))
             }
         }
         .frame(width: unit * key.width, height: height)
-        .shadow(color: lit && !dark ? accent.opacity(0.35) : .clear, radius: 4, y: 1)
     }
 
     /// The first key of each label (the left ⌘ of two): where its badge goes.
@@ -139,4 +122,98 @@ struct KeyboardView: View {
          Key(label: "⌥", word: "option"),
          Key(label: "◀"), Key(label: "▲▼"), Key(label: "▶")],
     ]
+}
+
+/// Oct 21, perf: a rounded rectangle (filled, or a ring `border` wide inside its edge) whose opacity
+/// breathes from `from` to `to` and back on Core Animation: SwiftUI's `.easeInOut(duration:)
+/// .repeatForever(autoreverses: true)` (the same cubic, 0.42 0 0.58 1), run by the render server,
+/// so an ambient loop costs the app nothing per frame. The color is resolved as SwiftUI resolves
+/// it here; `since` (CACurrentMediaTime) is when the loop began, so loops started together stay in
+/// step. It never takes a click.
+struct BreathingLayer: NSViewRepresentable {
+    var color: Color
+    var cornerRadius: CGFloat
+    var continuous = true
+    var border: CGFloat? = nil
+    var from: Double
+    var to: Double = 1
+    var seconds: Double
+    var since: CFTimeInterval
+
+    func makeNSView(context: Context) -> BreathingLayerView { BreathingLayerView() }
+
+    /// The size SwiftUI lays it out at, before AppKit puts the view on whole pixels: the shape is
+    /// drawn at exactly this size, as SwiftUI would draw it.
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: BreathingLayerView, context: Context) -> CGSize? {
+        guard let width = proposal.width, let height = proposal.height else { return nil }
+        nsView.exactSize = CGSize(width: width, height: height)
+        return nsView.exactSize
+    }
+
+    func updateNSView(_ view: BreathingLayerView, context: Context) {
+        view.apply(color: color.resolve(in: context.environment).cgColor, cornerRadius: cornerRadius,
+                   continuous: continuous, border: border, from: Float(from), to: Float(to),
+                   seconds: seconds, since: since)
+    }
+}
+
+final class BreathingLayerView: NSView {
+    private let shape = CALayer()
+    private var loop: (from: Float, to: Float, seconds: Double, since: CFTimeInterval)?
+    /// SwiftUI's own size for it (`sizeThatFits`); the view's frame is that on whole pixels.
+    var exactSize: CGSize? { didSet { if exactSize != oldValue { needsLayout = true } } }
+
+    init() {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.addSublayer(shape)
+        setAccessibilityElement(false)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if let size = exactSize, size.width > 0, size.height > 0 {
+            shape.frame = CGRect(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2,
+                                 width: size.width, height: size.height)
+        } else {
+            shape.frame = bounds
+        }
+        CATransaction.commit()
+    }
+
+    func apply(color: CGColor, cornerRadius: CGFloat, continuous: Bool, border: CGFloat?,
+               from: Float, to: Float, seconds: Double, since: CFTimeInterval) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        shape.cornerRadius = cornerRadius
+        shape.cornerCurve = continuous ? .continuous : .circular
+        if let border {
+            shape.backgroundColor = nil
+            shape.borderColor = color
+            shape.borderWidth = border
+        } else {
+            shape.backgroundColor = color
+            shape.borderWidth = 0
+        }
+        shape.opacity = from
+        CATransaction.commit()
+        guard loop == nil || loop! != (from, to, seconds, since) else { return }
+        loop = (from, to, seconds, since)
+        let breathe = CABasicAnimation(keyPath: "opacity")
+        breathe.fromValue = from
+        breathe.toValue = to
+        breathe.duration = seconds
+        breathe.autoreverses = true
+        breathe.repeatCount = .infinity
+        breathe.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        breathe.beginTime = since
+        breathe.isRemovedOnCompletion = false
+        shape.add(breathe, forKey: "breathe")
+    }
 }

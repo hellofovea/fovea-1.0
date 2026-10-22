@@ -136,10 +136,12 @@ struct LiveTag: View {
 struct AgentPointerMark: View {
     let paused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Oct 21, perf: its band is showing (MockIsland's `BandShown`); its clock pauses when not.
+    @Environment(\.islandBandShown) private var bandShown
 
     var body: some View {
         GeometryReader { proxy in
-            TimelineView(.animation(minimumInterval: 1 / 30, paused: paused || reduceMotion)) { context in
+            TimelineView(.animation(minimumInterval: 1 / 30, paused: paused || reduceMotion || !bandShown)) { context in
                 let t = paused || reduceMotion ? 1.2 : context.date.timeIntervalSinceReferenceDate
                 let x = proxy.size.width * (0.55 + 0.22 * CGFloat(sin(t * 0.7)))
                 let y = proxy.size.height * (0.55 + 0.18 * CGFloat(sin(t * 1.1 + 1)))

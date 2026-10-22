@@ -225,3 +225,11 @@ tile or a result.
 - **Insert:** typing a draft into the frontmost app.
 - **Dragging a result out** beside what it is about.
 - **Math rendering** for a real formula.
+
+## Oct 21 (Ryan: "simpler is better")
+
+- **Titles:** a new chat's name shows as it is sent. It no longer waits 1.6 s in a grey "naming" ink and crossfades in.
+- **The step line:** a running session moves through its steps once, as it works, and stays on its last until the answer comes; it no longer loops through them on a 0.9 s tick, and a new step crossfades in (it pushed the last up and out). A session with no start (a sample) shows its last step.
+- **The last minute:** the countdown fades in; the bar no longer grows 6 pt and springs back.
+- **A pulled-out chat:** one edge (the glass's own rim), a lighter and closer shadow (12 pt, was 22). Its tucked tab no longer widens under the pointer and has one edge and a 6 pt shadow. The outline's and the turn rail's cards fade in with a lighter shadow (8 pt), no scale.
+- **Header buttons** (✕, back, expand) no longer bounce their glyph as the pointer comes.

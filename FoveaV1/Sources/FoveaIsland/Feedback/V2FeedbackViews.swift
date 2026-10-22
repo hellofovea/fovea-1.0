@@ -230,7 +230,7 @@ struct V2Answer: View {
 }
 
 /// What the agent did for an exchange, folded under its answer (Oct 7, docs/island/WHOLE_SESSION.md):
-/// "Worked for 1 m 12 s · Edited 2 files ›". Opened, in order: each step, the tool, what it acted
+/// "Worked for 1m 12s · Edited 2 files ›". Opened, in order: each step, the tool, what it acted
 /// on and what came of it (an edit's lines, a command passing or failing, a search's matches); and
 /// between them what the agent said along the way. All as the agents report them (V2Steps.swift):
 /// no command output, no thinking text. Folded until the person opens it.
@@ -402,11 +402,11 @@ struct V2ArtifactButton: View {
                 }
                 .menuStyle(.button)
                 .menuIndicator(.visible)
-                .buttonStyle(.plain)
+                .buttonStyle(IslandPressStyle())
                 .fixedSize()
             } else {
                 Button { model.openArtifactV2(artifact, taskID: taskID) } label: { label(F) }
-                    .buttonStyle(.plain)
+                    .buttonStyle(IslandPressStyle())
             }
         }
         .padding(.trailing, artifact.path != nil ? F.artifactPaddingH * 0.6 : 0)
@@ -431,11 +431,11 @@ struct V2ArtifactButton: View {
 
 // MARK: - Choose chat: one stack, the model (#1)
 
-/// What was taken, as one stack (front card, two peeking behind); under the pointer it fans into a
-/// row, each card readable and a click away from a closer look.
+/// What was taken, as one stack (front card, two peeking behind); under the pointer it opens into a
+/// row, each card readable and a click away from a closer look. Oct 21, Ryan ("simpler is better"):
+/// the stack lies flat (no tilt) and the row fades in over it (no growing, no spring).
 struct V2ReferentPile: View {
     let model: WorkbenchModel
-    let space: Namespace.ID
     @State private var fanned = false
     @State private var overPile = false
     @State private var overFan = false
@@ -462,7 +462,6 @@ struct V2ReferentPile: View {
                     .clipShape(RoundedRectangle(cornerRadius: WorkbenchTokens.V2.attachmentRadius, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: WorkbenchTokens.V2.attachmentRadius, style: .continuous)
                         .strokeBorder(WorkbenchTokens.ink(0.2), lineWidth: 0.75))
-                    .rotationEffect(.degrees(F.pileRotation[i]))
                     .opacity(fanned ? 0 : (i == 0 ? 1 : F.pileBackOpacity))
                     // Each card behind peeks past the right edge of the one before it.
                     .offset(x: w * (1 - s) + CGFloat(i) * F.pileOffset)
@@ -483,7 +482,7 @@ struct V2ReferentPile: View {
                 fan(items)
                     .offset(x: -F.fanPadding)
                     .onHover { overFan = $0; updateFan() }
-                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .leading)))
+                    .transition(.opacity)
             }
         }
         .zIndex(10)
@@ -501,7 +500,7 @@ struct V2ReferentPile: View {
         let V = WorkbenchTokens.V2.self
         let row = HStack(spacing: F.fanGap) {
             ForEach(Array(items.enumerated()), id: \.element.id) { i, referent in
-                V2AttachmentThumb(model: model, referent: referent, space: space)
+                V2AttachmentThumb(model: model, referent: referent)
                     .overlay(alignment: .topLeading) {
                         ReferentNumberBadge(number: i + 1)
                             .scaleEffect(F.fanBadgeScale, anchor: .topLeading)
@@ -579,7 +578,7 @@ struct V2ModelPill: View {
             .background(Capsule(style: .continuous).fill(hovering ? C.pillFillHover : C.pillFill))
             .contentShape(Capsule(style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(IslandPressStyle())
         .onHover { hovering = $0 }
         .help("The model and how hard it thinks. Auto lets Fovea pick")
         .accessibilityLabel("Model, \(model.v2ModelLabel(agent: model.v2Pick.agent))")
@@ -690,7 +689,7 @@ struct V2SheetChip: View {
             .background(Capsule(style: .continuous).fill(chosen ? V.chipChosenFill : (hovering && !off ? V.hoverFill : V.chipFill)))
             .contentShape(Capsule(style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(IslandPressStyle())
         .disabled(off)
         .onHover { hovering = $0 }
         .help(unavailable ?? "")
@@ -742,7 +741,7 @@ struct V2QueueSection: View {
                             Image(systemName: "xmark").font(F.queueCloseGlyph).foregroundStyle(V.subColor)
                                 .frame(width: F.queueClose, height: F.queueClose).contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain).help("Don't send it")
+                        .buttonStyle(IslandPressStyle()).help("Don't send it")
                     }
                 }
                 .padding(.horizontal, F.queueRowPaddingH)
@@ -807,7 +806,7 @@ struct V2IconChip: View {
             .background(Capsule(style: .continuous).fill(WorkbenchTokens.ink(hovering ? 0.16 : 0.09)))
             .contentShape(Capsule(style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(IslandPressStyle())
         .onHover { hovering = $0 }
     }
 }
@@ -849,7 +848,7 @@ struct V2ReanswerMenu: View {
             model.reanswerV2(task.id)
         }
         .menuStyle(.button)
-        .buttonStyle(.plain)
+        .buttonStyle(IslandPressStyle())
         .foregroundStyle(WorkbenchTokens.ink(0.85))
         .padding(.horizontal, iconOnly ? 0 : WorkbenchTokens.FeedbackV2.iconChipPaddingH)
         .frame(minWidth: WorkbenchTokens.FeedbackV2.iconButton)

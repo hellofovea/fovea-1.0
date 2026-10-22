@@ -92,6 +92,18 @@ What fits, and what the workbench draws in every state:
 | Reduce Motion | a 120 ms opacity fade, bars still | PRD §14, §15. |
 | While listening | the bars follow the level at 40 frames per second with a small flutter; the outline never moves | PRD §9. |
 
+**Oct 21 (Ryan): a subtle bounce.** Ryan asked for springs across the island ("research what spring animation is, then apply it to our Dynamic Island"), refined with Emil Kowalski's skills. The voice bar's shape now opens on `.interpolatingSpring(duration: 0.24, bounce: 0.3)` and closes on `(duration: 0.18, bounce: 0.06)` (`WorkbenchTokens.Spring.barGrow` / `barShrink`). The waveform is a curve, not a spring: it fades in on the strong ease-out curve over 140 ms, 30 ms behind the shape, and out over 100 ms. This departs from the amendment's "no bounce anywhere".
+
+Why the bounce:
+- The island is meant to feel alive ("a living organism, with a deliberate elasticity"), and that feel comes from the settle, not the speed.
+- The bar is the island's smallest growth (44 pt). A small change needs more bounce for any of it to be seen. The 4.6% overshoot is about 2 pt and peaks 0.17 s in.
+- The bounce costs no speed. SwiftUI's own spring model has it at 98% of the way in 0.12 s, sooner than the old critically damped 0.18 s (0.17 s to 98%). A key press still gets an answer at once.
+- Going home stays nearly critically damped (0.02% undershoot) and quicker, as exits should be.
+
+It's still an interpolating spring, so press-to-toggle re-aims it mid-flight and keeps the velocity. Reduce Motion is unchanged: a short fade, nothing bouncing. The other states' values, each with its settling time and overshoot, are in docs/motion/SPRINGS.md › Island.
+
+**Oct 21 (Ryan: "simpler is better", later the same day).** Ryan, as a picky user, asked to delete the motion that was too much. The bar keeps a touch of life, a smaller one: `barGrow` is now `(duration: 0.24, bounce: 0.12)`, under a point of overshoot. Every other island spring (`panelGrow`, `boardOpen`, `resize`, `part`, `flight`) has no bounce; a thrown chat keeps 0.1. A band's content now fades in with the shape (no beat behind it) and only fades: the 4 pt blur and the 0.97 scale from the top are gone (`VoiceContentTransition`). Silence is flat: the bars no longer wobble on their own with no voice; the flutter rides on the level only (`VoiceBarView.heights`).
+
 ## The key
 
 fn, press-to-toggle (amendment, Input): one press shows the bar, the next hides it. A press is fn down then up with no other key in between; fn held as a modifier for another key (fn+←, fn+F5) is not a press. Fovea swallows the bare press with an event tap so macOS never opens the emoji picker. The workbench listens without a tap, which needs no permission, so while testing set System Settings › Keyboard › "Press 🌐 key to" to Do Nothing if the picker gets in the way.

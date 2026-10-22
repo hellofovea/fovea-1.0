@@ -6,6 +6,9 @@ import SwiftUI
 /// carries the fluctuation. The outer bounds never move.
 struct VoiceBarView: View {
     let level: Float
+    /// Oct 21, perf: the level now, read on each of the waveform's frames when its clock runs
+    /// (in place of `level`), so the level needn't be observed and draw frames of its own.
+    var liveLevel: (() -> Float)? = nil
     /// Snapshots: one fixed frame, so a PNG is the same every time.
     let still: Bool
     /// While hidden the timeline pauses in place. The view keeps its identity either way:
@@ -21,7 +24,7 @@ struct VoiceBarView: View {
                 waveform(Self.heights(level: Double(level), time: 0, frozen: true))
             } else {
                 TimelineView(.animation(minimumInterval: 1 / WorkbenchTokens.Island.waveformFrameRate, paused: paused)) { context in
-                    waveform(Self.heights(level: Double(level), time: context.date.timeIntervalSinceReferenceDate))
+                    waveform(Self.heights(level: Double(liveLevel?() ?? level), time: context.date.timeIntervalSinceReferenceDate))
                 }
             }
         }
@@ -52,15 +55,16 @@ struct VoiceBarView: View {
         }
     }
 
-    /// Each bar's height for a level (0…1) at a moment. Pure, so the checks can read it.
+    /// Each bar's height for a level (0…1) at a moment. Pure, so the checks can read it. The voice
+    /// flutters each bar a little differently so it reads as a waveform; silence is flat (Oct 21,
+    /// Ryan, "simpler is better": the bars no longer wobble on their own with no voice).
     static func heights(level: Double, time: TimeInterval, frozen: Bool = false) -> [CGFloat] {
         let minH = WorkbenchTokens.Island.waveformMinHeight
         let maxH = WorkbenchTokens.Island.waveformMaxHeight
         let boost = WorkbenchTokens.Island.waveformGainBoost
         return gain.enumerated().map { i, g in
             let flutter = frozen ? 1.0 : 0.72 + 0.28 * sin(time * 11 + Double(i) * 1.9)
-            let idle = frozen ? 0.0 : 0.04 * (sin(time * 5.5 + Double(i) * 0.8) + 1)
-            let amount = min(1, max(0, g * (level * boost * flutter + idle)))
+            let amount = min(1, max(0, g * level * boost * flutter))
             return minH + (maxH - minH) * CGFloat(amount)
         }
     }

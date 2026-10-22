@@ -98,6 +98,7 @@ The things to take come in any order. A drag that misses the pull requests or th
 - **Doing steps:** the glass bar at the bottom. Its left: **one caption** saying where you are, **the instruction for now**, typed out, and **the line to say**, in serif after Fovea's quote mark. Below them, small, "Not working?", the way past and the button. Its right: **the whole keyboard**, the keys for now lit in the accent (×2 on ⌘ for the whole screen).
 - **The keys, in turn:** fn ⌃ → ⌘ ×2 → (click a tab) → ⌘ → (drag) → … → fn ⌃ → return; ⌥ for words and files; fn for dictation and follow-ups.
 - **Typed out:** about 45 letters a second, a beat after a sentence, never more than about 2 s a line; laid out whole first, so nothing moves; a click shows it all; Reduce Motion and VoiceOver get it whole.
+- **In Fovea 1.0 (Oct 21, Ryan, "simpler is better"):** lines show whole, and a hint stays for its reading time (`OT.Reading`); a page fades in whole (0.25 s) and the bar fades in (0.2 s), with no rise, blur or stagger; the keys and the tab to press are ringed in the accent, still; a held key has no glow; windows, files and sent messages fade (no scale or slide); the frost comes in in 0.3 s and still lifts slowly (1.6 s); the end fades in 0.3 s. What Fovea remembers and You're set are words alone, and Clear my screen's card keeps the accent on its button only. This prototype still types and pulses.
 
 ## The real sends
 

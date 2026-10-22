@@ -62,6 +62,22 @@ public final class MarkWindow: NSPanel {
         view.needsDisplay = true
     }
 
+    /// Oct 21, Ryan: the marks go on a short fade (the island's strong ease-out, its control points
+    /// given), not at once; while they're drawn they follow the pointer 1:1, unanimated (`show`).
+    public func fadeAway(duration: TimeInterval, curve: (Float, Float, Float, Float)) {
+        guard isVisible, duration > 0 else { orderOut(nil); return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = duration
+            context.timingFunction = CAMediaTimingFunction(controlPoints: curve.0, curve.1, curve.2, curve.3)
+            animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            MainActor.assumeIsolated {
+                self?.orderOut(nil)
+                self?.alphaValue = 1
+            }
+        }
+    }
+
     /// Where the target is now: on screen (on the Space in front, not minimised or hidden), the marks
     /// go with it, just above it; otherwise they're put away. Returns whether they show.
     @discardableResult

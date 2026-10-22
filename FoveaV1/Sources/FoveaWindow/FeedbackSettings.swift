@@ -137,16 +137,16 @@ extension CapturesModel {
         if size > 2 * 1024 * 1024 {
             showPhotoTooLarge()
         } else if let image = NSImage(contentsOf: url) {
-            animate(.swap) { profilePhoto = image; photoTooLarge = false }
+            animate(.fadeIn) { profilePhoto = image; photoTooLarge = false }
             say(L("Photo changed"))
         }
     }
 
     func showPhotoTooLarge() {
-        animate(.swap) { photoTooLarge = true }
+        animate(.layout) { photoTooLarge = true }
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(4))
-            self.animate(.swap) { self.photoTooLarge = false }
+            self.animate(.layout) { self.photoTooLarge = false }
         }
     }
 
@@ -154,10 +154,10 @@ extension CapturesModel {
     /// Simulated: 1.0 has no update server, so it's always the newest; a review stage shows an
     /// update to install, and a check that failed.
     func checkForUpdates() {
-        animate(.swap) { update = .checking }
+        animate(.layout) { update = .checking }
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(self.motion.seconds(T.Simulated.updateCheck)))
-            if self.update == .checking { self.animate(.swap) { self.update = .upToDate } }
+            if self.update == .checking { self.animate(.layout) { self.update = .upToDate } }
         }
     }
 
@@ -165,7 +165,7 @@ extension CapturesModel {
 
     func deleteMemories(_ ids: Set<String>) {
         guard !ids.isEmpty else { return }
-        animate(.swap) {
+        animate(.layout) {
             for i in library.memories.indices where ids.contains(library.memories[i].id) { library.memories[i].deleted = now }
             memorySelection = []
         }
@@ -175,7 +175,7 @@ extension CapturesModel {
     }
 
     func restoreMemories(_ ids: Set<String>) {
-        animate(.swap) {
+        animate(.layout) {
             for i in library.memories.indices where ids.contains(library.memories[i].id) { library.memories[i].deleted = nil }
             memorySelection = []
         }
@@ -183,7 +183,7 @@ extension CapturesModel {
     }
 
     func setHidden(_ ids: Set<String>, _ hidden: Bool) {
-        animate(.swap) {
+        animate(.layout) {
             for i in library.memories.indices where ids.contains(library.memories[i].id) { library.memories[i].hidden = hidden }
         }
         say(hidden ? L("Hidden from agents") : L("Agents can see it again"))
@@ -192,21 +192,21 @@ extension CapturesModel {
     func undoMemoryDelete() {
         let ids = Set(lastDeletedMemories)
         lastDeletedMemories = []
-        animate(.swap) {
+        animate(.layout) {
             for i in library.memories.indices where ids.contains(library.memories[i].id) { library.memories[i].deleted = nil }
         }
-        withAnimation(motion.animation(.content)) { toast = nil }
+        withAnimation(motion.animation(.toastOut)) { toast = nil }
     }
 
     func forgetArea(_ id: String) {
         guard let area = library.areas.first(where: { $0.id == id }) else { return }
-        animate(.swap) { library.areas.removeAll { $0.id == id } }
+        animate(.layout) { library.areas.removeAll { $0.id == id } }
         say(L("Forgot “\(area.title)”. What it came from stays in your memories."))
     }
 
     func updateArea(_ id: String, summary: String) {
         guard let i = library.areas.firstIndex(where: { $0.id == id }) else { return }
-        animate(.swap) { library.areas[i].summary = summary; library.areas[i].updated = now }
+        animate(.layout) { library.areas[i].summary = summary; library.areas[i].updated = now }
         say(L("Saved. Fovea writes from your version now."))
     }
 
@@ -279,7 +279,7 @@ struct LanguagePane: View {
                 }
             }
             .id("language-primary")
-            .transition(.opacity)
+            .transition(.arrive)
         }
     }
 
@@ -304,7 +304,7 @@ extension CapturesModel {
         guard !chosen.isEmpty else { return }
         let order = FoveaLanguage.featured
         chosen.sort { (order.firstIndex(of: $0) ?? 9) < (order.firstIndex(of: $1) ?? 9) }
-        animate(.swap) {
+        animate(.fadeIn) {
             prefs.languages = chosen
             if !chosen.contains(prefs.appLanguage) { prefs.appLanguage = chosen[0] }
         }
@@ -344,7 +344,7 @@ private struct RequestedLanguagesRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, native ? T.Native.rowInset : 16)
                 .padding(.bottom, 12)
-                .transition(.opacity)
+                .transition(.arrive)
             }
         }
     }
@@ -356,14 +356,14 @@ private struct RequestedLanguagesRow: View {
         let offered = FoveaLanguage.featured.flatMap { [$0.title.lowercased(), $0.nativeName.lowercased()] }
         guard !name.isEmpty, !offered.contains(lower),
               !model.prefs.requestedLanguages.contains(where: { $0.lowercased() == lower }) else { return }
-        model.animate(.swap) { model.prefs.requestedLanguages.append(name) }
+        model.animate(.layout) { model.prefs.requestedLanguages.append(name) }
     }
 
     private func chip(_ language: String) -> some View {
         HStack(spacing: 5) {
             Text(language).font(.system(size: 12.5)).foregroundStyle(palette.text)
             Button {
-                model.animate(.swap) { model.prefs.requestedLanguages.removeAll { $0 == language } }
+                model.animate(.layout) { model.prefs.requestedLanguages.removeAll { $0 == language } }
             } label: {
                 Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).foregroundStyle(palette.secondary)
                     .frame(width: 14, height: 14)
@@ -479,7 +479,7 @@ struct ProfileSection: View {
                         }
                         .padding(.horizontal, native ? T.Native.rowInset : 16)
                         .padding(.bottom, 10)
-                        .transition(.opacity)
+                        .transition(.arrive)
                     }
                     RowDivider()
                     PhotoRow()
@@ -503,14 +503,14 @@ extension CapturesModel {
     /// Signed out: kept in the prefs (FoveaPrefs.signedOut), the email stays on this Mac for
     /// signing in again; Account shows Sign In… until you do.
     func signOut() {
-        animate(.swap) { signedOut = true }
+        animate(.layout) { signedOut = true }
         onSignedOut?()
         say(L("Signed out. Your captures stay on this Mac."))
     }
 
     /// ST-02.4: the name written again.
     func retrySaveName() {
-        animate(.swap) { nameSaveFailed = false }
+        animate(.layout) { nameSaveFailed = false }
         onPrefsEdited?()
         say(L("Saved your name"))
     }
@@ -529,7 +529,7 @@ private struct PhotoRow: View {
                 if model.photoTooLarge {
                     Text("That photo is over 2 MB. Choose one under 2 MB.")
                         .font(.system(size: 11.5)).foregroundStyle(palette.danger)
-                        .transition(.opacity)
+                        .transition(.arrive)
                 } else {
                     Text("JPG, PNG, GIF or WebP, up to 2 MB.")
                         .font(.system(size: 11.5)).foregroundStyle(palette.secondary)
@@ -537,7 +537,7 @@ private struct PhotoRow: View {
             }
             Spacer()
             if model.profilePhoto != nil {
-                TextButton("Remove") { model.animate(.swap) { model.profilePhoto = nil } }
+                TextButton("Remove") { model.animate(.fadeIn) { model.profilePhoto = nil } }
             }
             TextButton("Choose…") { model.choosePhoto() }
         }
@@ -843,7 +843,7 @@ struct QuestionsSections: View {
                 }
                 RowDivider()
                 SettingsRow("The window you're in", detail: "Its title, its web address, or the file it shows.") {
-                    InkToggle(title: "The window you're in", isOn: $model.prefs.includeWindow.animation(model.motion.animation(.swap)))
+                    InkToggle(title: "The window you're in", isOn: $model.prefs.includeWindow.animation(model.motion.animation(.layout)))
                 }
                 if model.prefs.includeWindow {
                     VStack(spacing: 0) {
@@ -852,7 +852,7 @@ struct QuestionsSections: View {
                             InkToggle(title: "A picture of that window", isOn: $model.prefs.includeWindowPicture)
                         }
                     }
-                    .transition(.opacity)
+                    .transition(.arrive)
                 }
             }
         }
@@ -981,7 +981,7 @@ extension CapturesModel {
 
     func setPlanAlert(_ alert: PlanAlert?) {
         windowError = nil
-        animate(.swap) {
+        animate(.layout) {
             planAlert = alert
             // A payment in flight is for Pro, from Free.
             if alert == .paymentProcessing { plan = .free; nextPlan = nil }
@@ -991,13 +991,13 @@ extension CapturesModel {
 
     func setUpdate(_ state: UpdateState) {
         windowError = nil
-        animate(.swap) { update = state }
+        animate(.layout) { update = state }
         // Oct 15 review, ST-10: updates live in About now.
         openSettings(.about)
     }
 
     func setWindowError(_ error: WindowError?) {
-        animate(.swap) { windowError = error }
+        animate(.fadeIn) { windowError = error }
     }
 
     /// The photo-too-large line, where it shows: under your name in Account.

@@ -14,7 +14,7 @@ extension CapturesModel {
     /// Install and Relaunch: the download, then Fovea opens again on the new version. Simulated:
     /// there's no new version to download, so it says what it would do and stays on this one.
     func installUpdate(_ version: String) {
-        animate(.swap) { update = .installing(version, 0) }
+        animate(.layout) { update = .installing(version, 0) }
         Task { @MainActor in
             let steps = 26
             for step in 1...steps {
@@ -22,7 +22,7 @@ extension CapturesModel {
                 guard case .installing = self.update else { return }
                 self.update = .installing(version, Double(step) / Double(steps))
             }
-            self.animate(.swap) { self.update = .upToDate }
+            self.animate(.layout) { self.update = .upToDate }
             self.say(L("Would relaunch into Fovea \(version) (simulated)"))
         }
     }
@@ -59,7 +59,7 @@ struct AboutPane: View {
             }
         }
         .alert("Leave the Beta?", isPresented: $model.leavingBeta) {
-            Button("Leave the Beta") { model.animate(.swap) { model.prefs.betaUpdates = false } }
+            Button("Leave the Beta") { model.animate(.layout) { model.prefs.betaUpdates = false } }
             Button("Stay in the Beta", role: .cancel) {}
         } message: {
             Text("You'll keep this beta until the next release of Fovea, then get release updates only.")
@@ -133,7 +133,7 @@ struct AboutUpdateRow: View {
             control
         }
         .cardPadding()
-        .animation(model.motion.animation(.swap), value: model.update)
+        .animation(model.motion.animation(.layout), value: model.update)
     }
 
     // Oct 18, Ryan: in the primary language.

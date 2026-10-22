@@ -5,9 +5,8 @@ import FoveaLook
 import OnboardingCore
 
 /// The guide, in the one design kept (Oct 9: Stage). Reading steps darken the desktop and set the
-/// words large, in serif, centered, rising in a part at a time; doing steps lift the dark and keep
-/// a glass bar at the bottom, like a subtitle, its instruction typed out and the whole keyboard at
-/// its right.
+/// words large, in serif, centered; doing steps lift the dark and keep a glass bar at the bottom,
+/// like a subtitle, and the whole keyboard at its right.
 struct BoardView: View {
     let model: OnboardingModel
 
@@ -22,30 +21,26 @@ struct BoardView: View {
 struct StageBoard: View {
     let model: OnboardingModel
 
-    /// Snapshots and Reduce Motion: every change at once.
-    private var still: Bool { model.options.harness || model.reduceMotion }
-
     var body: some View {
         ZStack(alignment: .bottom) {
             if model.step.isReading {
                 // Frosted: the desktop goes soft behind the words, dark or light
-                // as the Mac is (then as the person picks). It comes in at a calm pace and lifts
-                // slowly (Oct 9).
+                // as the Mac is (then as the person picks). It lifts slowly (Oct 9); it comes in
+                // ahead of the words (Oct 21, Ryan ("simpler is better"): quickly, `scrimIn`).
                 Rectangle().fill(.ultraThinMaterial)
                     .overlay(model.boardDark ? OT.Colors.stageScrim : OT.Colors.stageScrimLight)
                     .frame(width: OT.Display.size.width, height: OT.Display.size.height)
-                    .transition(still ? .identity : .asymmetric(insertion: .opacity.animation(OT.Motion.slow),
-                                                                removal: .opacity.animation(OT.Motion.stageLift)))
+                    .transition(model.options.harness ? .identity : .asymmetric(insertion: .opacity.animation(OT.Motion.scrimIn),
+                                                                                removal: .opacity.animation(OT.Motion.stageLift)))
+                // Oct 21, Ryan ("simpler is better"): pages cross-fade, the one before quicker.
                 ReadingPage(model: model)
                     .id(model.step)
-                    .transition(still ? .identity : .asymmetric(insertion: .identity,
-                                                                removal: .opacity.combined(with: .offset(y: -OT.Motion.pageRise)).animation(OT.Motion.pageOut)))
+                    .transition(model.pageLeaving)
             } else {
                 GlassBar(model: model)
                     .padding(.bottom, OT.Layout.guideBottom)
                     .frame(width: OT.Display.size.width, height: OT.Display.size.height, alignment: .bottom)
-                    .transition(still ? .identity : .asymmetric(insertion: .opacity.combined(with: .move(edge: .bottom)).animation(OT.Motion.barIn),
-                                                                removal: .opacity.animation(OT.Motion.content)))
+                    .transition(model.barTransition)
             }
         }
         // On every page: how far the run is, in the accent (Oct 10), and the way out. Back sits at
@@ -58,7 +53,7 @@ struct StageBoard: View {
                 ZStack(alignment: .trailing) {
                     if model.canGoBack {
                         BackButton(model: model, onPage: model.step.isReading)
-                            .transition(.opacity)
+                            .transition(model.fadeTransition)
                     }
                 }
                 .frame(width: OT.Board.backSlot, alignment: .trailing)
@@ -66,7 +61,7 @@ struct StageBoard: View {
                 Color.clear.frame(width: OT.Board.backSlot, height: OT.Board.progressHeight)
             }
             .frame(height: OT.Board.progressHeight)
-            .animation(OT.Motion.calm, value: model.canGoBack)
+            .animation(model.motion(OT.Motion.content), value: model.canGoBack)
             .padding(.bottom, OT.Board.progressBottom)
         }
         // The sound at the bottom left; Exit tour at the bottom right (Oct 10).
@@ -83,47 +78,59 @@ struct StageBoard: View {
         }
         .environment(\.boardInk, BoardInk(dark: model.boardDark))
         .environment(\.colorScheme, model.boardDark ? .dark : .light)
-        .animation(OT.Motion.calm, value: model.boardDark)
-        .animation(still ? nil : OT.Motion.pageOut, value: model.step)
+        .environment(\.firstRunReduced, model.reduceMotion)
+        .animation(model.motion(OT.Motion.recolor), value: model.boardDark)
+        // Oct 21, Ryan: what a new step resizes or moves (the bar above all) on the strong
+        // ease-in-out; it was an ease-in.
+        .animation(model.motion(OT.Motion.morph), value: model.step)
     }
 }
 
-// MARK: - Reading: the words large, rising in a part at a time
+private extension OnboardingModel {
+    /// Oct 21, Ryan ("simpler is better"): a page fades in whole and the page before fades out,
+    /// quicker; nothing travels, blurs or comes in part by part.
+    var pageLeaving: AnyTransition {
+        if options.harness { return .identity }
+        return .asymmetric(insertion: .opacity.animation(motion(OT.Motion.pageIn)),
+                           removal: .opacity.animation(reduceMotion ? OT.Motion.reduceMotion : OT.Motion.pageOut))
+    }
 
-/// One reading step's page. Each part rises in after the one before (Oct 9: hello to Make it yours
-/// wants a transition, not a cut), while the page before rises away.
+    /// The glass bar fades in and out (Oct 21, Ryan ("simpler is better"): it rose from below
+    /// after a delay).
+    var barTransition: AnyTransition {
+        if options.harness { return .identity }
+        return .asymmetric(insertion: .opacity.animation(motion(OT.Motion.barIn)),
+                           removal: .opacity.animation(motion(OT.Motion.contentOut)))
+    }
+}
+
+// MARK: - Reading: the words large
+
+/// One reading step's page (Oct 9: hello to Make it yours wants a transition, not a cut).
 struct ReadingPage: View {
     let model: OnboardingModel
     @Environment(\.boardInk) private var ink
 
     var body: some View {
         VStack(spacing: 0) {
-            Rises(order: 0, model: model) {
-                Text(model.copy.title)
-                    .font(OT.Board.stageTitle)
-                    .foregroundStyle(ink.primary)
+            Text(model.copy.title)
+                .font(OT.Board.stageTitle)
+                .foregroundStyle(ink.primary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            if !model.copy.body.isEmpty {
+                Text(model.copy.body)
+                    .font(OT.Board.stageBody)
+                    .foregroundStyle(ink.secondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 10)
             }
-            if !model.copy.body.isEmpty {
-                Rises(order: 1, model: model) {
-                    Text(model.copy.body)
-                        .font(OT.Board.stageBody)
-                        .foregroundStyle(ink.secondary)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(.top, 10)
-            }
-            Rises(order: 2, model: model) {
-                BoardExtras(model: model)
-                    .frame(maxWidth: extrasWidth)
-            }
-            .padding(.top, OT.Board.readingGap)
-            Rises(order: 3, model: model) {
-                BoardActions(model: model, centered: true, large: true)
-            }
-            .padding(.top, OT.Board.readingGap + 6)
+            BoardExtras(model: model)
+                .frame(maxWidth: extrasWidth)
+                .padding(.top, OT.Board.readingGap)
+            BoardActions(model: model, centered: true, large: true)
+                .padding(.top, OT.Board.readingGap + 6)
         }
         .frame(width: OT.Board.stageWidth)
         .frame(width: OT.Display.size.width, height: OT.Display.size.height)
@@ -138,30 +145,10 @@ struct ReadingPage: View {
     }
 }
 
-/// A part of a reading page, rising into place a beat after the part before it.
-struct Rises<Content: View>: View {
-    let order: Int
-    let model: OnboardingModel
-    @ViewBuilder let content: Content
-    @State private var shown = false
-
-    var body: some View {
-        let still = model.options.harness || model.reduceMotion
-        content
-            .opacity(shown || still ? 1 : 0)
-            .blur(radius: shown || still ? 0 : OT.Motion.pageBlur)
-            .offset(y: shown || still ? 0 : OT.Motion.pageRise)
-            .onAppear {
-                guard !still else { return }
-                withAnimation(OT.Motion.pageIn.delay(OT.Motion.pageInDelay + Double(order) * OT.Motion.stagger)) { shown = true }
-            }
-    }
-}
-
 // MARK: - Doing: the glass bar
 
 /// The bar at the bottom while you do (Ryan liked it, Oct 9). One caption saying where you are,
-/// then the instruction for now typed out, then the line to say, set apart from the rest (Oct 9,
+/// then the instruction for now, then the line to say, set apart from the rest (Oct 9,
 /// round two); the way past and the button; the whole keyboard at its right while keys are taught,
 /// the keys for now lit in turn.
 struct GlassBar: View {
@@ -175,14 +162,16 @@ struct GlassBar: View {
                     .font(OT.Board.caption)
                     .foregroundStyle(ink.primary)
                     .fixedSize(horizontal: false, vertical: true)
-                    .id(model.step)
-                    .transition(.opacity)
                 BoardExtras(model: model)
                 if let instruction = model.instruction {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Circle().fill(model.accentColor).frame(width: 7, height: 7).alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
-                        TypedText(text: instruction, font: OT.Board.instruction, color: ink.primary, typing: model.typesLines)
+                        Text(instruction)
+                            .font(OT.Board.instruction)
+                            .foregroundStyle(ink.primary)
+                            .fixedSize(horizontal: false, vertical: true)
                             .id(instruction)
+                            .transition(model.swapTransition)
                     }
                     // Oct 15 review, ST-03.1: the keys named are the person's own (KeyMap(prefs:)).
                 }
@@ -190,22 +179,25 @@ struct GlassBar: View {
                 BoardActions(model: model)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            // Oct 21, Ryan: a new step's words replace the last at once (they sat on each other as
+            // both faded) and come in a beat behind the bar's new size.
+            .id(model.step)
+            .transition(model.swapTransition)
             if model.keyboardWanted {
                 KeyboardView(pressed: model.keysDown, targets: model.keyboardTargets, accent: model.accentColor, dark: model.boardDark,
                              unit: OT.Board.barKeyUnit, badges: model.keyboardBadges)
                     .allowsHitTesting(false)
-                    .transition(.opacity)
+                    .transition(model.fadeTransition)
             }
         }
         .padding(.horizontal, OT.Board.barPadding.width)
         .padding(.vertical, OT.Board.barPadding.height)
         .frame(width: model.keyboardWanted ? OT.Board.barWideWidth : OT.Board.stageBarWidth)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: OT.Board.stageBarRadius, style: .continuous))
         .background(RoundedRectangle(cornerRadius: OT.Board.stageBarRadius, style: .continuous)
             .fill(model.boardDark ? OT.Colors.stageGlass : OT.Colors.stageGlassLight))
         .overlay(RoundedRectangle(cornerRadius: OT.Board.stageBarRadius, style: .continuous).strokeBorder(ink.hairline))
         .playTarget(.board, model)
-        .animation(OT.Motion.board, value: model.keyboardWanted)
+        .animation(model.motion(OT.Motion.morph), value: model.keyboardWanted)
     }
 }
 
@@ -227,8 +219,8 @@ struct TourProgress: View {
                     .fill(model.accentColor)
                     .frame(width: max(B.progressHeight, B.progressWidth * model.progress), height: B.progressHeight)
             }
-            .animation(OT.Motion.calm, value: model.progress)
-            .animation(OT.Motion.calm, value: model.flow.personal.accent)
+            .animation(model.motion(OT.Motion.progress), value: model.progress)
+            .animation(model.motion(OT.Motion.recolor), value: model.flow.personal.accent)
             .allowsHitTesting(false)
             .accessibilityElement()
             .accessibilityLabel("Tour progress")
@@ -255,7 +247,7 @@ struct BackButton: View {
             .padding(.horizontal, 8).frame(height: OT.Board.backHeight)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.press)
         .help("Back to the page before (⌘[)")
         .padding(.horizontal, 4)
         .background { if !onPage { Capsule().fill(.ultraThinMaterial) } }
@@ -283,7 +275,7 @@ struct TourCorner: View {
                     .padding(.horizontal, 8).frame(height: 24)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.press)
             .help(practising ? "Back to Home. The rest of the tour stays as it is."
                   : "Put the tour away. Pick it up from Home whenever you like.")
         }

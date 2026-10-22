@@ -26,7 +26,7 @@ extension CapturesModel {
     /// are made up.
     func bringIn(_ id: String) {
         guard let i = earlierData.firstIndex(where: { $0.id == id }) else { return }
-        animate(.swap) { earlierData[i].state = .bringingIn(0) }
+        animate(.layout) { earlierData[i].state = .bringingIn(0) }
         Task { @MainActor in
             let steps = 30
             for step in 1...steps {
@@ -35,7 +35,7 @@ extension CapturesModel {
                 self.earlierData[j].state = .bringingIn(Double(step) / Double(steps))
             }
             guard let j = self.earlierData.firstIndex(where: { $0.id == id }) else { return }
-            self.animate(.swap) { self.earlierData[j].state = .broughtIn }
+            self.animate(.layout) { self.earlierData[j].state = .broughtIn }
             // Oct 18, Ryan: the toasts in the primary language.
             self.say(L("Brought in \(self.earlierData[j].captures.formatted()) captures"))
         }
@@ -45,10 +45,10 @@ extension CapturesModel {
     func deleteEarlier(_ id: String) {
         guard let i = earlierData.firstIndex(where: { $0.id == id }) else { return }
         let broughtIn = earlierData[i].state == .broughtIn
-        animate(.swap) { earlierData[i].state = .deleting }
+        animate(.layout) { earlierData[i].state = .deleting }
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(self.motion.seconds(T.Simulated.delete)))
-            self.animate(.swap) { self.earlierData.removeAll { $0.id == id } }
+            self.animate(.layout) { self.earlierData.removeAll { $0.id == id } }
             self.say(broughtIn ? L("Deleted the originals") : L("Deleted"))
         }
     }

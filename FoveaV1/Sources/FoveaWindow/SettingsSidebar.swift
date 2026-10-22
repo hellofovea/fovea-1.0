@@ -105,31 +105,31 @@ private struct NotchGlyph: View {
     }
 }
 
-/// The top of a section's page: its tile large, its name, and what it's for, centered in a box,
-/// as System Settings opens its panes.
+/// The top of a section's page: what it's for, in a line, lined up with the sections' headers.
+/// Oct 21, Ryan ("simpler is better"): the toolbar and the sidebar already name the pane; it
+/// was its tile at 56 pt, its name and this line, centered in a box.
 struct PaneHeader: View {
+    @Environment(CapturesModel.self) private var model
     @Environment(\.palette) private var palette
     let category: SettingsCategory
 
     var body: some View {
-        VStack(spacing: 8) {
-            SettingsIcon(category: category, size: 56)
-            HStack(spacing: 8) {
-                Text(category.title).font(.system(size: 17, weight: .bold)).foregroundStyle(palette.text)
-                if category == .eyeTracking { SoonPill(text: "Beta") }
-            }
+        // Eye tracking's picture says it in full until your session is in.
+        if category != .eyeTracking || model.prefs.gaze == .collected { line }
+    }
+
+    private var line: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            if category == .eyeTracking { SoonPill(text: "Beta") }
             Text(category.summary)
                 .font(.system(size: 12))
                 .foregroundStyle(palette.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 420)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.vertical, 18)
-        .padding(.horizontal, 20)
-        .frame(maxWidth: .infinity)
-        .background(palette.nativeGroup, in: RoundedRectangle(cornerRadius: T.Native.groupRadius, style: .continuous))
+        .padding(.horizontal, T.Native.rowInset)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text("\(category.title). \(category.summary)"))
         .accessibilityAddTraits(.isHeader)
     }
 }
@@ -156,7 +156,6 @@ struct NativeSettingsPage: View {
                                 section(model.settingsCategory)
                             }
                             .id(model.settingsCategory)
-                            .transition(.blockSwap)
                         } else {
                             VStack(alignment: .leading, spacing: T.Native.categoryGap) {
                                 ForEach(SettingsCategory.allCases) { category in
@@ -205,7 +204,7 @@ struct NativeSettingsPage: View {
         guard model.settingsLayout == .sidebar, let target = model.settingsScroll?.category else { return }
         settlingUntil = Date().addingTimeInterval(animated ? 0.7 : 0.2)
         if animated {
-            withAnimation(model.motion.animation(.page)) { proxy.scrollTo(target, anchor: .top) }
+            withAnimation(model.motion.animation(.layout)) { proxy.scrollTo(target, anchor: .top) }
         } else {
             proxy.scrollTo(target, anchor: .top)
         }

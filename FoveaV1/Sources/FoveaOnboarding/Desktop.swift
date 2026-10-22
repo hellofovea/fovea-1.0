@@ -130,7 +130,8 @@ struct DesktopFilesView: View {
                                 Circle().fill(model.accentColor)
                                     .frame(width: 10, height: 10)
                                     .overlay(Circle().strokeBorder(OT.Colors.fileLabel, lineWidth: 1.5))
-                                    .transition(.scale.combined(with: .opacity))
+                                    // Oct 21, Ryan: from 0.6, not from nothing.
+                                    .transition(model.dotTransition)
                             }
                         }
                     Text(file.name)
@@ -150,14 +151,20 @@ struct DesktopFilesView: View {
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(ScreenSpace.name)) } action: { frame in
                     model.fileFrames[file.name] = frame
                 }
+                // Oct 21, Ryan ("simpler is better"): a file fades in while the column makes room,
+                // and the files fade out at the end (they grew and shrank as well).
                 .opacity(model.filesCleared ? 0 : 1)
-                .scaleEffect(model.filesCleared ? 0.6 : 1)
-                .animation(OT.Motion.slow, value: model.filesCleared)
-                .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                .animation(model.motion(OT.Motion.filesClear), value: model.filesCleared)
+                .transition(fileTransition)
             }
         }
         .frame(width: 110)
-        .animation(OT.Motion.calm, value: model.desktopFiles)
+        .animation(model.motion(OT.Motion.morph), value: model.desktopFiles)
+    }
+
+    private var fileTransition: AnyTransition {
+        if model.options.harness { return .identity }
+        return AnyTransition.opacity.animation(model.motion(OT.Motion.partIn))
     }
 }
 

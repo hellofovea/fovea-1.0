@@ -241,6 +241,15 @@ extension WorkbenchModel {
 
     // MARK: The agents at work
 
+    /// Oct 21, perf: `withAnimation`, unless the island is off the screen (`islandOffScreen`): then
+    /// the change is made with animations off, implicit ones too, as nothing of it is seen.
+    func withIslandAnimation<Result>(_ animation: Animation?, _ body: () throws -> Result) rethrows -> Result {
+        guard islandOffScreen else { return try withAnimation(animation, body) }
+        var still = Transaction()
+        still.disablesAnimations = true
+        return try withTransaction(still, body)
+    }
+
     /// The working tasks move on every few seconds, each through its script, so the panel shows
     /// live work. Snapshots and Reduce Motion hold them still.
     func startPanelSimulation() {
@@ -265,7 +274,8 @@ extension WorkbenchModel {
             if panelScripts[task.id] != nil, next >= script.count { continue }
             let beat = script[next % script.count]
             panelBeats[task.id] = next
-            withAnimation(WorkbenchTokens.Panel.change) {
+            // Oct 21, perf: unanimated while the island is off the screen (`islandOffScreen`).
+            withIslandAnimation(WorkbenchTokens.Panel.change) {
                 apply(beat, to: i)
             }
         }
@@ -297,7 +307,7 @@ extension WorkbenchModel {
         guard let i = agentTasks.firstIndex(where: { $0.id == id }), let first = script.first else { return }
         panelScripts[id] = script
         panelBeats[id] = 0
-        withAnimation(WorkbenchTokens.Panel.change) { apply(first, to: i) }
+        withIslandAnimation(WorkbenchTokens.Panel.change) { apply(first, to: i) }
         startPanelSimulation()
     }
 

@@ -53,7 +53,7 @@ struct FailedNotice: View {
                         }
                         .frame(minHeight: 24)
                         .padding(.top, 4)
-                        .transition(.opacity)
+                        .transition(.arrive)
                     }
                 }
             }
@@ -223,33 +223,23 @@ struct TagChip: View {
     }
 }
 
-/// Save, in the expanded card's bar: everything (the words and what you took, in a folder), or
-/// the pictures. Oct 15 review: no Save Recording (VF11, QA19); real files (IS04).
-struct SaveMenu: View {
+/// Save, in the expanded card's bar: the words as a .txt, or with what you took a folder of the
+/// words, the pictures and the files. Oct 15 review: no Save Recording (VF11, QA19); real files (IS04).
+struct SaveButton: View {
     @Environment(CapturesModel.self) private var model
-    @Environment(\.palette) private var palette
     let capture: Capture
 
     var body: some View {
-        Menu {
-            Button("Save Everything…") { model.saveToDisk(capture, .everything) }
-            if capture.attachments.contains(where: { $0.kind == .region }) {
-                Divider()
-                Button("Save Pictures…") { model.saveToDisk(capture, .pictures) }
-            }
-        } label: {
-            Image(systemName: "square.and.arrow.down")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(palette.secondary)
-                .frame(width: 28, height: 28)
-                .contentShape(Circle())
+        // Oct 21, Ryan: one click saves (no menu): the words, or a folder with what you took.
+        // Save Everything… and Save Pictures… were the menu; the folder is everything, and the
+        // pictures are in it, so the menu offered no real choice. One picture or one file is still
+        // saved from where it shows (the picture viewer, the file's row).
+        // Oct 21, Ryan: saved, the tray turns into a checkmark a moment, beside the toast.
+        let saved = model.savedID == capture.id
+        IconButton(symbol: saved ? "checkmark" : "square.and.arrow.down", help: saved ? "Saved" : "Save… (⌘S)",
+                   confirmed: saved, label: saved ? "Saved" : "Save…") {
+            model.saveToDisk(capture, .capture)
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help("Save")
-        .accessibilityLabel("Save")
         // Nothing to save until the words are back.
         .disabled(capture.failed)
     }

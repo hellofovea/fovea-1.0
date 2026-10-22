@@ -87,7 +87,7 @@ struct V2BrowseSearchField: View {
                 Button { model.setBrowseQuery("") } label: {
                     Image(systemName: "xmark.circle.fill").font(C.searchGlyph).foregroundStyle(WorkbenchTokens.V2.subColor)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(IslandPressStyle())
                 .help("Clear the search")
             }
         }
@@ -227,7 +227,7 @@ struct V2EditableQuestion<Shown: View>: View {
                             .transition(.opacity)
                     }
                 }
-                .onHover { inside in withAnimation(WorkbenchTokens.Cases.change) { hovering = inside } }
+                .onHover { inside in withAnimation(WorkbenchTokens.Spring.hover) { hovering = inside } }
                 .accessibilityAction(named: "Edit") { model.startEditV2(task.id) }
         }
     }
@@ -627,7 +627,7 @@ struct V2HeaderPill: View {
                 .frame(height: WorkbenchTokens.Cases.pillHeight - 4)
                 .background(Capsule(style: .continuous).fill(WorkbenchTokens.ink(0.12)))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(IslandPressStyle())
     }
 }
 

@@ -12,15 +12,6 @@ struct CardFramesKey: PreferenceKey {
     }
 }
 
-/// Where each picture of what you took sits inside a card or the expanded card, so it can fly
-/// from one to the other.
-struct TileAnchorsKey: PreferenceKey {
-    static let defaultValue: [String: Anchor<CGRect>] = [:]
-    static func reduce(value: inout [String: Anchor<CGRect>], nextValue: () -> [String: Anchor<CGRect>]) {
-        value.merge(nextValue()) { $1 }
-    }
-}
-
 enum Space { static let root = "captures-root" }
 
 /// A capture as Paste draws a clipboard item: a header naming what it is and when, the app it
@@ -29,26 +20,25 @@ struct CaptureCard: View {
     @Environment(CapturesModel.self) private var model
     @Environment(\.palette) private var palette
     let match: CaptureMatch
-    @State private var hover = false
 
     var body: some View {
         let c = match.capture
         let side = model.cardSize.width
         // While the expanded card is out, it draws this card itself.
         let lent = model.detailSourceID == c.id
-        let hovered = hover || model.hoverKey == c.id
+        // Oct 21, Ryan ("simpler is better"): a card lies still under the pointer and the press
+        // (its shadow grew on hover and it shrank to 0.97 when pressed); the click opens it.
         Button { model.open(c.id) } label: {
             CardFace(match: match, side: side)
-                .modifier(CardChrome(hovered: hovered))
+                .shading(RoundedRectangle(cornerRadius: T.Layout.cardRadius, style: .continuous), .resting)
         }
-        .buttonStyle(CardPressStyle())
+        .buttonStyle(.plain)
         .overlay { if model.selectedID == c.id && !lent { SelectionRing() } }
         .opacity(lent ? 0 : 1)
         .frame(width: side, height: side)
         .background(GeometryReader { geo in
             Color.clear.preference(key: CardFramesKey.self, value: [c.id: geo.frame(in: .named(Space.root))])
         })
-        .onHover { hover = $0 }
         .id(c.id)
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isButton)
@@ -112,30 +102,6 @@ struct SelectionRing: View {
     }
 }
 
-/// A card's edge and shadow, Aside's way: the ink at 8 % just inside its edge and two soft
-/// shadows at rest; under the pointer the wide shadow grows, as Aside's buttons lift, and
-/// nothing moves (Finder's and Photos' items don't jump either).
-struct CardChrome: ViewModifier {
-    @Environment(\.motion) private var motion
-    let hovered: Bool
-
-    func body(content: Content) -> some View {
-        content
-            .shading(RoundedRectangle(cornerRadius: T.Layout.cardRadius, style: .continuous), hovered ? .raised : .resting)
-            .animation(motion.animation(.hover), value: hovered)
-    }
-}
-
-/// A press settles the card a hair, and lets go as quickly.
-struct CardPressStyle: ButtonStyle {
-    @Environment(\.motion) private var motion
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed && !motion.reduce ? 0.985 : 1)
-            .animation(motion.animation(.press), value: configuration.isPressed)
-    }
-}
-
 /// The card itself, at `side` points square: the header, then what it holds. The expanded card
 /// draws the same face while it grows from it.
 struct CardFace: View {
@@ -145,14 +111,12 @@ struct CardFace: View {
     let side: CGFloat
     /// The header's width when it's stretched across the growing expanded card.
     var headerWidth: CGFloat?
-    /// Leaves the preview's pictures out while their flying copies stand in for them.
-    var lendTiles = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             CardHeader(capture: match.capture)
                 .frame(width: headerWidth ?? side)
-            CardBody(match: match, lendTiles: lendTiles)
+            CardBody(match: match)
                 .frame(width: side)
         }
         .frame(width: headerWidth ?? side, height: side, alignment: .topLeading)
@@ -187,11 +151,16 @@ struct CardHeader: View {
             if model.iconStyle == .leading { appIcon(icon).alignmentGuide(.firstTextBaseline) { Self.onCaps($0) } }
             if twoLines {
                 VStack(alignment: .leading, spacing: spacing.metrics.headerLineGap) {
-                    HStack(spacing: 5) {
-                        if capture.failed || capture.notSent { FailedMark(capture: capture) }
-                        Text(title).font(T.Text.cardTitle).foregroundStyle(palette.text)
+                    // Oct 21, Ryan ("simpler is better"): a theme that only repeats the words has
+                    // no line of its own; the type and the time head the card, the words under it.
+                    if !echoes {
+                        HStack(spacing: 5) {
+                            if capture.failed || capture.notSent { FailedMark(capture: capture) }
+                            Text(title).font(T.Text.cardTitle).foregroundStyle(palette.text)
+                        }
                     }
                     HStack(spacing: 5) {
+                        if echoes, capture.notSent { FailedMark(capture: capture) }
                         KindMark(kind: capture.kind)
                         // Oct 15 review, MW-05.3: where "Dispatch · 28m · 2 requests" won't fit
                         // beside the icon, the mark alone says Dispatch.
@@ -296,8 +265,28 @@ struct CardHeader: View {
         switch model.headerStyle {
         case .type: return Lines.label(capture)
         // Oct 18, Ryan: a recording whose words haven't come back is titled in the primary language.
-        case .theme, .themeAndType: return capture.failed ? L("Not transcribed yet") : capture.theme
+        case .theme, .themeAndType:
+            if capture.failed { return L("Not transcribed yet") }
+            return echoes ? Lines.label(capture) : capture.theme
         }
+    }
+
+    /// Oct 21, Ryan ("simpler is better"): a theme that is only the words' first words ("OK" over
+    /// "OK.", "Add what I'll need…" over the whole line) said them twice; such a card has no
+    /// title line (the band, which must have one, names the type).
+    private var echoes: Bool {
+        guard model.headerStyle != .type, !capture.failed else { return false }
+        return Self.echoes(capture.theme, capture.text)
+    }
+
+    static func echoes(_ theme: String, _ words: String) -> Bool {
+        func bare(_ s: String) -> String {
+            var t = s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            while let last = t.last, "…。.!?！？,，;；:：".contains(last) { t.removeLast() }
+            return t.trimmingCharacters(in: .whitespaces)
+        }
+        let t = bare(theme)
+        return !t.isEmpty && bare(words).hasPrefix(t)
     }
 }
 
@@ -307,7 +296,6 @@ struct CardBody: View {
     @Environment(CapturesModel.self) private var model
     @Environment(\.palette) private var palette
     let match: CaptureMatch
-    var lendTiles = false
 
     var body: some View {
         let c = match.capture
@@ -347,7 +335,7 @@ struct CardBody: View {
             }
             if preview {
                 Spacer(minLength: spacing.previewGap)
-                AttachmentStrip(captureID: c.id, attachments: c.attachments, lendTiles: lendTiles)
+                AttachmentStrip(captureID: c.id, attachments: c.attachments)
                     .frame(minHeight: 60, maxHeight: .infinity)
             }
         }
@@ -359,15 +347,12 @@ struct AttachmentStrip: View {
     @Environment(\.palette) private var palette
     let captureID: String
     let attachments: [Attachment]
-    var lendTiles = false
 
     var body: some View {
         HStack(spacing: 0) {
             ForEach(Array(attachments.enumerated()), id: \.element.index) { i, a in
                 if i > 0 { Rectangle().fill(palette.hairline).frame(width: 1) }
                 AttachmentTile(attachment: a, compact: true)
-                    .opacity(lendTiles && a.kind == .region ? 0 : 1)
-                    .anchorPreference(key: TileAnchorsKey.self, value: .bounds) { ["card/\(a.index)": $0] }
             }
         }
         .overlay(alignment: .top) { Rectangle().fill(palette.hairline).frame(height: 1) }

@@ -289,7 +289,10 @@ final class WorkbenchModel {
     /// whose Silent notch was chosen. Every flow's Silent notch rests the notch the same way.
     var restingFlow: NotchFlow = .voiceflow
     /// The microphone level while listening, 0…1. Simulated: Core's meter, the product's own.
-    var audioLevel: Float = 0
+    var audioLevel: Float = 0 { didSet { drawnLevel = audioLevel } }
+    /// Oct 21, perf: the same level, unobserved, for the waveform to read on its own frames
+    /// (`VoiceBarLevel`), so a new level doesn't lay the island out between them.
+    @ObservationIgnored var drawnLevel: Float = 0
     @ObservationIgnored private let meter = SimulatedAudioMeter()
     @ObservationIgnored private var metering: Task<Void, Never>?
     /// fn, press-to-toggle (Voiceflow), and fn⌃ (Dispatch Version 2). Started by the app once
@@ -552,6 +555,10 @@ final class WorkbenchModel {
     /// The agents at work: each task's place in its script, and one-off scripts (a sent request,
     /// an answer).
     @ObservationIgnored var panelSimulation: Task<Void, Never>?
+    /// Oct 21, perf: the island's windows are off the screen (at rest, IslandController), so the
+    /// agents' simulated progress moves on without animating: a spring in a window no one sees
+    /// laid the screen-sized island out ~10 times a second (~4% CPU at rest). Off in the Workbench.
+    @ObservationIgnored var islandOffScreen = false
     @ObservationIgnored var panelBeats: [String: Int] = [:]
     @ObservationIgnored var panelScripts: [String: [AgentBeat]] = [:]
 
@@ -693,12 +700,9 @@ final class WorkbenchModel {
     @ObservationIgnored let leftCommandKey = ModifierHoldMonitor.leftCommand()
     @ObservationIgnored let rightCommandKey = ModifierHoldMonitor.rightCommand()
     /// #4: how long the session has been listening, as the bar shows it (the panel's stages
-    /// start it near the end), and the pulse when the last minute begins.
+    /// start it near the end), and whether the last minute has begun.
     var recordingStart: Date?
     var inLastMinute = false
-    var lastMinutePulse = 0
-    /// The last minute's nudge: the bar a few points taller for a moment, on its own spring.
-    var lastMinuteNudge = false
     @ObservationIgnored var recordingLimitTask: Task<Void, Never>?
     /// #6: the pointer on the mock display (Split View's two apps take words from the one under
     /// it), and the demo's hand standing in for it.
@@ -714,9 +718,8 @@ final class WorkbenchModel {
     var v2Effort: String?
     var v2ModelSheet = false
     var feedbackModelStage: ModelStage = .closed
-    /// #15: names made from a new session's first request, and the ones still being made.
+    /// #15: names made from a new session's first request.
     var v2Titles: [String: String] = [:]
-    var v2Naming: Set<String> = []
     /// #24: what waits for a working session, and the sessions whose queue holds.
     var v2Queue: [String: [V2QueuedAsk]] = [:]
     var v2QueuePaused: Set<String> = []
@@ -822,7 +825,8 @@ final class WorkbenchModel {
         // Decided: rounded rectangles on the reference's motion. The other shapes and the
         // no-bounce motion stay in code for the comparison snapshots; nothing restores them.
         referentShape = .roundedRectangle
-        cardMotion = .reference
+        // Oct 21, Ryan: the cards on springs (the reference's curves and no bounce stay to compare).
+        cardMotion = .spring
         // Saved choices from the progress studies, now settled (docs/island/PROGRESS.md).
         for key in ["workbench.transcribeStyle", "workbench.undoStyle", "workbench.thinkingLabel",
                     "workbench.transcribeLine", "workbench.undoLine", "workbench.lineWeight"] {
@@ -898,6 +902,10 @@ final class WorkbenchModel {
         keys.onEscape = { [weak self] in self?.escape() ?? false }
         keys.onTabStep = { [weak self] step in self?.stepTab(step) ?? false }
         keys.onUndo = { [weak self] in self?.undoCancel() ?? false }
+        // Oct 21, Ryan: every spring in the palette turns into a short fade with Reduce Motion.
+        WorkbenchTokens.Spring.reduced = { [weak self] in
+            Thread.isMainThread ? MainActor.assumeIsolated { self?.reduceMotion ?? false } : false
+        }
     }
 
     /// What the fn key does, as in the product: one press listens, the next turns the voice
@@ -967,7 +975,7 @@ final class WorkbenchModel {
         let C = WorkbenchTokens.Chat.self
         let panel = state == .agentPanel || notchStateStorage == .agentPanel
         let v2 = state.dispatchV2 || notchStateStorage.dispatchV2
-        islandAnimation = reduceMotion ? .easeOut(duration: WorkbenchTokens.Motion.reduceMotionFade)
+        islandAnimation = reduceMotion ? WorkbenchTokens.Spring.fade
             // Dispatch Version 2: each of its moves on its own spring (WorkbenchTokens.V2).
             : v2 && !panel ? WorkbenchTokens.V2.spring(from: notchStateStorage, to: state)
             // The Agent panel opens on its own quick spring (from Choose chat, after Send, it

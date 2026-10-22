@@ -94,10 +94,18 @@ public final class PermissionWatcher {
     private var last: [Permission: Bool] = [:]
     public var onChange: ((Permission, Bool) -> Void)?
 
+    /// Oct 21, perf: the permissions polled. Each status read of the microphone or speech
+    /// recognition is a synchronous round trip to tccd on the main thread (~15–20 ms a second
+    /// between them, a dropped frame each second); the island only acts on Accessibility.
+    private var watched: [Permission] = [.accessibility, .microphone, .speechRecognition]
+
     public init() {}
 
-    public func start(interval: TimeInterval = 0.5) {
-        for p in Permission.allCases { last[p] = p.granted }
+    /// Oct 21, perf: `watching` narrows the poll to what the caller acts on.
+    public func start(interval: TimeInterval = 0.5,
+                      watching: [Permission] = [.accessibility, .microphone, .speechRecognition]) {
+        watched = watching
+        for p in watching { last[p] = p.granted }
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.poll() }
@@ -107,7 +115,7 @@ public final class PermissionWatcher {
     public func stop() { timer?.invalidate(); timer = nil }
 
     private func poll() {
-        for p in [Permission.accessibility, .microphone, .speechRecognition] {
+        for p in watched {
             let now = p.granted
             if last[p] != now {
                 last[p] = now

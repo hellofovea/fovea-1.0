@@ -217,7 +217,8 @@ package final class OnboardingCoordinator: OnboardingHost {
     /// full-screen app's Space): no glass, the layout and the words as they are.
     package func renderStage(to url: URL) {
         let screen = Screens.island ?? NSScreen.screens[0]
-        let view = RealStage(model: model)
+        // Oct 21, perf: `picture`: ImageRenderer can't draw the loops' own layers (RealStage).
+        let view = RealStage(model: model, picture: true)
             .foveaLanguage()
             .frame(width: screen.frame.width, height: screen.frame.height)
             .background(Color(white: 0.2))

@@ -134,7 +134,7 @@ enum FrontApp: Equatable {
 /// Dictation's two windows (Oct 9): the words go to the one under the pointer.
 enum DictationWindow: Equatable { case feedback, messages }
 
-enum MockAlert: Equatable { case microphone, reopen }
+enum MockAlert: Equatable { case microphone }
 
 /// One highlighter mark, in display points: a marker's strokes over words, or a ring round a file.
 /// Marks stay on the screen while the request lasts.
@@ -159,9 +159,9 @@ final class OnboardingModel {
     let options: Options
     /// Every wait is multiplied by this: the smoke run sets it near zero.
     var pace: Double
+    /// Oct 21, Ryan: Reduce Motion as Settings › Motion has it (Match the Mac, Reduce, Full), read
+    /// at the start and on each page (`readMotion`): things only fade (OT.Motion).
     var reduceMotion = false
-    /// Lines typed out letter by letter (Oct 9); off shows them whole, for comparison.
-    var typing = true
     var flow: Flow
     var keys = KeyMap.current
     var stepStarted = Date()
@@ -212,19 +212,19 @@ final class OnboardingModel {
         sound.cue(.tick)
         signInNote = nil
         cancelWait("emailLink")
-        animate(OT.Motion.content) { signInPhase = .waiting(provider) }
+        animate(OT.Motion.morph) { signInPhase = .waiting(provider) }
         after(OT.Timing.signInAnswer, "signIn") { [weak self] in self?.signedIn(provider) }
     }
 
     /// Cancel while Apple or Google has the person: the choices again, with a quiet line (FR-03).
     func cancelSignIn() {
         guard case .waiting(let provider) = signInPhase else {
-            if case .failed = signInPhase { animate(OT.Motion.content) { signInPhase = .choosing } }
+            if case .failed = signInPhase { animate(OT.Motion.morph) { signInPhase = .choosing } }
             return
         }
         cancelWait("signIn")
         sound.cue(.tick)
-        animate(OT.Motion.content) { signInPhase = .canceled(provider) }
+        animate(OT.Motion.morph) { signInPhase = .canceled(provider) }
     }
 
     /// Try Again, after it failed (FR-04).
@@ -245,7 +245,7 @@ final class OnboardingModel {
         sound.cue(.tick)
         signInNote = nil
         cancelWait("signIn")
-        animate(OT.Motion.content) { signInPhase = .checkEmail(email) }
+        animate(OT.Motion.morph) { signInPhase = .checkEmail(email) }
         startResendCountdown()
         after(OT.Timing.emailLinkOpened, "emailLink") { [weak self] in self?.signedIn(.email, email: email) }
     }
@@ -278,7 +278,7 @@ final class OnboardingModel {
         cancelWait("resend")
         resendLeft = 0
         signInNote = nil
-        animate(OT.Motion.content) { signInPhase = .choosing }
+        animate(OT.Motion.morph) { signInPhase = .choosing }
     }
 
     /// Back on a sign-up page that's done: start it again with another way.
@@ -287,7 +287,7 @@ final class OnboardingModel {
         flow.account = nil
         flow.retry()
         signInNote = nil
-        animate(OT.Motion.content) { signInPhase = .choosing }
+        animate(OT.Motion.morph) { signInPhase = .choosing }
     }
 
     /// Signed up: kept on this Mac for Settings › Account, then on to hello by itself.
@@ -302,7 +302,7 @@ final class OnboardingModel {
         host?.prefs.accountProvider = provider
         // Signed up here: signed in, wherever Fovea shows it (a fresh run starts signed out, Oct 18).
         host?.prefs.signedOut = false
-        animate(OT.Motion.content) { signInPhase = .signedIn(provider) }
+        animate(OT.Motion.morph) { signInPhase = .signedIn(provider) }
         beat(.signedIn)
     }
 
@@ -316,7 +316,7 @@ final class OnboardingModel {
             typedEmail = email
             startResendCountdown(from: OT.Timing.stagedResendLeft)
         }
-        animate(OT.Motion.content) { signInPhase = phase }
+        animate(OT.Motion.morph) { signInPhase = phase }
     }
 
     /// Something@something.something, with no spaces.
@@ -337,7 +337,6 @@ final class OnboardingModel {
     /// The highlighter's marks, and the strokes being drawn.
     var marks: [HighlightMark] = []
     var markDraft: [CGRect]?
-    var flash = false
     var request: PracticeRequest?
     /// Everything sent so far, newest last; the board lists them.
     var sessions: [PracticeSession] = []
@@ -366,7 +365,6 @@ final class OnboardingModel {
     var partFrames: [String: CGRect] = [:]
     var fileFrames: [String: CGRect] = [:]
     var tabFrames: [PracticeTab: CGRect] = [:]
-    var settingsListFrame: CGRect = .zero
 
     /// Every tab's page has loaded once.
     var pageReady: Bool { PracticeTab.allCases.allSatisfy { pageLayouts[$0] != nil } }
@@ -377,8 +375,6 @@ final class OnboardingModel {
     var inList: Set<Permission> = []
     var switchedOn: Set<Permission> = []
     var alert: MockAlert?
-    /// The tile being dragged from the notch toward the list, in display points.
-    var tileDrag: CGPoint?
 
     // MARK: Agents
 
@@ -416,7 +412,7 @@ final class OnboardingModel {
     func sendReply() {
         guard canSendReply else { return }
         sound.cue(.tick)
-        animate(OT.Motion.content) {
+        animate(OT.Motion.morph) {
             sentReply = replyText.trimmingCharacters(in: .whitespacesAndNewlines)
             if sentReply?.isEmpty == true { sentReply = nil }
             sentReplyTaken += replyTaken
@@ -427,7 +423,7 @@ final class OnboardingModel {
 
     /// A picture taken while talking, taken off again (its ✕, or Delete).
     func removeTaken(_ id: UUID, from window: DictationWindow) {
-        animate(OT.Motion.content) {
+        animate(OT.Motion.morph) {
             switch window {
             case .feedback: feedbackTaken.removeAll { $0.id == id }
             case .messages: replyTaken.removeAll { $0.id == id }
@@ -505,7 +501,6 @@ final class OnboardingModel {
     init(options: Options) {
         self.options = options
         pace = options.smoke ? 0.02 : (options.pace ?? 1)
-        typing = !options.noTyping
         var flow = Flow(start: options.step ?? .name)
         if let step = options.step { flow.jump(to: step) }
         flow.language = Language.preferred(Locale.preferredLanguages)
@@ -571,6 +566,7 @@ final class OnboardingModel {
         // A practice run again starts at its task: the agent's sign-in is checked here, not on the
         // agents page (Oct 15 review, OB-03.1).
         if practiceRun != nil { checkAgentSignIn() }
+        readMotion()
         // No opening moment (Oct 9): the run opens on hello.
         enter(flow.step)
     }
@@ -776,7 +772,7 @@ final class OnboardingModel {
     /// run changes.
     func endPractice() {
         sound.stopAmbient()
-        animate(OT.Motion.slow) { finished = true }
+        animate(OT.Motion.end) { finished = true }
         rest()
         host?.finished()
     }
@@ -819,16 +815,17 @@ final class OnboardingModel {
         // Oct 15 review, ST-03.1: the keys as recorded in Settings › Shortcuts, read again on each
         // page (they can change while the tour is put away).
         if let prefs = host?.prefs { keys = KeyMap(prefs: prefs) }
+        readMotion()
         // The notch pulled down for Make it yours goes back up when it's done.
         if step != .makeItYours { host?.previewAura(false) }
         stopMicTest()
         stepStarted = Date()
         skipShown = step.skip == .now
         if case .after(let seconds) = step.skip {
-            after(seconds, "skip") { [weak self] in self?.animate(OT.Motion.calm) { self?.skipShown = true } }
+            after(seconds, "skip") { [weak self] in self?.animate(OT.Motion.content) { self?.skipShown = true } }
         }
         resetPractice()
-        animate(OT.Motion.calm) {
+        animate(OT.Motion.content) {
             if step != .permissions { settingsPane = nil }
             alert = nil
             practiceScreen = .for(step)
@@ -859,7 +856,7 @@ final class OnboardingModel {
         case .permissions:
             // A button for each list (Oct 9: no drag): Fovea asks, then opens the list.
             let pane: Permission = flow.allowed.contains(.accessibility) ? .screenRecording : .accessibility
-            animate(OT.Motion.calm) { settingsPane = pane }
+            animate(OT.Motion.content) { settingsPane = pane }
         case .microphone:
             // Come back to with Back, heard already: it shows so, and Continue goes on (Oct 17, Ryan).
             micPhase = flow.isComplete ? .heard : .waiting
@@ -897,7 +894,6 @@ final class OnboardingModel {
         markDraft = nil
         transcribeProgress = 0
         if !playing { ghost = nil }
-        tileDrag = nil
         request = nil
         if step.stage != .pointAndSay {
             openSessionID = nil
@@ -964,7 +960,7 @@ final class OnboardingModel {
     /// around; quit from the menu, as Fovea itself quits only from the menu bar.
     func finish() {
         sound.stopAmbient()
-        animate(OT.Motion.slow) { finished = true }
+        animate(OT.Motion.end) { finished = true }
         rest()
         if !flow.agentWishes.isEmpty, !options.harness {
             FeedbackStore.append("Agents wanted next: \(flow.agentWishes.joined(separator: ", "))")
@@ -1087,10 +1083,8 @@ final class OnboardingModel {
         hint(text)
     }
 
-    /// How long a line stays: long enough to be typed, then read (Oct 9).
-    func holdTime(for text: String) -> Double {
-        (typing ? Typewriter.duration(of: text) : 0) + OT.Typing.readAfter
-    }
+    /// How long a line stays: long enough to read (OT.Reading).
+    func holdTime(for text: String) -> Double { OT.Reading.hold(for: text) }
 
     /// Said on the board while a request is open, so the voice bar stays as it is.
     func hint(_ text: String) {
@@ -1118,13 +1112,13 @@ final class OnboardingModel {
     // Each choice goes to the prefs the island and the window read, so the real notch shows it as
     // it's made, and Home and Settings start with it.
     func setAccent(_ accent: AccentName) {
-        animate(OT.Motion.calm) { flow.personal.accent = accent }
+        animate(OT.Motion.select) { flow.personal.accent = accent }
         host?.prefs.accent = accent
         // The accent shows on the progress line at the foot of the page (Oct 10), not the notch.
         sound.cue(.tick)
     }
     func setAura(_ aura: AuraPalette) {
-        animate(OT.Motion.calm) { flow.personal.aura = aura }
+        animate(OT.Motion.select) { flow.personal.aura = aura }
         host?.prefs.glowPalette = aura
         showAura()
         sound.cue(.tick)
@@ -1149,19 +1143,19 @@ final class OnboardingModel {
     /// The notch's look (Oct 9): the glass light or dark, its panels attached or floating, the
     /// room it takes. The board shows at the notch, so the choice is seen.
     func setNotchAppearance(_ a: NotchAppearance) {
-        animate(OT.Motion.calm) { notchAppearance = a }
+        animate(OT.Motion.select) { notchAppearance = a }
         host?.prefs.notchAppearance = a
         host?.previewPanel()
         sound.cue(.tick)
     }
     func setNotchPanels(_ p: NativePanels) {
-        animate(OT.Motion.calm) { notchPanels = p }
+        animate(OT.Motion.select) { notchPanels = p }
         host?.prefs.panels = p
         host?.previewPanel()
         sound.cue(.tick)
     }
     func setNotchDensity(_ d: NotchDensity) {
-        animate(OT.Motion.calm) { notchDensity = d }
+        animate(OT.Motion.select) { notchDensity = d }
         host?.prefs.density = d
         host?.previewPanel()
         sound.cue(.tick)
@@ -1169,12 +1163,6 @@ final class OnboardingModel {
 
     /// The accent as a color: Multicolor is the Mac's own accent.
     var accentColor: Color { AccentPalette.color(personal.accent) }
-
-    var auraLook: VoiceGlowLook {
-        // Oct 18, Ryan: a palette is drawn at its own colors; only Customize at the person's hue and drift.
-        (GlowChoice(rawValue: personal.aura.rawValue) ?? .colorful).look(hue: personal.drawnHue, spread: host?.prefs.drawnGlowSpread ?? 120,
-                                                                         driftAmount: personal.drawnDrift)
-    }
 
     // MARK: Hello
 
@@ -1198,7 +1186,7 @@ final class OnboardingModel {
     }
 
     private func applyLanguages(_ next: LanguageChoice) {
-        animate(OT.Motion.calm) {
+        animate(OT.Motion.select) {
             languageChoice = next
             flow.language = next.primary
         }
@@ -1223,7 +1211,7 @@ final class OnboardingModel {
     func askFor(_ permission: Permission) {
         sound.cue(.tick)
         if permission == .screenRecording { host?.keepResumePoint() }
-        animate(OT.Motion.content) {
+        animate(OT.Motion.morph) {
             _ = asked.insert(permission)
             settingsPane = permission
         }
@@ -1231,19 +1219,19 @@ final class OnboardingModel {
     }
 
     func setOpenAtLogin(_ on: Bool) {
-        animate(OT.Motion.calm) { openAtLogin = on }
+        animate(OT.Motion.select) { openAtLogin = on }
         host?.prefs.openAtLogin = on
     }
 
     /// "Clear my screen" (Oct 9): the other apps hide for the tour, and exactly those come back.
     func clearScreen() {
         host?.clearScreen()
-        animate(OT.Motion.calm) { screenCleared = host?.screenCleared ?? true }
+        animate(OT.Motion.morph) { screenCleared = host?.screenCleared ?? true }
         sound.cue(.tick)
     }
 
     func openLanguageMore() {
-        animate(OT.Motion.calm) { languageMoreOpen = true }
+        animate(OT.Motion.morph) { languageMoreOpen = true }
     }
 
     // Oct 17, Ryan (FR-06): more than one language under More…. Return adds the one typed as a
@@ -1255,14 +1243,14 @@ final class OnboardingModel {
     func addLanguageRequest(_ text: String) -> Bool {
         var next = flow
         guard next.requestLanguage(text) else { return false }
-        animate(OT.Motion.content) { flow = next }
+        animate(OT.Motion.morph) { flow = next }
         host?.prefs.requestedLanguages = flow.languageRequests
         sound.cue(.tick)
         return true
     }
 
     func removeLanguageRequest(_ language: String) {
-        animate(OT.Motion.content) { flow.dropLanguageRequest(language) }
+        animate(OT.Motion.morph) { flow.dropLanguageRequest(language) }
         host?.prefs.requestedLanguages = flow.languageRequests
         sound.cue(.tick)
     }

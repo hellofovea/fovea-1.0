@@ -66,8 +66,6 @@ enum OT {
 
         // The board's glass bar: near the bottom, above the Dock.
         static let guideBottom: CGFloat = 84
-        /// The whole keyboard, when a key is pressed on a step that teaches none: bottom right.
-        static let keyboardBottom: CGFloat = 272
         static let guideTrailing: CGFloat = 28
         /// A file opened on the desktop.
         static let previewSize = CGSize(width: 300, height: 250)
@@ -101,7 +99,6 @@ enum OT {
             spec.expandedBottomRadius = 24
             return spec
         }()
-        static let surface = Color.black
         static let restTopRadius: CGFloat = 6
         static let restBottomRadius: CGFloat = 14
         static let openTopRadius: CGFloat = 19
@@ -124,7 +121,6 @@ enum OT {
         static let referentAspect: CGFloat = 1.43
         static let referentRadius: CGFloat = 6
         static let referentLayerOffset: CGFloat = 5
-        static let referentRotation: [Double] = [0, 4, -3]
 
         static let dragIcon: CGFloat = 22
         static let dragIconGap: CGFloat = 8
@@ -161,8 +157,6 @@ enum OT {
         /// Fovea's accent (macOS blue): the highlighter, the caret, the aura.
         static let accent = Color(.sRGB, red: 0.0, green: 0.48, blue: 1.0)
 
-        /// Calm: the desktop dims a little behind a guide that wants the eye.
-        static let dim = Color.black.opacity(0.22)
         static let bezel = Color(white: 0.06)
         static let stage = Color(white: 0.93)
         static let stageDark = Color(white: 0.12)
@@ -202,7 +196,6 @@ enum OT {
         static let passageLine = Color.gray.opacity(0.55)
 
         // The guide
-        static let guideShadow = Color.black.opacity(0.18)
         static let guideButtonText = Color.white
         static let keyCap = Color.white
         static let keyCapLitText = Color.white
@@ -215,7 +208,6 @@ enum OT {
         static let knobShadow = Color.black.opacity(0.3)
 
         // The stage
-        static let flash = Color.black
         /// Clear, but still takes the pointer.
         static let hitLayer = Color.white.opacity(0.001)
         static let ghostArrow = Color.black
@@ -236,12 +228,8 @@ enum OT {
 
         // System Settings and its alerts
         static let systemEdge = Color.black.opacity(0.15)
-        static let systemShadow = Color.black.opacity(0.3)
         static let systemChosenText = Color.white
         static let alertEdge = Color.black.opacity(0.1)
-        static let tileLifted = Color.white
-        static let tileLiftedText = Color.black
-        static let tileShadow = Color.black.opacity(0.3)
 
         // The whole keyboard (Oct 8)
         static let keyboardPlate = Color(.sRGB, red: 0.93, green: 0.93, blue: 0.92)
@@ -250,10 +238,11 @@ enum OT {
 
         // The board (Oct 9: Stage only): the scrim and the glass
         static let stageScrim = Color.black.opacity(0.58)
-        static let stageGlass = Color(white: 0.08).opacity(0.86)
+        /// Oct 21, Ryan ("simpler is better"): the bar is this one fill (it lay over a material).
+        static let stageGlass = Color(white: 0.08).opacity(0.92)
         /// The same, on a light Mac (Oct 9: the pages follow the system, then the person's pick).
         static let stageScrimLight = Color.white.opacity(0.62)
-        static let stageGlassLight = Color(white: 0.98).opacity(0.86)
+        static let stageGlassLight = Color(white: 0.98).opacity(0.92)
         static let previewPaper = Color.white
         static let chatInitial = Color.white
     }
@@ -292,50 +281,117 @@ enum OT {
         static let panelTitle = Font.system(size: 12, weight: .semibold)
     }
 
-    // MARK: Motion: the Island's own springs; the guide and the stage move slowly
+    // MARK: Motion (Oct 21, Ryan: the right animation for what it's doing)
 
+    /// Every value the first run moves by, each with why (docs/motion/SPRINGS.md › First run). Ryan,
+    /// Oct 21: "don't always use springs". Nothing in the first run is dragged, thrown or alive (the
+    /// island it drives is the island's own), so it's all curves: the strong ease-out for what
+    /// enters or leaves, the strong ease-in-out for what moves or changes size on screen, `ease`
+    /// for a hover or a colour, linear for what keeps time. Nothing eases in, nothing grows from
+    /// nothing, every change starts from where things are (so a second click mid-way re-aims it),
+    /// and under Reduce Motion (Settings › Motion, or the Mac's) things only fade.
     enum Motion {
-        /// The voice bar: its smallest growth, quickest (WorkbenchTokens.Motion).
+        // The curves
+
+        /// Strong ease-out: answers at once, settles softly. For entering and leaving.
+        static func easeOut(_ duration: Double) -> Animation { .timingCurve(0.23, 1, 0.32, 1, duration: duration) }
+        /// Strong ease-in-out (cubic): for what's on screen already, moving or changing size.
+        static func easeInOut(_ duration: Double) -> Animation { .timingCurve(0.645, 0.045, 0.355, 1, duration: duration) }
+        /// CSS's `ease`: for a hover, or a colour.
+        static func ease(_ duration: Double) -> Animation { .timingCurve(0.25, 0.1, 0.25, 1, duration: duration) }
+
+        // Entering and leaving: strong ease-out, exits shorter
+
+        /// A page fading in, whole (Oct 21, Ryan ("simpler is better"): its parts rose in one by
+        /// one, blurred).
+        static let pageIn = easeOut(0.25)
+        /// The page before leaving: shorter, so the next isn't kept waiting.
+        static let pageOut = easeOut(0.15)
+        /// The glass bar fading in.
+        static let barIn = easeOut(0.2)
+        /// A part arriving within a page: a row or section opening, a chip, a file, a sent
+        /// bubble, a dot.
+        static let partIn = easeOut(0.22)
+        /// A practice window opening, or a file opened as Quick Look would.
+        static let windowIn = easeOut(0.25)
+        /// Content fading in, or replacing what was there a beat behind its new size.
+        static let content = easeOut(0.2)
+        /// Anything leaving that isn't a page: quicker than it came.
+        static let contentOut = easeOut(0.14)
+        /// The progress line filling as the run goes on.
+        static let progress = easeOut(0.3)
+        /// A button held gives to 0.97, and comes back the same way.
+        static let press = easeOut(0.14)
+
+        // Moving or changing size on screen: strong ease-in-out
+
+        /// The bar taking its new size between steps or as the keyboard joins; a page settling to
+        /// its new height as a section opens; rows and chips making room.
+        static let morph = easeInOut(0.3)
+        /// A choice taken: a segment's pill sliding over, a switch, a swatch, a palette, a tick.
+        static let select = easeInOut(0.2)
+
+        // A hover, a colour: ease
+
+        /// The window under the pointer (dictation) lighting as the pointer comes to it.
+        static let hover = ease(0.12)
+        /// The board going light or dark, the accent on the line, the line to say brightening.
+        static let recolor = ease(0.25)
+
+        // Ambient and rare
+
+        /// The desktop frosting behind a page's words (Oct 21, Ryan ("simpler is better"): it took
+        /// 0.6 s).
+        static let scrimIn = easeOut(0.3)
+        /// The dark lifting off the desktop when the doing starts (Oct 9, Ryan: "too fast" at
+        /// less). A reveal no one waits on: the bar fades in while it lifts.
+        static let stageLift: Animation = .easeInOut(duration: 1.6)
+        /// The desktop's practice files cleared at the end (0.8 s before Oct 21).
+        static let filesClear = easeOut(0.3)
+        /// The stage going at the end of the run, Home behind it (0.6 s before Oct 21).
+        static let end = easeOut(0.3)
+
+        // Keeping time: linear
+
+        /// The microphone's level follows the voice as it is, nothing to lag behind.
+        static let meter: Animation = .linear(duration: 0.08)
+
+        /// Reduce Motion: nothing travels or grows; things only cross-fade, quickly.
+        static let reduceMotion = easeOut(0.15)
+
+        // How far, how late, how big
+
+        /// A part opening in place (Customize's sliders, the primary language) starts this far
+        /// above where it settles: never its whole height.
+        static let partTravel: CGFloat = 6
+        /// What replaces something in place comes in a beat behind its new size.
+        static let contentBehind: Double = 0.06
+        /// A dot or a badge this small (a file the agent changed, ×2 on a key, the microphone's
+        /// tick) comes in from this size: from 0.97 it wouldn't show, from nothing it pops.
+        static let dotFrom: CGFloat = 0.6
+        /// Held: the button's size, or under Reduce Motion its strength instead.
+        static let pressScale: CGFloat = 0.97
+        // Oct 21 motion review: the same dim as the island's controls and the window's (0.75), on
+        // the Reduce Motion fade; it was 0.7, at once.
+        static let pressDim: Double = 0.75
+        /// Disabled, as a plain button is drawn.
+        static let disabled: Double = 0.5
+
+        // Loops: ambient, ease-in-out; none under Reduce Motion (they hold still, lit)
+
+        /// Running, never a spinner: the dot breathes.
+        static let breathe: Animation = .easeInOut(duration: breatheSeconds).repeatForever(autoreverses: true)
+        /// Oct 21, perf: each loop's one way, for the same loop on Core Animation (`BreathingLayer`).
+        static let breatheSeconds: Double = 1.1
+        /// The caret blinks, Reduce Motion or not, as the Mac's does.
+        static let caretBlink: Animation = .easeInOut(duration: caretBlinkSeconds).repeatForever(autoreverses: true)
+        static let caretBlinkSeconds: Double = 0.55
+
+        // The island's, as state here: the real island draws and moves itself (FoveaIsland)
+
         static let barOpen: Animation = .interpolatingSpring(duration: 0.18, bounce: 0)
-        static let barClose: Animation = .interpolatingSpring(duration: 0.15, bounce: 0)
-        /// Larger surfaces: a card, the review, the board.
         static let open: Animation = .interpolatingSpring(duration: 0.3, bounce: 0)
         static let close: Animation = .interpolatingSpring(duration: 0.22, bounce: 0)
-        /// Content a beat behind its shape: blur 4→0, scale 0.97→1.
-        static let content: Animation = .timingCurve(0.23, 1, 0.32, 1, duration: 0.2)
-        static let contentBlur: CGFloat = 4
-        static let contentScale: CGFloat = 0.97
-        /// Calm: the guide card, the dimming, the ghost pointer.
-        static let calm: Animation = .easeInOut(duration: 0.6)
-        static let slow: Animation = .easeInOut(duration: 0.9)
-        /// Running, never a spinner: the dot breathes.
-        static let breathe: Animation = .easeInOut(duration: 1.1).repeatForever(autoreverses: true)
-        static let pointer: Animation = .easeInOut(duration: 0.7)
-        /// A key the step teaches breathes on the keyboard until it's pressed.
-        static let keyPulse: Animation = .easeInOut(duration: 0.9).repeatForever(autoreverses: true)
-        /// The boards trade places between steps.
-        static let board: Animation = .spring(duration: 0.45, bounce: 0)
-        static let keyPress: Animation? = nil
-        static let reduceMotion: Animation = .easeOut(duration: 0.12)
-        /// The referent's flight into the stack.
-        static let referentIn: Animation = .interpolatingSpring(duration: 0.45, bounce: 0)
-        /// Reading pages (Oct 9): the page before rises away, and the next rises in a part at a
-        /// time, from a little below, clearing a blur.
-        static let pageOut: Animation = .easeIn(duration: 0.45)
-        static let pageIn: Animation = .timingCurve(0.2, 0.9, 0.3, 1, duration: 0.7)
-        static let pageInDelay: Double = 0.35
-        static let stagger: Double = 0.1
-        static let pageBlur: CGFloat = 6
-        static let pageRise: CGFloat = 18
-        /// The dark lifting off the desktop after Make it yours: slow (Oct 9: "too fast").
-        static let stageLift: Animation = .easeInOut(duration: 1.6)
-        /// The glass bar comes up once the dark has mostly gone.
-        static let barIn: Animation = .easeOut(duration: 0.7).delay(0.7)
-        /// The drop zone breathing in the accent.
-        static let dropZone: Animation = .easeInOut(duration: 1.0).repeatForever(autoreverses: true)
-        static let caretBlink: Animation = .easeInOut(duration: 0.55).repeatForever(autoreverses: true)
-        /// A highlighter mark appearing (WorkbenchTokens.Feedback.markFade).
-        static let markFade: Animation = .easeOut(duration: 0.18)
     }
 
     // MARK: The whole keyboard (Oct 8), in key units
@@ -350,8 +406,6 @@ enum OT {
         static let labelSize: CGFloat = 0.36
         static let symbolSize: CGFloat = 0.42
         static let wordSize: CGFloat = 0.24
-        /// The line above the keys.
-        static let captionSize: CGFloat = 0.5
         /// Words under ⌃ ⌥ ⌘ only when keys are this big.
         static let wordsFrom: CGFloat = 24
         /// It stays up this long after the keys are let go.
@@ -361,12 +415,21 @@ enum OT {
         static let badgeHeight: CGFloat = 0.6
     }
 
-    // MARK: Typed out, letter by letter (Oct 9)
+    // MARK: Read, not typed (Oct 21, Ryan ("simpler is better"): lines show whole; they were
+    // typed out letter by letter, Oct 9)
 
-    enum Typing {
-        static let pace = Typewriter.Pace(perSecond: 45, sentencePause: 0.3, clausePause: 0.1, longest: 2.2)
-        /// A line held in the notch stays this long after it's typed.
-        static let readAfter: Double = 1.6
+    enum Reading {
+        /// A hint on the bar stays this long, plus its reading time…
+        static let base: Double = 1.4
+        /// …about 20 letters a second; a Chinese character counts as two…
+        static let perCharacter: Double = 0.05
+        /// …and never longer than this.
+        static let longest: Double = 6
+
+        static func hold(for text: String) -> Double {
+            let weight = text.unicodeScalars.reduce(0.0) { $0 + ($1.properties.isIdeographic ? 2 : 1) }
+            return min(longest, base + weight * perCharacter)
+        }
     }
 
     // MARK: The blog, a real local site (Oct 9)
@@ -505,7 +568,6 @@ enum OT {
         /// What Fovea remembers' four points (Oct 15 review, OB-01.6).
         static let memoryWidth: CGFloat = 430
         static let memoryGap: CGFloat = 18
-        static let memoryIcon: CGFloat = 28
         static let memoryTitle = Font.system(size: 14, weight: .semibold)
         static let memoryDetail = Font.system(size: 13)
     }
@@ -526,9 +588,6 @@ enum OT {
         static let selectionOpacity: Double = 0.12
         static let selectionEdgeOpacity: Double = 0.9
         static let selectionEdgeWidth: CGFloat = 1.5
-        /// The screen's flash: a picture of it taken, or Fovea reopening.
-        static let captureFlash: Double = 0.35
-        static let reopenFlash: Double = 0.85
     }
 
     /// The highlighter's pointer: the system's arrow, filled with the accent (AccentArrow).
@@ -585,7 +644,6 @@ enum OT {
         static let followAnswerAfter: Double = 1.8
         static let captionHold: Double = 2.4
         static let ghostBeat: Double = 0.9
-        static let reopenPause: Double = 1.2
         static let micTest: Double = 2.2
         static let skipAfterDefault: Double = 12
         /// A permission allowed: the step moves on by itself after this.
@@ -597,10 +655,6 @@ enum OT {
         static let homeCaption: Double = 1.2
         /// The first list allowed: System Settings turns to the second.
         static let nextList: Double = 0.9
-        /// Screen Recording switched on: macOS asks to reopen after this.
-        static let reopenAlert: Double = 0.5
-        /// The whole screen taken: the flash.
-        static let flash: Double = 0.12
         /// A picture of the screen is drawn this long after it's taken.
         static let captureAfter: Double = 0.03
         static let tapLength: Double = 0.3

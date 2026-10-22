@@ -145,9 +145,8 @@ enum T {
     /// Aside's shading, measured from the CSS of heyaside.com (whose app views are rebuilt at the
     /// app's own point sizes) and checked against the app on macOS 27. Every neutral is the ink
     /// at an opacity. A surface is told from what it sits on by a 0.5 pt edge just inside it and
-    /// a soft shadow in two layers (a tight one where it touches, a wide one around it), never by
-    /// a gray box; in dark, a rim of light along its top edge as well. What floats over content
-    /// is glass.
+    /// one soft shadow (`Shading` draws the wide layer where a level has one), never by a gray
+    /// box. What floats over content is glass.
     enum Shade {
         /// The ink, at: a segmented control's track 6 %, a chip's or a search field's fill 7 %,
         /// a chosen row 9 %, the same fill hovered 10 %, a surface's own edge 8 %, a separator
@@ -188,19 +187,81 @@ enum T {
         static let detailBody: CGFloat = 15
     }
 
+    /// Oct 21, Ryan: "research what spring animation is, then apply it ... use Emil Kowalski's
+    /// skills to refine the animations", and then: "for other places, don't always use spring
+    /// animations; use the correct animations." Nothing in the window is dragged, thrown or alive
+    /// the way the island is, so it moves on curves (Emil Kowalski's): a strong ease-out for what
+    /// enters or leaves, a strong ease-in-out for what moves or changes shape on screen, `ease` for
+    /// a hover, linear for time passing. Every value per transition: docs/motion/SPRINGS.md › Window.
     enum Motion {
-        /// The card growing into the expanded card, and back. Springs with no bounce; the way back
-        /// a little quicker than the way out (Emil Kowalski: exits shorter than entries), both
-        /// under 300 ms of travel.
-        static let open = 0.32, close = 0.26
-        static let swap = 0.22, page = 0.24, hover = 0.12, press = 0.08
-        /// A segmented control's pill, sliding to the segment pressed: quick, as a control
-        /// answers, not as a page moves.
-        static let pill = 0.12
-        static let content = 0.10, reduced = 0.15
-        static let contentBlur: CGFloat = 4
-        /// How far a page slides as it fades (forward: from the right).
-        static let pageShift: CGFloat = 10
+        /// A cubic Bézier timing curve and how long it runs.
+        struct Timing: Equatable {
+            let curve: (Double, Double, Double, Double)
+            let duration: Double
+            init(_ curve: (Double, Double, Double, Double), _ duration: Double) { self.curve = curve; self.duration = duration }
+            static func == (a: Timing, b: Timing) -> Bool {
+                a.curve == b.curve && a.duration == b.duration
+            }
+        }
+
+        // MARK: The curves
+
+        /// Emil Kowalski's strong ease-out: starts fast, so what arrives feels like an answer.
+        static let easeOut = (0.23, 1.0, 0.32, 1.0)
+        /// Ease-in-out cubic: for something already on screen that moves or changes shape.
+        static let easeInOut = (0.645, 0.045, 0.355, 1.0)
+        /// CSS's `ease`: a hover's color or shadow.
+        static let ease = (0.25, 0.1, 0.25, 1.0)
+
+        // MARK: Moving or changing shape on screen (ease-in-out)
+
+        /// Cards reflowing (one deleted, one back with Undo), a block changing height, the rows
+        /// under a new row making room: a short move.
+        static let layout = Timing(easeInOut, 0.28)
+        /// A card growing into its expanded card from its own frame: the window's one large move.
+        /// Oct 21, Ryan ("simpler is better"): 0.3 s, the frame and the grey only (it was 0.4 s
+        /// with blurs, a scale, flying pictures and a growing shadow on top).
+        static let zoomOpen = Timing(easeInOut, 0.3)
+        /// The expanded card going home into its card: the same path, shorter (exits are).
+        static let zoomClose = Timing(easeInOut, 0.25)
+        /// A selection pill sliding to the segment pressed (the kinds, the years, the panes).
+        static let select = Timing(easeInOut, 0.2)
+
+        // MARK: Arriving and leaving (ease-out)
+
+        /// Content arriving (a banner, a row) and leaving, quicker.
+        static let fadeIn = Timing(easeOut, 0.2), fadeOut = Timing(easeOut, 0.14)
+        /// The search field opening out of its icon, its words with it, and folding back.
+        static let searchOpen = Timing(easeOut, 0.2), searchClose = Timing(easeOut, 0.15)
+        /// A toast fading in at the window's foot, and away (Oct 21, Ryan: it rose out of a blur).
+        static let toastIn = Timing(easeOut, 0.2), toastOut = Timing(easeOut, 0.15)
+
+        // MARK: Hover
+
+        /// A hover's color or fill; nothing moves.
+        static let hover = Timing(ease, 0.12)
+
+        // MARK: Sizes and moments
+
+        /// Oct 21, Ryan: Copy's checkmark stays this long, then turns back into Copy.
+        static let copiedHold = 1.2
+        /// Oct 21, Ryan: Delete's checkmark shows this long before the card folds away: long
+        /// enough to be seen, short enough not to feel like a wait.
+        static let deleteBeat = 0.32
+        /// A calibration dot filling: time passing, so linear.
+        static let calibrationHold = 0.9
+        /// The avatar's popover (the Mac's own, from the avatar) waits this long under the pointer
+        /// before it opens, so passing over it doesn't open it, and lingers this long after.
+        static let popoverWait = 0.4, popoverLinger = 0.15
+        /// Reduce Motion (Appearance › Motion, or the Mac's): every change an opacity fade this
+        /// long on the ease-out, nothing travelling, scaling or bouncing.
+        static let reduced = 0.15
+        /// On the way home the expanded card's grey has gone by this share of the zoom's time, and
+        /// its own content by this one, each on the ease-out from the first frame, so a close
+        /// answers at once and the window never sits in grey while the card lands.
+        static let dimLeaves = 0.6, contentLeaves = 0.6
+        /// ...and the card's own face comes back from this share of it.
+        static let faceReturns = 0.15
     }
 }
 
@@ -478,27 +539,41 @@ extension EnvironmentValues {
 }
 
 /// Every animation in the window, at the model's speed (the frame recorder slows it); Reduce
-/// Motion is a short fade.
+/// Motion is a short fade. Oct 21, Ryan: one role per kind of change, each a `T.Motion` timing.
 struct MotionSpec: Equatable {
     var speed: Double = 1
     var reduce = false
 
-    enum Role { case open, close, swap, page, content, hover, press }
+    enum Role {
+        /// Moving or changing shape on screen: ease-in-out.
+        case layout, zoomOpen, zoomClose, select
+        /// Arriving and leaving: ease-out.
+        case fadeIn, fadeOut, searchOpen, searchClose, toastIn, toastOut
+        /// A hover's color: `ease`.
+        case hover
+    }
+
+    static func timing(_ role: Role) -> T.Motion.Timing {
+        switch role {
+        case .layout: return T.Motion.layout
+        case .zoomOpen: return T.Motion.zoomOpen
+        case .zoomClose: return T.Motion.zoomClose
+        case .select: return T.Motion.select
+        case .searchOpen: return T.Motion.searchOpen
+        case .searchClose: return T.Motion.searchClose
+        case .fadeIn: return T.Motion.fadeIn
+        case .fadeOut: return T.Motion.fadeOut
+        case .toastIn: return T.Motion.toastIn
+        case .toastOut: return T.Motion.toastOut
+        case .hover: return T.Motion.hover
+        }
+    }
 
     func animation(_ role: Role) -> Animation {
-        if reduce { return .easeOut(duration: T.Motion.reduced).speed(speed) }
-        let base: Animation
-        switch role {
-        case .open: base = .interpolatingSpring(duration: T.Motion.open, bounce: 0)
-        case .close: base = .interpolatingSpring(duration: T.Motion.close, bounce: 0)
-        case .swap: base = .interpolatingSpring(duration: T.Motion.swap, bounce: 0)
-        case .page: base = .interpolatingSpring(duration: T.Motion.page, bounce: 0)
-        // Emil Kowalski's ease-out (0.23, 1, 0.32, 1): quick to start, soft to land.
-        case .content: base = .timingCurve(0.23, 1, 0.32, 1, duration: T.Motion.content)
-        case .hover: base = .easeOut(duration: T.Motion.hover)
-        case .press: base = .easeOut(duration: T.Motion.press)
-        }
-        return base.speed(speed)
+        if reduce { return .timingCurve(T.Motion.easeOut.0, T.Motion.easeOut.1, T.Motion.easeOut.2, T.Motion.easeOut.3,
+                                        duration: T.Motion.reduced).speed(speed) }
+        let t = Self.timing(role)
+        return Animation.timingCurve(t.curve.0, t.curve.1, t.curve.2, t.curve.3, duration: t.duration).speed(speed)
     }
 
     func seconds(_ s: Double) -> Double { s / max(speed, 0.01) }
@@ -522,6 +597,27 @@ enum Curve {
                width: lerp(a.width, b.width, t), height: lerp(a.height, b.height, t))
     }
 
+    /// A cubic Bézier timing curve's progress at `x`, the fraction of its time gone.
+    static func bezier(_ c: (Double, Double, Double, Double), _ x: Double) -> Double {
+        func at(_ t: Double, _ p1: Double, _ p2: Double) -> Double { 3 * (1 - t) * (1 - t) * t * p1 + 3 * (1 - t) * t * t * p2 + t * t * t }
+        var lo = 0.0, hi = 1.0
+        for _ in 0..<24 {
+            let m = (lo + hi) / 2
+            if at(m, c.0, c.2) < x { lo = m } else { hi = m }
+        }
+        return at((lo + hi) / 2, c.1, c.3)
+    }
+
+    /// The fraction of a timing curve's time gone when it has reached `progress` (its inverse).
+    static func timeGone(_ c: (Double, Double, Double, Double), at progress: Double) -> Double {
+        var lo = 0.0, hi = 1.0
+        for _ in 0..<24 {
+            let m = (lo + hi) / 2
+            if bezier(c, m) < progress { lo = m } else { hi = m }
+        }
+        return (lo + hi) / 2
+    }
+
     /// 0 before `a`, 1 after `b`, smooth between.
     static func step(_ a: CGFloat, _ b: CGFloat, _ x: CGFloat) -> CGFloat {
         let t = min(1, max(0, (x - a) / (b - a)))
@@ -529,76 +625,14 @@ enum Curve {
     }
 }
 
-// MARK: - Transitions (Animatable, so their curves apply at every step)
-
-/// Content arriving after its container: opacity, a 4 pt blur and 0.97 scale from the top
-/// (the notch's content entrance). Reduce Motion keeps only the fade.
-struct ContentReveal: ViewModifier, Animatable {
-    @Environment(\.motion) private var motion
-    var progress: CGFloat
-    var animatableData: CGFloat {
-        get { progress }
-        set { progress = newValue }
-    }
-    func body(content: Content) -> some View {
-        let travel = motion.reduce ? 0 : 1 - progress
-        content
-            .opacity(progress)
-            .blur(radius: travel * T.Motion.contentBlur)
-            .scaleEffect(1 - 0.03 * travel, anchor: .top)
-    }
-}
-
-/// A block swapped for another in place: the old one gone by 40% of the way, the new one from
-/// 50%, so the two are never read together.
-struct BlockFade: ViewModifier, Animatable {
-    var progress: CGFloat
-    let entering: Bool
-    var animatableData: CGFloat {
-        get { progress }
-        set { progress = newValue }
-    }
-    func body(content: Content) -> some View {
-        content.opacity(Double(entering ? max(0, (progress - 0.5) / 0.5) : max(0, 1 - progress / 0.4)))
-    }
-}
-
-/// A page replacing another: the old one fades out quickly as it drifts back; the new one fades
-/// in from `shift` points ahead (forward: from the right; back: from the left).
-struct PageShift: ViewModifier, Animatable {
-    @Environment(\.motion) private var motion
-    var progress: CGFloat
-    let entering: Bool
-    let forward: Bool
-    var animatableData: CGFloat {
-        get { progress }
-        set { progress = newValue }
-    }
-    func body(content: Content) -> some View {
-        let sign: CGFloat = forward ? 1 : -1
-        let shift = motion.reduce ? 0 : T.Motion.pageShift
-        if entering {
-            let t = Curve.step(0.25, 1, progress)
-            content.opacity(Double(t)).offset(x: sign * shift * (1 - progress))
-        } else {
-            let t = Curve.step(0, 0.45, progress)
-            content.opacity(Double(1 - t)).offset(x: -sign * shift * 0.6 * progress)
-        }
-    }
-}
+// MARK: - Transitions
 
 extension AnyTransition {
-    static var reveal: AnyTransition {
-        .modifier(active: ContentReveal(progress: 0), identity: ContentReveal(progress: 1))
-    }
-    static var blockSwap: AnyTransition {
-        .asymmetric(insertion: .modifier(active: BlockFade(progress: 0, entering: true), identity: BlockFade(progress: 1, entering: true)),
-                    removal: .modifier(active: BlockFade(progress: 1, entering: false), identity: BlockFade(progress: 0, entering: false)))
-    }
-    static func page(forward: Bool) -> AnyTransition {
-        .asymmetric(insertion: .modifier(active: PageShift(progress: 0, entering: true, forward: forward),
-                                         identity: PageShift(progress: 1, entering: true, forward: forward)),
-                    removal: .modifier(active: PageShift(progress: 1, entering: false, forward: forward),
-                                       identity: PageShift(progress: 0, entering: false, forward: forward)))
+    /// Oct 21, Ryan: a row, a note or a line arriving fades in on the ease-out (`fadeIn`, 0.2 s)
+    /// and leaves quicker (`fadeOut`, 0.14 s), whatever moves the rows around it (`layout`).
+    static var arrive: AnyTransition {
+        let i = T.Motion.fadeIn, o = T.Motion.fadeOut
+        return .asymmetric(insertion: .opacity.animation(.timingCurve(i.curve.0, i.curve.1, i.curve.2, i.curve.3, duration: i.duration)),
+                           removal: .opacity.animation(.timingCurve(o.curve.0, o.curve.1, o.curve.2, o.curve.3, duration: o.duration)))
     }
 }

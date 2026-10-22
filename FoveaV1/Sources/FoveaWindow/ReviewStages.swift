@@ -102,7 +102,7 @@ extension HomeWindowController {
     /// Every staged state off: Home and Settings as they are.
     func resetReview() {
         let m = model
-        m.closeDetail()
+        m.closeDetail(animated: false)
         m.closeViewer()
         m.unstage()
         // A scroll asked for again must read as a change.

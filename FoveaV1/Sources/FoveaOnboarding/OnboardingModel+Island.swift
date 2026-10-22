@@ -11,6 +11,19 @@ import CapturesCore
 // into, and hands the two tasks to the agent on this Mac. Before, the prototype had its own island
 // and its own keys on a mock desktop (Prototypes/FoveaOnboarding).
 
+extension OnboardingModel {
+    /// Oct 21, Ryan: Reduce Motion as Settings › Motion says: as the Mac has it, always, or never.
+    func readMotion() {
+        let reduce: Bool
+        switch host?.prefs.motion ?? .system {
+        case .system: reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        case .reduce: reduce = true
+        case .full: reduce = false
+        }
+        if reduce != reduceMotion { reduceMotion = reduce }
+    }
+}
+
 /// What the first run asks of the rest of Fovea (OnboardingCoordinator does it).
 @MainActor
 protocol OnboardingHost: AnyObject {

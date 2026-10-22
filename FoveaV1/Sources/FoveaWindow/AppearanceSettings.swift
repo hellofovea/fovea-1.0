@@ -43,7 +43,7 @@ struct AppearancePane: View {
                 RowDivider()
                 SettingsRow("Motion", detail: motionLine) {
                     SettingsSegments(segments: MotionPreference.allCases.map { ($0, $0.title) }, selection: model.prefs.motion) { m in
-                        model.animate(.swap) { model.prefs.motion = m }
+                        model.animate(.fadeIn) { model.prefs.motion = m }
                     }
                 }
             }
@@ -143,7 +143,7 @@ private struct AccentDots: View {
             HStack(spacing: 10) {
                 ForEach(AccentChoice.allCases, id: \.self) { choice in
                     let on = choice == selection
-                    Button { withAnimation(motion.animation(.swap)) { selection = choice } } label: {
+                    Button { selection = choice } label: {
                         ZStack {
                             if let color = choice.color {
                                 Circle().fill(color)

@@ -7,6 +7,12 @@ import FoveaKit
 
 // The five things Fovea asks for, where each stands, and the System Settings page for each.
 
+/// Oct 21, perf: a permission's standing from one read (`Permission.standing`).
+public struct PermissionStanding: Equatable, Sendable {
+    public let granted: Bool
+    public let denied: Bool
+}
+
 public enum Permission: String, CaseIterable, Sendable {
     /// Device Control and Data Access on macOS 27 (Accessibility before): the keys in any app,
     /// typing the words where you are, reading what you highlight.
@@ -65,6 +71,63 @@ public enum Permission: String, CaseIterable, Sendable {
             return s == .denied || s == .restricted
         case .inputMonitoring:
             return IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeDenied
+        }
+    }
+
+    /// Oct 21, perf: where it stands, `granted` and `denied` together from one read of macOS's
+    /// record (each is a synchronous round trip to tccd, 1–2 ms, and the pages read both for every
+    /// row in their bodies: opening Getting Started or Voice & Capture took ~240 ms). Any thread.
+    public var standing: PermissionStanding {
+        switch self {
+        case .accessibility:
+            let on = AXIsProcessTrusted()
+            return PermissionStanding(granted: on, denied: !on)
+        case .screenRecording:
+            let on = CGPreflightScreenCaptureAccess()
+            return PermissionStanding(granted: on, denied: !on)
+        case .microphone:
+            let s = AVCaptureDevice.authorizationStatus(for: .audio)
+            return PermissionStanding(granted: s == .authorized, denied: s == .denied || s == .restricted)
+        case .speechRecognition:
+            let s = SFSpeechRecognizer.authorizationStatus()
+            return PermissionStanding(granted: s == .authorized, denied: s == .denied || s == .restricted)
+        case .inputMonitoring:
+            let a = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent)
+            return PermissionStanding(granted: a == kIOHIDAccessTypeGranted, denied: a == kIOHIDAccessTypeDenied)
+        }
+    }
+
+    /// Oct 21, perf: the last standing read on the main actor (`read(_:)`), so a page draws its
+    /// rows at once and reads macOS again only as it appears and as it polls.
+    @MainActor public static var lastStandings: [Permission: PermissionStanding] = [:]
+
+    /// Oct 21, perf: reads `permissions` now, on the main actor, and remembers them.
+    @MainActor public static func read(_ permissions: [Permission]) -> [Permission: PermissionStanding] {
+        var read: [Permission: PermissionStanding] = [:]
+        for p in permissions { read[p] = p.standing }
+        lastStandings.merge(read) { $1 }
+        return read
+    }
+
+    /// Oct 21, perf: what's remembered for `p`, or read now if it never was.
+    @MainActor public static func known(_ p: Permission) -> PermissionStanding {
+        lastStandings[p] ?? read([p])[p]!
+    }
+
+    /// Oct 21, perf: reads `permissions` off the main thread (a page's once-a-second poll), then
+    /// remembers them and hands them over on the main actor.
+    public static func readInBackground(_ permissions: [Permission],
+                                        then done: @escaping @MainActor @Sendable ([Permission: PermissionStanding]) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            var read: [Permission: PermissionStanding] = [:]
+            for p in permissions { read[p] = p.standing }
+            let result = read
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    lastStandings.merge(result) { $1 }
+                    done(result)
+                }
+            }
         }
     }
 

@@ -26,9 +26,10 @@ import FoveaKit
 ///   inset.
 /// - Every segment is as wide as the widest, as a segmented control's are (or as wide as its
 ///   words, where the row has to fit).
-/// - The pill answers the press itself (mouse down, as browser tabs do), on its own quick spring
-///   (`T.Motion.pill`, 0.12 s). What the choice changes follows once the pill has landed, so a
-///   heavy page swapping can't stall it mid-flight; a quicker second press wins.
+/// - The pill answers the press itself (mouse down, as browser tabs do), on the selection curve
+///   (`T.Motion.select`: ease-in-out cubic, 0.2 s), and the choice is made at once (Oct 21, Ryan,
+///   "simpler is better": it waited for the pill to land). Under Reduce Motion the pill doesn't
+///   travel: the chosen one fades in where it is.
 struct SlidingSegments<Value: Hashable>: View {
     @Environment(\.palette) private var palette
     @Environment(\.motion) private var motion
@@ -81,9 +82,7 @@ struct SlidingSegments<Value: Hashable>: View {
         .accessibilityElement(children: .contain)
     }
 
-    private var pillAnimation: Animation {
-        motion.reduce ? .easeOut(duration: T.Motion.reduced) : .interpolatingSpring(duration: motion.seconds(T.Motion.pill), bounce: 0)
-    }
+    private var pillAnimation: Animation { motion.animation(.select) }
 
     private func segment(_ i: Int) -> some View {
         let s = segments[i]
@@ -100,7 +99,12 @@ struct SlidingSegments<Value: Hashable>: View {
         .frame(height: height)
         .background {
             if on {
-                chosen.matchedGeometryEffect(id: "pill", in: ns)
+                // Oct 21, Ryan: Reduce Motion: opacity only, so the pill fades in place.
+                if motion.reduce {
+                    chosen.transition(.opacity)
+                } else {
+                    chosen.matchedGeometryEffect(id: "pill", in: ns)
+                }
             } else if hovered == i {
                 Capsule().fill(palette.ink(0.05))
             }
@@ -119,14 +123,11 @@ struct SlidingSegments<Value: Hashable>: View {
         .accessibilityAction { press(s.value) }
     }
 
-    /// The pill to the segment pressed, now; the choice itself once it has landed, unless
-    /// another press has moved it on since.
+    /// The pill to the segment pressed, and the choice, now.
     private func press(_ value: Value) {
         guard value != (shown ?? selection) else { return }
         withAnimation(pillAnimation) { shown = value }
-        DispatchQueue.main.asyncAfter(deadline: .now() + motion.seconds(T.Motion.pill)) {
-            if shown == value { choose(value) }
-        }
+        choose(value)
     }
 
     @ViewBuilder private var chosen: some View {
@@ -187,9 +188,9 @@ struct EqualWidths: Layout {
 // MARK: - Words in a pill
 
 /// A button with words, as a pill (Aside 2.0). Four kinds:
-/// - prominent: the one thing a page is for (Aside's Start recording). The ink, lit from above:
-///   a slight fall from top to bottom, a highlight along its top edge, three layered shadows
-///   that deepen under the pointer and close up when pressed.
+/// - prominent: the one thing a page is for, as the Mac's default button is: the accent, flat
+///   (Oct 21, Ryan, "simpler is better": it was the ink lit from above, with a gradient, a
+///   highlight and three shadows that deepened under the pointer).
 /// - secondary: the ink at 7 % with a 12 % edge (Aside's Join).
 /// - plain: no fill until the pointer is on it.
 /// - destructive: red words; a pink wash under the pointer (Aside's Delete).
@@ -200,7 +201,6 @@ struct PillButton: View {
     var kind: Kind = .secondary
     var large = false
     let action: () -> Void
-    @State private var bumps = 0
 
     init(_ title: String, symbol: String? = nil, kind: Kind = .secondary, large: Bool = false, action: @escaping () -> Void) {
         self.title = title; self.symbol = symbol; self.kind = kind; self.large = large; self.action = action
@@ -212,7 +212,6 @@ struct PillButton: View {
                 if let symbol {
                     Image(systemName: symbol)
                         .font(.system(size: large ? 13 : 11, weight: .semibold))
-                        .symbolEffect(.bounce, value: bumps)
                 }
                 // Oct 18, Ryan: a pill is never cut short ("发送采集" came out "发…").
                 Text(L(key: title)).font(.system(size: large ? 13.5 : 12.5, weight: kind == .prominent ? .semibold : .medium))
@@ -223,7 +222,6 @@ struct PillButton: View {
             .contentShape(Capsule())
         }
         .buttonStyle(PillStyle(kind: kind))
-        .onHover { if $0 { bumps += 1 } }
     }
 }
 
@@ -255,7 +253,7 @@ private struct PillBody: View {
 
     private var label: Color {
         switch kind {
-        case .prominent: return palette.isDark ? .black.opacity(0.88) : .white
+        case .prominent: return .white
         case .destructive: return palette.danger
         case .secondary, .plain: return palette.text
         }
@@ -265,7 +263,8 @@ private struct PillBody: View {
         let lit = hover && enabled
         switch kind {
         case .prominent:
-            ProminentPlate(dark: palette.isDark, hover: lit, pressed: pressed)
+            // The accent, flat; a little darker under the pointer, darker again pressed.
+            Capsule().fill(palette.accent).brightness(pressed ? -0.1 : (lit ? -0.04 : 0))
         case .secondary:
             Capsule()
                 .fill(palette.ink(pressed ? T.Shade.pressed : (lit ? T.Shade.fillHover : T.Shade.fill)))
@@ -281,68 +280,40 @@ private struct PillBody: View {
     }
 }
 
-/// The prominent pill's body: the ink falling slightly darker toward the bottom, a highlight
-/// along the top edge and a shade along the bottom one, three shadows at 1, 2 and 4 pt that
-/// double under the pointer and close up to one when pressed (Aside's site button, in ink).
-private struct ProminentPlate: View {
-    let dark: Bool
-    let hover: Bool
-    let pressed: Bool
-
-    var body: some View {
-        let top = dark ? Color(white: hover ? 1 : 0.96) : Color(white: hover ? 0.27 : 0.21)
-        let bottom = dark ? Color(white: hover ? 0.9 : 0.84) : Color(white: hover ? 0.1 : 0.04)
-        let k = dark ? 2.6 : 1.0
-        let spread: CGFloat = pressed ? 0.5 : (hover ? 2 : 1)
-        ZStack {
-            Capsule().fill(Color.black).shadow(color: .black.opacity(0.14 * k), radius: 0.5 * spread, y: 0.5 * spread)
-            if !pressed {
-                Capsule().fill(Color.black).shadow(color: .black.opacity(0.11 * k), radius: 1 * spread, y: 1 * spread)
-                Capsule().fill(Color.black).shadow(color: .black.opacity(0.09 * k), radius: 2 * spread, y: 2 * spread)
-            }
-            Capsule().fill(LinearGradient(colors: [top, bottom], startPoint: .top, endPoint: .bottom))
-            // Lit from above: a highlight along the top edge, a shade along the bottom.
-            Capsule().strokeBorder(
-                LinearGradient(colors: [.white.opacity(pressed ? 0.06 : (dark ? 0.9 : 0.26)), .white.opacity(0),
-                                        .black.opacity(dark ? 0.12 : 0.3)],
-                               startPoint: .top, endPoint: .bottom),
-                lineWidth: 1)
-            if pressed {
-                // Pressed in: a shade from the top, inside.
-                Capsule().fill(LinearGradient(colors: [.black.opacity(dark ? 0.12 : 0.35), .clear], startPoint: .top, endPoint: .center))
-            }
-        }
-    }
-}
-
 // MARK: - Symbols in circles
 
 /// An action as a symbol: borderless, a round plate under the pointer (Aside's one round-button
-/// control), deeper while pressed; the symbol answers the pointer once. Copy turns into a
-/// checkmark for a moment; Delete's plate is a pink wash. 28 pt, so a glass capsule 4 pt larger
+/// control), deeper while pressed. Copy, Save and Delete turn into a checkmark for a moment, at
+/// once; Delete's plate is a pink wash. 28 pt, so a glass capsule 4 pt larger
 /// all round holds it concentrically.
 struct IconButton: View {
     let symbol: String
     let help: String
     var confirmed = false
     var role: ButtonRole?
+    /// What VoiceOver says, when it isn't the tooltip (which may name a shortcut).
+    var label: String?
     let action: () -> Void
-    @State private var bumps = 0
+
+    init(symbol: String, help: String, confirmed: Bool = false, role: ButtonRole? = nil, label: String? = nil,
+         action: @escaping () -> Void) {
+        self.symbol = symbol; self.help = help; self.confirmed = confirmed; self.role = role; self.label = label
+        self.action = action
+    }
 
     var body: some View {
         Button(action: action) {
+            // Oct 21, Ryan ("simpler is better"): a new symbol (Copy's checkmark) replaces the
+            // old one at once; it bounced under the pointer and swapped out of a blur.
             Image(systemName: symbol)
                 .font(.system(size: 13, weight: .medium))
-                .contentTransition(.symbolEffect(.replace))
-                .symbolEffect(.bounce, value: bumps)
                 .frame(width: 28, height: 28)
                 .contentShape(Circle())
         }
         .buttonStyle(IconButtonStyle(confirmed: confirmed, destructive: role == .destructive))
-        .onHover { if $0 { bumps += 1 } }
         // Oct 18, Ryan: in the primary language (a literal help is looked up as it's drawn).
         .help(L(key: help))
-        .accessibilityLabel(L(key: help))
+        .accessibilityLabel(L(key: label ?? help))
     }
 }
 
@@ -396,69 +367,5 @@ struct BarDivider: View {
     @Environment(\.palette) private var palette
     var body: some View {
         Rectangle().fill(palette.ink(T.Shade.line)).frame(width: 0.5, height: 16).padding(.horizontal, 4)
-    }
-}
-
-// MARK: - A shortcut
-
-/// A shortcut as Aside's recorder shows one: the keys in a pill, a ⓧ to clear it under the
-/// pointer. Click (or clear) to record: the pill takes the focus edge (the ink at 25 %) and asks
-/// for the keys; Esc cancels. The prototype records nothing.
-struct ShortcutRecorder: View {
-    @Environment(\.palette) private var palette
-    @Environment(\.motion) private var motion
-    let keys: [String]
-    @State private var recording = false
-    @State private var hover = false
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Button { record() } label: {
-                Group {
-                    if recording {
-                        Text("Type a shortcut").foregroundStyle(palette.secondary)
-                    } else {
-                        HStack(spacing: 5) {
-                            ForEach(Array(keys.enumerated()), id: \.offset) { _, key in
-                                if key.hasPrefix("~") {
-                                    Text(L(key: String(key.dropFirst()))).foregroundStyle(palette.tertiary)
-                                } else {
-                                    Text(key).foregroundStyle(palette.text)
-                                }
-                            }
-                        }
-                    }
-                }
-                .font(.system(size: 12.5, weight: .medium))
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            if hover && !recording {
-                Button { record() } label: {
-                    Image(systemName: "xmark.circle.fill").font(.system(size: 12)).foregroundStyle(palette.tertiary)
-                }
-                .buttonStyle(.plain)
-                .help("Clear, and record another")
-                .transition(.opacity)
-            }
-        }
-        .padding(.leading, 11)
-        .padding(.trailing, hover && !recording ? 6 : 11)
-        .frame(height: 26)
-        .background(Capsule().fill(palette.ink(recording ? T.Shade.fillHover : (hover ? T.Shade.fillHover : T.Shade.fill))))
-        .overlay(Capsule().strokeBorder(palette.ink(recording ? T.Shade.focus : T.Shade.line), lineWidth: recording ? 1 : 0.5))
-        .onHover { h in withAnimation(motion.animation(.hover)) { hover = h } }
-        .onExitCommand { recording = false }
-        .help("Click, then press the new keys")
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(keys.map { $0.hasPrefix("~") ? L(key: String($0.dropFirst())) : $0 }.joined(separator: " "))
-    }
-
-    private func record() {
-        withAnimation(motion.animation(.hover)) { recording = true }
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2.5))
-            withAnimation(motion.animation(.hover)) { recording = false }
-        }
     }
 }

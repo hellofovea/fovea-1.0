@@ -234,3 +234,6 @@ Claude Pulse, DevIsland):
 - **Peek:** a question or a command's diff expands its own row, for more than one line.
 - **Hover-open over a full-screen app:** whether it should happen at all. Alcove's users asked to
   turn it off there.
+
+**Oct 21 (Ryan: "expand faster when my mouse hovers"):** the dwell is halved: 0.06 s minimum and 0.16 s cap (`WorkbenchTokens.Panel`; Settings › Notch's Normal). The board opens from rest on `Spring.boardOpen` (0.26 s, bounce 0.16). Values and reasons: docs/motion/SPRINGS.md.
+

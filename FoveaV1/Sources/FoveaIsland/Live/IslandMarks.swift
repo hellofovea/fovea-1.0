@@ -30,11 +30,12 @@ extension IslandController {
             wanted[window, default: (mark.windowBounds, [])].rects += mark.windowRects
         }
         if let draft = live.draftMark { wanted[draft.window, default: (draft.bounds, [])].rects += draft.rects }
+        let F = WorkbenchTokens.Feedback.self
         for (id, panel) in live.markWindows where wanted[id] == nil {
-            panel.orderOut(nil)
+            // Oct 21, Ryan: they fade as they go, on the strong ease-out.
+            panel.fadeAway(duration: F.liveMarkFadeOut, curve: WorkbenchTokens.Spring.easeOutPoints)
             live.markWindows[id] = nil
         }
-        let F = WorkbenchTokens.Feedback.self
         let color = NSColor(model.accent.color).withAlphaComponent(F.takenMarkOpacity)
         for (id, want) in wanted {
             let panel = live.markWindows[id] ?? MarkWindow(target: id, bounds: want.bounds)

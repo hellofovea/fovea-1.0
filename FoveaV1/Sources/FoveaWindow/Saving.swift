@@ -4,11 +4,11 @@ import UniformTypeIdentifiers
 import CapturesCore
 import FoveaKit
 
-// Oct 15 review, IS04: Save writes real files. Save Everything… makes a folder named for the
-// capture (its words, the pictures, the passages, copies of the files that are still there);
-// Save Pictures… puts the pictures in a folder you pick; Save Picture… and Save a Copy… one file
-// each. A save that fails says so in an alert, the Mac's own, with what went wrong. No recording
-// is ever saved: 1.0 keeps none you can see (VF11, QA19).
+// Oct 15 review, IS04: Save writes real files. Oct 21, Ryan: the expanded card's Save is one
+// click: the words as a .txt, or a folder named for them (the words, the pictures, the passages,
+// copies of the files that are still there); Save Picture… and Save a Copy… one file each. A
+// save that fails says so in an alert, the Mac's own, with what went wrong. No recording is ever
+// saved: 1.0 keeps none you can see (VF11, QA19).
 
 /// Why a save didn't happen, in the words of the alert.
 private struct SaveError: LocalizedError {
@@ -21,10 +21,11 @@ private struct SaveCancelled: Error {}
 
 extension CapturesModel {
     enum SaveKind {
-        /// The words and everything taken, in a folder of their own.
-        case everything
-        /// Every picture taken, into a folder.
-        case pictures
+        /// Oct 21, Ryan: the expanded card's Save (one click, ⌘S): the words as a .txt named from
+        /// their first words; with what you took, a folder named the same with the words
+        /// (Words.txt, the passages quoted in it), each picture as a PNG and each file still on this
+        /// Mac copied. Suggested in Downloads.
+        case capture
         /// One picture, by its attachment's index.
         case picture(Int)
         /// A copy of a file that was taken, by its attachment's index.
@@ -35,8 +36,9 @@ extension CapturesModel {
     func saveToDisk(_ capture: Capture, _ kind: SaveKind) {
         do {
             switch kind {
-            case .everything: try saveEverything(capture)
-            case .pictures: try savePictures(capture)
+            case .capture:
+                try saveCapture(capture)
+                flashConfirmed(\.savedID, capture.id)
             case .picture(let index): try savePicture(capture, index)
             case .file(let index): try saveCopy(capture, index)
             }
@@ -50,19 +52,48 @@ extension CapturesModel {
         }
     }
 
-    // MARK: The four saves
+    // MARK: The saves
 
-    private func saveEverything(_ capture: Capture) throws {
+    /// Oct 21, Ryan: "make sure copy, download and delete all work as expected, and design the
+    /// according experiences." Save asks where with the Mac's panel (in Downloads to start), writes,
+    /// then says where in a toast with Show in Finder. Cancel does nothing; a failure is an alert
+    /// that says why (`saveToDisk`).
+    private func saveCapture(_ capture: Capture) throws {
+        let taken = !capture.attachments.isEmpty
+        let name = Self.fileName(Self.firstWords(capture))
         let panel = NSSavePanel()
-        panel.title = L("Save Everything")
-        panel.message = L("A folder with the words and everything taken with them.")
-        panel.prompt = L("Save")
-        panel.nameFieldStringValue = Self.fileName(capture.theme)
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
         panel.canCreateDirectories = true
-        guard panel.runModal() == .OK, let folder = panel.url else { throw SaveCancelled() }
+        panel.prompt = L("Save")
+        if taken {
+            panel.title = L("Save Capture")
+            panel.message = L("A folder with the words and what you took with them.")
+            panel.nameFieldStringValue = name
+        } else {
+            panel.title = L("Save Words")
+            panel.allowedContentTypes = [.plainText]
+            panel.nameFieldStringValue = name + ".txt"
+        }
+        guard let url = savePanelOverride.map({ $0(panel.nameFieldStringValue) })
+                ?? (panel.runModal() == .OK ? panel.url : nil) else { throw SaveCancelled() }
         let files = FileManager.default
-        if files.fileExists(atPath: folder.path) { try files.removeItem(at: folder) }
-        try files.createDirectory(at: folder, withIntermediateDirectories: true)
+        if taken {
+            if files.fileExists(atPath: url.path) { try files.removeItem(at: url) }
+            try files.createDirectory(at: url, withIntermediateDirectories: true)
+            try writeEverything(capture, into: url)
+        } else {
+            try Self.words(capture).write(to: url, atomically: true, encoding: .utf8)
+        }
+        let place = files.displayName(atPath: url.deletingLastPathComponent().path)
+        say(L("Saved to \(place)"), action: ToastAction(title: L("Show in Finder")) {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        })
+    }
+
+    /// The words (Words.txt, the passages quoted in it), each picture as a PNG and a copy of each
+    /// file still on this Mac, into a folder that's there.
+    private func writeEverything(_ capture: Capture, into folder: URL) throws {
+        let files = FileManager.default
         try Self.words(capture).write(to: folder.appendingPathComponent(Self.wordsFile), atomically: true, encoding: .utf8)
         for a in capture.attachments {
             switch a.kind {
@@ -77,29 +108,6 @@ extension CapturesModel {
                 }
             }
         }
-        say(L("Saved “\(folder.lastPathComponent)” to \(folder.deletingLastPathComponent().lastPathComponent)"))
-    }
-
-    private func savePictures(_ capture: Capture) throws {
-        let regions = capture.attachments.filter { $0.kind == .region }
-        let panel = NSOpenPanel()
-        panel.title = L("Save Pictures")
-        panel.message = regions.count == 1 ? L("Choose a folder for the picture.") : L("Choose a folder for the \(regions.count) pictures.")
-        panel.prompt = L("Save Here")
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let folder = panel.url else { throw SaveCancelled() }
-        var saved = 0
-        for a in regions {
-            guard let png = png(a) else { continue }
-            let url = Self.unique(folder.appendingPathComponent("\(Self.fileName(capture.theme)) \(a.index).png"))
-            try png.write(to: url, options: .atomic)
-            saved += 1
-        }
-        guard saved > 0 else { throw SaveError(message: L("Fovea couldn't find the pictures taken with this capture.")) }
-        say(saved == 1 ? L("Saved 1 picture to \(folder.lastPathComponent)") : L("Saved \(saved) pictures to \(folder.lastPathComponent)"))
     }
 
     private func savePicture(_ capture: Capture, _ index: Int) throws {
@@ -133,10 +141,66 @@ extension CapturesModel {
         say(L("Saved a copy of \(a.text) to \(url.deletingLastPathComponent().lastPathComponent)"))
     }
 
+    // MARK: Copy
+
+    /// Oct 21, Ryan: what Copy puts on the pasteboard, in one write, as Notes, Mail, Messages and
+    /// Slack paste it: first the words as text, with the passages you took quoted under them and
+    /// the names of files that aren't on this Mac any more; then each picture as an image (PNG and
+    /// TIFF) and each file still here as itself (its URL), in the order you took them. An app
+    /// that takes only text pastes the words.
+    func pasteboardItems(_ capture: Capture) -> [NSPasteboardWriting] {
+        var text = capture.text
+        var after: [NSPasteboardWriting] = []
+        var notes: [String] = []
+        for a in capture.attachments.sorted(by: { $0.index < $1.index }) {
+            switch a.kind {
+            case .passage:
+                notes.append(Self.quoted(a))
+            case .region:
+                guard let png = png(a) else { continue }
+                let item = NSPasteboardItem()
+                item.setData(png, forType: .png)
+                if let tiff = NSImage(data: png)?.tiffRepresentation { item.setData(tiff, forType: .tiff) }
+                after.append(item)
+            case .file:
+                if let url = Self.original(a) { after.append(url as NSURL) } else { notes.append(L("\(a.text), in \(a.source)")) }
+            }
+        }
+        if !notes.isEmpty { text += "\n\n" + notes.joined(separator: "\n\n") }
+        let words = NSPasteboardItem()
+        words.setString(text, forType: .string)
+        return [words] + after
+    }
+
+    /// A passage you took, quoted, and where from: “…” — Safari.
+    static func quoted(_ a: Attachment) -> String { L("“\(a.text)” — \(a.source)") }
+
+    /// A name from the words' first few: the first sentence, up to its first comma in a language
+    /// written without spaces (at least six characters), or its first six words; never more than
+    /// 48 characters. The capture's title when there are no words yet.
+    static func firstWords(_ c: Capture) -> String {
+        let line = c.text.split(whereSeparator: \.isNewline).first.map(String.init)?
+            .trimmingCharacters(in: .whitespaces) ?? ""
+        guard !line.isEmpty, !c.failed else { return c.theme }
+        let sentence = line.split(whereSeparator: { ".:;!?。：；！？".contains($0) }).first.map(String.init) ?? line
+        let spaceless = sentence.unicodeScalars.contains { (0x3040...0x9FFF).contains($0.value) }
+        var name: String
+        if spaceless {
+            let clause = sentence.split(whereSeparator: { "，、,".contains($0) }).first.map(String.init) ?? sentence
+            name = clause.count >= 6 ? clause : sentence
+            if name.count > 24 { name = String(name.prefix(24)) }
+        } else {
+            name = sentence.split(separator: " ").prefix(6).joined(separator: " ")
+        }
+        if name.count > 48 { name = String(name.prefix(48)) }
+        let trimmed = name.trimmingCharacters(in: CharacterSet(charactersIn: " ,-—–，、").union(.whitespaces))
+        return trimmed.isEmpty ? c.theme : trimmed
+    }
+
     // MARK: What's written
 
     /// A picture's PNG: the file Fovea kept (`media:`), or the region cut from its screen.
-    private func png(_ a: Attachment) -> Data? {
+    func png(_ a: Attachment) -> Data? {
         if let url = media?.url(for: a.art), a.crop == .full, let data = try? Data(contentsOf: url) { return data }
         guard let image = Art.region(a), let tiff = image.tiffRepresentation,
               let rep = NSBitmapImageRep(data: tiff) else { return nil }

@@ -172,3 +172,7 @@ where a screenshot's chrome is.
 - `--smoke` drives the flow with events posted through the app's queue (right and left ⌃, a click
   on a tab, the wheel, a drag, ⌃Tab, a click on the stack, Esc, the pill) and checks the shapes,
   the opened layout and the overshoot cap.
+
+## Oct 21 (Ryan: "simpler is better")
+
+The stack lies flat. The cards behind the front one peek out to the right, smaller and dimmer, with no tilt at rest and no fan on hover (`StackLayout.collapsed` ignores `peek`). An opened card no longer grows under the pointer, its ✕ fades in without growing, and a removed card fades where it was without shrinking. Opening and folding the stack move every card together with the island: no stagger, no beat behind, no bounce. Choose chat's stack is flat too; under the pointer its row fades in over it (no growing, no spring), the thumbs don't grow under the pointer, and a click opens the closer look with a fade instead of a zoom out of the thumb. The tables above are the research and the earlier tuning.

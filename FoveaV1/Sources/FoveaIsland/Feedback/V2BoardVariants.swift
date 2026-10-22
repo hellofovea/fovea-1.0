@@ -273,6 +273,8 @@ struct V2SessionCard: View {
     let lines: Int
     /// Creatures: the session's creature on the stage, larger, in place of its agent's icon.
     var creature = false
+    /// Oct 21, perf: its band is showing (MockIsland's `BandShown`); its clock pauses when not.
+    @Environment(\.islandBandShown) private var bandShown
 
     var body: some View {
         let BV = WorkbenchTokens.BoardV.self
@@ -347,7 +349,8 @@ struct V2SessionCard: View {
                     .font(.system(size: BV.answerSize)).foregroundStyle(BV.answer).lineSpacing(3).lineLimit(lines)
             case .working:
                 VStack(alignment: .leading, spacing: 6) {
-                    TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    // Oct 21, perf: ticks only while the board shows.
+                    TimelineView(.periodic(from: .now, by: bandShown ? 1 : WorkbenchTokens.Motion.hiddenTick)) { _ in
                         Text(model.v2RunTime(task, clock: true)).font(BV.bigTime).foregroundStyle(WorkbenchTokens.ink(0.9))
                             .contentTransition(.numericText())
                     }
@@ -683,6 +686,8 @@ struct WingRing: View {
     let model: WorkbenchModel
     let task: AgentTaskItem
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Oct 21, perf: its band is showing (MockIsland's `BandShown`); its clock pauses when not.
+    @Environment(\.islandBandShown) private var bandShown
 
     var body: some View {
         let BV = WorkbenchTokens.BoardV.self
@@ -695,7 +700,7 @@ struct WingRing: View {
                 Circle().strokeBorder(amber, lineWidth: BV.tokenRing).shadow(color: amber.opacity(0.6), radius: 4)
             case .working:
                 let still = model.snapshotMode || reduceMotion
-                TimelineView(.animation(minimumInterval: 1 / 30, paused: still)) { context in
+                TimelineView(.animation(minimumInterval: 1 / 30, paused: still || !bandShown)) { context in
                     let turn = still ? 0.15 : context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.4) / 1.4
                     ZStack {
                         Circle().strokeBorder(Color.white.opacity(0.14), lineWidth: BV.tokenRing)

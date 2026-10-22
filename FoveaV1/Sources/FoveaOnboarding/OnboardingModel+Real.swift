@@ -61,7 +61,7 @@ extension OnboardingModel {
     func heard() {
         guard micPhase != .heard else { return }
         stopMicTest()
-        animate(OT.Motion.content) { micPhase = .heard }
+        animate(OT.Motion.select) { micPhase = .heard }
         micLevel = 0
         say(Copy.micHeard, hold: false)
         beat(.heard)
@@ -243,7 +243,7 @@ extension OnboardingModel {
         switch task {
         case .weeklyUpdate:
             // The update is on the desktop now, and opens, as Quick Look would.
-            animate(OT.Motion.calm) { updateWritten = practice.exists(PracticeFiles.update) || updateWritten }
+            animate(OT.Motion.morph) { updateWritten = practice.exists(PracticeFiles.update) || updateWritten }
             if practice.exists(PracticeFiles.update) {
                 editedFiles.insert(PracticeFiles.update)
                 showPreview(PracticeFiles.update)
@@ -298,11 +298,11 @@ extension OnboardingModel {
 
     func showPreview(_ name: String) {
         previewText = practice.text(name) ?? ""
-        animate(OT.Motion.calm) { previewFile = name }
+        animate(OT.Motion.content) { previewFile = name }
     }
 
     func hidePreview() {
-        animate(OT.Motion.calm) { previewFile = nil }
+        animate(OT.Motion.contentOut) { previewFile = nil }
     }
 
     /// The reply as the agent wrote it (Oct 9, evening: the whole of it, in the session), only
@@ -318,7 +318,7 @@ extension OnboardingModel {
         // Oct 17, Ryan: what was taken while talking lands after the words, in the same window.
         let taken = dictationTaken
         dictationTaken = []
-        animate(OT.Motion.content) {
+        animate(OT.Motion.morph) {
             switch target {
             case .feedback:
                 feedbackText = feedbackText.isEmpty ? words : feedbackText + " " + words
@@ -412,7 +412,7 @@ extension OnboardingModel {
     }
 
     private func offer(_ words: [ImportedWord], from source: String) {
-        animate(OT.Motion.content) {
+        animate(OT.Motion.morph) {
             let known = Set(importCandidates.map { $0.word.lowercased() })
             let fresh = words.filter { !known.contains($0.word.lowercased()) }
             importCandidates += fresh
@@ -445,7 +445,7 @@ extension OnboardingModel {
     /// The practice files go at the end of the run, from the desktop and from disk.
     func clearPracticeFiles() {
         hidePreview()
-        animate(OT.Motion.slow) { filesCleared = true }
+        animate(OT.Motion.filesClear) { filesCleared = true }
         if !options.harness { practice.remove() }
     }
 }

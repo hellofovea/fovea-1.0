@@ -22,6 +22,13 @@ extension HomeWindowController {
         }
         show()
         await settle(1.6)
+        // Oct 21, Ryan: `--smoke-detail` checks the expanded card's Copy, Save and Delete by doing
+        // them (DetailSmoke.swift); it needs a `--data-dir` of its own.
+        if CommandLine.arguments.contains("--smoke-detail") {
+            await detailSmoke(dir)
+            NSApp.terminate(nil)
+            return
+        }
         for dark in [false, true] {
             let suffix = dark ? "-dark" : ""
             let appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
@@ -184,7 +191,7 @@ extension HomeWindowController {
     }
 
     /// The window, and the sheet over it when there is one.
-    private func shoot(_ name: String, _ dir: URL) {
+    func shoot(_ name: String, _ dir: URL) {
         // Front to back: the sheet, then the window under it.
         var ids = [CGWindowID(window.windowNumber)]
         if let sheet = window.attachedSheet { ids.insert(CGWindowID(sheet.windowNumber), at: 0) }

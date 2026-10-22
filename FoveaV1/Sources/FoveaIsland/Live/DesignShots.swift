@@ -41,10 +41,10 @@ package enum IslandDesignShots {
 
     package static func run(_ island: IslandController, prefs: PrefsStore, to dir: URL, only: String?) async {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        guard RealScreenShot.allowed else {
-            print("design-shots: Screen Recording is off for Fovea (System Settings › Privacy & Security)")
-            return
-        }
+        // Oct 21: without Screen Recording (a new build loses it), Fovea's own windows only: the
+        // clean desktop and the island, never what's behind them, so no wait for the desktop.
+        let ownOnly = !RealScreenShot.allowed
+        if ownOnly { print("design-shots: Screen Recording is off for this build; picturing Fovea's own windows only") }
         let screen = island.live.screen
         island.live.smoke?.realImages = true
         island.live.smoke?.source = "Trail report · Safari"
@@ -77,15 +77,17 @@ package enum IslandDesignShots {
             NSApp.presentationOptions = fullScreen ? [.hideDock, .hideMenuBar] : []
             try? await Task.sleep(for: .seconds(0.5))
             NSApp.activate(ignoringOtherApps: true)
-            guard await RealScreenShot.waitForCleanDesktop(window, menuBar: !fullScreen) else {
+            if !ownOnly, !(await RealScreenShot.waitForCleanDesktop(window, menuBar: !fullScreen)) {
                 print("skipped \(shot.name): the desktop never came back to the front"); continue
             }
             island.stage(shot.stage)
             try? await Task.sleep(for: .seconds(settle(shot.stage)))
-            guard RealScreenShot.onCleanDesktop(window, menuBar: !fullScreen) else {
+            guard ownOnly || RealScreenShot.onCleanDesktop(window, menuBar: !fullScreen) else {
                 print("skipped \(shot.name): another Space came to the front"); continue
             }
-            guard let png = RealScreenShot.png(of: screen) else { print("failed \(shot.name)"); continue }
+            guard let png = ownOnly ? RealScreenShot.ownWindowsPNG(of: screen) : RealScreenShot.png(of: screen) else {
+                print("failed \(shot.name)"); continue
+            }
             try? png.write(to: dir.appendingPathComponent("\(shot.name).png"))
             print("wrote \(shot.name).png")
         }

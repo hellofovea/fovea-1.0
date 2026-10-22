@@ -29,6 +29,8 @@
 "%lld s" = "%lld 秒";
 "%lld m" = "%lld 分钟";
 "%lld m %lld s" = "%lld 分 %lld 秒";
+"%llds" = "%lld 秒";
+"%lldm %llds" = "%lld 分 %lld 秒";
 "last active %@ ago" = "%@前活跃";
 "%@ · last active %@ ago" = "%@ · %@前活跃";
 "Its state can't be read. Last active %@ ago." = "读不到它的状态。上次活跃：%@前。";
@@ -40,7 +42,7 @@
 "Cancelled" = "已取消";
 "Undo (⌘Z)" = "撤销（⌘Z）";
 "No speech detected" = "没有听到声音";
-"Agent at work" = "代理正在工作";
+"Agent at work" = "Agent 正在工作";
 
 /* Held words (Paste not found) */
 "Paste not found" = "找不到粘贴位置";
@@ -130,7 +132,7 @@
 "Where it goes: %@" = "发送到：%@";
 "Shows every chat" = "显示所有会话";
 "Shows its chats" = "显示它的会话";
-"Shows the chats by agent and project" = "按代理和项目显示会话";
+"Shows the chats by agent and project" = "按 Agent 和项目显示会话";
 "Back to projects" = "返回项目";
 "Back to %@'s projects (esc)" = "返回 %@ 的项目（esc）";
 "%lld chats" = "%lld 个会话";
@@ -157,7 +159,7 @@
 "In use by another request" = "正被另一个请求使用";
 "Read only" = "只读";
 "Can't write here" = "无法写入";
-"Agent unavailable" = "代理不可用";
+"Agent unavailable" = "Agent 不可用";
 "Another request is going to this chat now. Pick another, or try again once it's in." = "另一个请求正在发往这个会话。换一个会话，或等它发完再试。";
 "This chat can be read in %@, not added to." = "这个会话只能在 %@ 中查看，不能再添加内容。";
 "Fovea can't write to %@: the folder is gone or locked." = "Fovea 无法写入 %@：文件夹不存在或已锁定。";
@@ -199,7 +201,7 @@
 "Changes" = "将修改";
 "Would change" = "将修改";
 "No files" = "无";
-"Let the agent go on" = "让代理继续";
+"Let the agent go on" = "让 Agent 继续";
 "Run Tests" = "运行测试";
 "Run" = "运行";
 "Build" = "构建";
@@ -227,8 +229,8 @@
 "Expand" = "展开";
 "Expand its answer" = "展开它的回答";
 "More sessions" = "更多会话";
-"Agent tasks" = "代理任务";
-"Stop the agent here" = "让代理在这里停下";
+"Agent tasks" = "Agent 任务";
+"Stop the agent here" = "让 Agent 在这里停下";
 "Ask in a New Chat" = "在新会话中提问";
 
 /* A session */
@@ -237,7 +239,7 @@
 "Back to its usual size (esc)" = "恢复常规大小（esc）";
 "Back to the board (esc)" = "返回控制面板（esc）";
 "All sessions: back to the control board" = "所有会话：返回控制面板";
-"Expand: every request in this session, and what the agent did (⌃)" = "展开：这个会话的所有请求，以及代理做了什么（⌃）";
+"Expand: every request in this session, and what the agent did (⌃)" = "展开：这个会话的所有请求，以及 Agent 做了什么（⌃）";
 "Close (it keeps working, on the board)" = "关闭（它会在控制面板上继续工作）";
 "Pull out" = "拉出来";
 "Pull it out of the notch" = "把它从灵动岛里拉出来";
@@ -268,7 +270,8 @@
 "Not sure this reached %@" = "不确定 %@ 是否已收到";
 "Sent again · %@ has it" = "已重新发送 · %@ 已收到";
 "Sent again, it replaces this answer" = "重新发送后会替换这个回答";
-"Sent at %@ · no reply%@" = "%@ 发送 · 没有回复%@";
+"Sent at %@ · no reply" = "%@ 发送 · 没有回复";
+"Sent at %@ · no reply yet" = "%@ 发送 · 还没有回复";
 "Timed out" = "已超时";
 "Lost connection" = "连接已断开";
 "Reconnecting to %@…" = "正在重新连接 %@…";
@@ -322,7 +325,7 @@
 "Testing with" = "正在测试";
 "Searching the web for" = "正在网上搜索";
 "Planning" = "正在规划";
-"Subagent" = "子代理";
+"Subagent" = "子 Agent";
 "Using" = "正在使用";
 "Writing the answer" = "正在写回答";
 "Read" = "读取了";
@@ -493,8 +496,8 @@
 /* Sample chats (Choose chat's list) */
 "Accessibility labels" = "辅助功能标签";
 "Account page" = "账户页面";
-"Agent list rows" = "代理列表行";
-"Agent routing" = "代理路由";
+"Agent list rows" = "Agent 列表行";
+"Agent routing" = "Agent 路由";
 "App Store listing" = "App Store 介绍页";
 "Avatar usage arc" = "头像用量弧线";
 "Binding first-try rate" = "绑定首次命中率";

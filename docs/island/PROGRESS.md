@@ -105,3 +105,7 @@ between 2 pt (the shipping value), 3 pt and 4 pt (Material's; WWDC23 asks for "t
 Transcribing, Cancelled and No speech detected are in the panel's Notch list (and reached with
 fn, Esc, Undo and ⌘Z; a quick double fn gives No speech detected). `--snapshot shots` renders
 `workbench-transcribing`, `workbench-cancelled` and `workbench-no-speech`.
+
+## Oct 21 (Ryan: "simpler is better")
+
+"Thinking…" and Dispatch's "Transcribing…" hold still: the ellipsis no longer lights its dots in turn. The line under the words already shows the progress, so one moving thing is enough. The countdown ring, the fill and the drain are unchanged.

@@ -383,6 +383,8 @@ struct AgentLiveLine: View {
     let paused: Bool
     @State private var typedFrom = Date.distantPast
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Oct 21, perf: its band is showing (MockIsland's `BandShown`); its clock pauses when not.
+    @Environment(\.islandBandShown) private var bandShown
 
     var body: some View {
         let P = WorkbenchTokens.Panel.self
@@ -420,7 +422,7 @@ struct AgentLiveLine: View {
     private func typed(_ preview: String) -> some View {
         let P = WorkbenchTokens.Panel.self
         let still = paused || reduceMotion
-        return TimelineView(.animation(minimumInterval: 1 / 30, paused: still)) { context in
+        return TimelineView(.animation(minimumInterval: 1 / 30, paused: still || !bandShown)) { context in
             let elapsed = context.date.timeIntervalSince(typedFrom)
             let shown = still ? preview.count : min(preview.count, max(0, Int(elapsed * P.typeRate)))
             Text(String(preview.prefix(shown)))
@@ -467,6 +469,8 @@ struct AgentStateGlyph: View {
     let size: CGFloat
     let paused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Oct 21, perf: its band is showing (MockIsland's `BandShown`); its clock pauses when not.
+    @Environment(\.islandBandShown) private var bandShown
 
     var body: some View {
         let P = WorkbenchTokens.Panel.self
@@ -503,7 +507,8 @@ struct AgentStateGlyph: View {
     private var spinner: some View {
         let P = WorkbenchTokens.Panel.self
         let still = paused || reduceMotion
-        return TimelineView(.animation(minimumInterval: 1 / 30, paused: still)) { context in
+        // Oct 21, perf: the ring turns only while its band shows (the board's rows turned at rest).
+        return TimelineView(.animation(minimumInterval: 1 / 30, paused: still || !bandShown)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             let turn = still ? P.spinStill : (t / P.spinPeriod).truncatingRemainder(dividingBy: 1)
             ZStack {
@@ -628,7 +633,7 @@ struct AgentPanelButton: View {
                 .fill(primary ? (hovering ? P.buttonPrimaryHover : P.buttonPrimary) : (hovering ? P.buttonFillHover : P.buttonFill)))
             .contentShape(Capsule(style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(IslandPressStyle())
         .onHover { hovering = $0 }
         .animation(WorkbenchTokens.Chat.hover, value: hovering)
     }

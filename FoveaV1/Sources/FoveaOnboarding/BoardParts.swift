@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import QuartzCore
 import UniformTypeIdentifiers
 import OnboardingCore
 import FoveaLook
@@ -31,9 +32,107 @@ extension EnvironmentValues {
     }
 }
 
+// MARK: Motion (Oct 21, Ryan): the animations and transitions the views take, Reduce Motion and
+// snapshots included (OT.Motion has the values)
+
+/// The first run's Reduce Motion, for the parts drawn without the model (the keyboard, the
+/// switches, a button held, the breathing dot).
+private struct FirstRunReducedKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var firstRunReduced: Bool {
+        get { self[FirstRunReducedKey.self] }
+        set { self[FirstRunReducedKey.self] = newValue }
+    }
+    /// Oct 21, perf: the stage is on screen, live (not a snapshot, not drawn by ImageRenderer), so
+    /// its ambient loops may run on Core Animation (`BreathingLayer`) instead of SwiftUI's frames.
+    var firstRunLayerLoops: Bool {
+        get { self[FirstRunLayerLoopsKey.self] }
+        set { self[FirstRunLayerLoopsKey.self] = newValue }
+    }
+}
+
+/// Oct 21, perf: off by default, so anything drawn outside the live stage keeps SwiftUI's loops.
+private struct FirstRunLayerLoopsKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 extension OnboardingModel {
-    /// Lines are typed out (Oct 9), unless the panel says not, or it's a snapshot, or Reduce Motion.
-    var typesLines: Bool { typing && !options.harness && !reduceMotion }
+    /// Snapshots and Reduce Motion: nothing travels or grows.
+    var still: Bool { options.harness || reduceMotion }
+
+    /// The animation for a change: as given; under Reduce Motion, the quick cross-fade; none in a
+    /// snapshot.
+    func motion(_ animation: Animation) -> Animation? {
+        options.harness ? nil : reduceMotion ? OT.Motion.reduceMotion : animation
+    }
+
+    /// A part opening in place: from a few points above, fading in on the strong ease-out (while
+    /// the page makes room on the ease-in-out); out quicker, fading only.
+    var partTransition: AnyTransition {
+        if options.harness { return .identity }
+        let insertion: AnyTransition = reduceMotion ? .opacity : .opacity.combined(with: .offset(y: -OT.Motion.partTravel))
+        return .asymmetric(insertion: insertion.animation(motion(OT.Motion.partIn)), removal: .opacity.animation(motion(OT.Motion.contentOut)))
+    }
+
+    /// Content that only fades: in on the strong ease-out, out quicker.
+    var fadeTransition: AnyTransition {
+        if options.harness { return .identity }
+        return .asymmetric(insertion: .opacity.animation(motion(OT.Motion.content)), removal: .opacity.animation(motion(OT.Motion.contentOut)))
+    }
+
+    /// Something replaced where it stands (the bar's words for a new step, sign-in's next stage):
+    /// the old goes at once, so the two never sit on each other, and the new fades in a beat
+    /// behind its new size.
+    var swapTransition: AnyTransition {
+        if options.harness { return .identity }
+        return .asymmetric(insertion: .opacity.animation(motion(OT.Motion.content)?.delay(OT.Motion.contentBehind)), removal: .identity)
+    }
+
+    /// A practice window, or a file opened as Quick Look would: fading in; out, quicker (Oct 21,
+    /// Ryan ("simpler is better"): it grew from 0.97 as well).
+    var windowTransition: AnyTransition {
+        if options.harness { return .identity }
+        return .asymmetric(insertion: .opacity.animation(motion(OT.Motion.windowIn)), removal: .opacity.animation(motion(OT.Motion.contentOut)))
+    }
+
+    /// A dot arriving (a file the agent changed, the microphone's tick): from 0.6 on the strong
+    /// ease-out, never from nothing.
+    var dotTransition: AnyTransition {
+        if options.harness { return .identity }
+        let arriving: AnyTransition = reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: OT.Motion.dotFrom))
+        return arriving.animation(motion(OT.Motion.partIn))
+    }
+}
+
+/// Oct 21, Ryan: a button held gives a little under the hand (0.97, the strong ease-out) and comes
+/// back as it's let go, from wherever it was; under Reduce Motion it dims instead (Oct 21 motion
+/// review: on the Reduce Motion fade, as the island's and the window's do). Otherwise it's drawn as
+/// a plain button is: its label, at half strength when disabled.
+struct PressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Pressed(configuration: configuration)
+    }
+
+    private struct Pressed: View {
+        let configuration: Configuration
+        @Environment(\.isEnabled) private var enabled
+        @Environment(\.firstRunReduced) private var reduced
+
+        var body: some View {
+            let down = configuration.isPressed
+            configuration.label
+                .opacity(enabled ? (down && reduced ? OT.Motion.pressDim : 1) : OT.Motion.disabled)
+                .scaleEffect(down && !reduced ? OT.Motion.pressScale : 1)
+                .animation(reduced ? OT.Motion.reduceMotion : OT.Motion.press, value: down)
+        }
+    }
+}
+
+extension ButtonStyle where Self == PressStyle {
+    static var press: PressStyle { PressStyle() }
 }
 
 /// The line to say, set apart from everything else on the board (Oct 9, round two: it looked like
@@ -55,7 +154,7 @@ struct BoardScript: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.vertical, 2)
-            .animation(OT.Motion.calm, value: model.barOpen)
+            .animation(model.motion(OT.Motion.recolor), value: model.barOpen)
         }
     }
 }
@@ -118,6 +217,7 @@ struct BoardExtras: View {
 /// which Settings › Language lists too.
 struct LanguagePicker: View {
     let model: OnboardingModel
+    @Namespace private var pills
     @State private var typed = ""
     @FocusState private var focused: Bool
     @Environment(\.boardInk) private var ink
@@ -135,16 +235,16 @@ struct LanguagePicker: View {
                         Button(action: { model.toggleLanguage(language) }) {
                             toggle(Copy.languageName(language), on: choice.on.contains(language))
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.press)
                         .accessibilityValue(choice.on.contains(language) ? L("Switched on") : L("Switched off"))
                     }
                     Button(action: {
                         model.openLanguageMore()
                         focused = true
                     }) {
-                        segment(moreTitle(requests), on: model.languageMoreOpen)
+                        segment(moreTitle(requests), on: model.languageMoreOpen, pill: "more")
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.press)
                     .playTarget(.languageMore, model)
                     .padding(2)
                     .background(Capsule().fill(ink.fill))
@@ -158,9 +258,9 @@ struct LanguagePicker: View {
                         HStack(spacing: 2) {
                             ForEach(choice.on, id: \.self) { language in
                                 Button(action: { model.choosePrimaryLanguage(language) }) {
-                                    segment(Copy.languageName(language), on: choice.primary == language)
+                                    segment(Copy.languageName(language), on: choice.primary == language, pill: "primary")
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.press)
                             }
                         }
                         .padding(2)
@@ -168,7 +268,7 @@ struct LanguagePicker: View {
                     }
                     Text(Copy.primaryNote).font(.system(size: 12)).foregroundStyle(ink.tertiary)
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(model.partTransition)
             }
             if model.languageMoreOpen {
                 VStack(spacing: 8) {
@@ -195,16 +295,18 @@ struct LanguagePicker: View {
                             }
                         }
                         .frame(width: OT.Board.languageChips)
-                        .transition(.opacity)
+                        .transition(model.fadeTransition)
                     }
                     Text(Copy.languageNote).font(.system(size: 12)).foregroundStyle(ink.tertiary)
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(model.partTransition)
             }
         }
-        .animation(OT.Motion.calm, value: model.languageMoreOpen)
-        .animation(OT.Motion.calm, value: model.languageChoice)
-        .animation(OT.Motion.content, value: requests)
+        // Oct 21, Ryan: the page making room on the strong ease-in-out (0.3 s), a choice's pill
+        // sliding on it too (0.2 s); both were a 0.6 s ease-in-out.
+        .animation(model.motion(OT.Motion.morph), value: model.languageMoreOpen)
+        .animation(model.motion(OT.Motion.select), value: model.languageChoice)
+        .animation(model.motion(OT.Motion.morph), value: requests)
     }
 
     /// A language on or off: a capsule with a check, so several can be on at once.
@@ -213,6 +315,7 @@ struct LanguagePicker: View {
             Image(systemName: on ? "checkmark.circle.fill" : "circle")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(on ? model.accentColor : ink.tertiary)
+                .contentTransition(model.still ? .opacity : .symbolEffect(.replace))
             Text(title).font(.system(size: 11.5, weight: on ? .semibold : .medium))
                 .foregroundStyle(on ? ink.primary : ink.secondary)
         }
@@ -248,13 +351,23 @@ struct LanguagePicker: View {
         .overlay(Capsule().strokeBorder(ink.hairline))
     }
 
-    private func segment(_ title: String, on: Bool) -> some View {
+    /// Oct 21, Ryan: the chosen one's pill slides over to the next one chosen (under Reduce
+    /// Motion, it fades across).
+    private func segment(_ title: String, on: Bool, pill: String) -> some View {
         Text(title)
             .font(.system(size: 11.5, weight: on ? .semibold : .medium))
             .foregroundStyle(on ? ink.buttonText : ink.secondary)
             .padding(.horizontal, 10)
             .frame(height: 22)
-            .background(Capsule().fill(on ? ink.button : .clear))
+            .background {
+                if on {
+                    if model.still {
+                        Capsule().fill(ink.button)
+                    } else {
+                        Capsule().fill(ink.button).matchedGeometryEffect(id: pill, in: pills)
+                    }
+                }
+            }
             .contentShape(Capsule())
     }
 }
@@ -318,7 +431,7 @@ struct Personalize: View {
                         Button(action: { model.setAccent(accent) }) {
                             Swatch(accent: accent, chosen: model.personal.accent == accent)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.press)
                         .playTarget(.accent(accent), model)
                         .help(L(key: accent.title))
                     }
@@ -340,7 +453,7 @@ struct Personalize: View {
                         Button(action: { model.setAura(aura) }) {
                             AuraChip(aura: aura, hue: model.personal.auraHue, chosen: model.personal.aura == aura)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.press)
                         .playTarget(.aura(aura), model)
                     }
                 }
@@ -358,7 +471,7 @@ struct Personalize: View {
                         }
                     }
                     .padding(.top, 4)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(model.partTransition)
                 }
             }
             Spacer().frame(height: OT.Board.sectionGap)
@@ -372,7 +485,8 @@ struct Personalize: View {
                                name: \.title) { model.setNotchDensity($0) }
             }
         }
-        .animation(OT.Motion.calm, value: model.personal.aura)
+        // Oct 21, Ryan: the page making room as Customize opens or closes.
+        .animation(model.motion(OT.Motion.morph), value: model.personal.aura == .custom)
     }
 
     private func label(_ text: String) -> some View {
@@ -388,7 +502,9 @@ struct NotchChoiceRow<Value: Hashable>: View {
     let chosen: Value
     let name: KeyPath<Value, String>
     let choose: (Value) -> Void
+    @Namespace private var pills
     @Environment(\.boardInk) private var ink
+    @Environment(\.firstRunReduced) private var reduced
 
     var body: some View {
         HStack(spacing: 12) {
@@ -402,10 +518,20 @@ struct NotchChoiceRow<Value: Hashable>: View {
                             .foregroundStyle(on ? ink.buttonText : ink.secondary)
                             .padding(.horizontal, 10)
                             .frame(height: 22)
-                            .background(Capsule().fill(on ? ink.button : .clear))
+                            // Oct 21, Ryan: the pill slides over to the one chosen (Reduce Motion:
+                            // it fades across).
+                            .background {
+                                if on {
+                                    if reduced {
+                                        Capsule().fill(ink.button)
+                                    } else {
+                                        Capsule().fill(ink.button).matchedGeometryEffect(id: "pill", in: pills)
+                                    }
+                                }
+                            }
                             .contentShape(Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.press)
                 }
             }
             .padding(2)
@@ -552,9 +678,12 @@ struct PermissionRows: View {
                 let allowed = model.flow.allowed.contains(permission)
                 let asked = model.asked.contains(permission)
                 HStack(spacing: 10) {
+                    // Oct 21, Ryan: Allowed ticks in with the symbol's own replace (a fade under
+                    // Reduce Motion).
                     Image(systemName: allowed ? "checkmark.circle.fill" : "circle")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(allowed ? model.accentColor : ink.tertiary)
+                        .contentTransition(model.still ? .opacity : .symbolEffect(.replace))
                         .frame(width: 16)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(permission.paneName).font(.system(size: 12.5, weight: .semibold))
@@ -572,11 +701,11 @@ struct PermissionRows: View {
                                 .background(Capsule().fill(ink.button))
                                 .contentShape(Capsule())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.press)
                     }
                 }
                 .frame(maxWidth: .infinity)
-                .animation(OT.Motion.content, value: allowed)
+                .animation(model.motion(OT.Motion.select), value: allowed)
             }
             // Screen Recording counts only once Fovea has reopened (macOS's rule); its own
             // Quit & Reopen does it, or this.
@@ -590,7 +719,7 @@ struct PermissionRows: View {
                             .background(Capsule().strokeBorder(ink.hairline))
                             .contentShape(Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.press)
                     .help("Once Fovea is switched on in Screen & System Audio Recording")
                     // Still not in the list: + under it, and Fovea, which this shows where it is.
                     Button(action: { NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL]) }) {
@@ -601,6 +730,7 @@ struct PermissionRows: View {
                     .buttonStyle(.plain)
                 }
                 .padding(.leading, 26)
+                .transition(model.partTransition)
             }
         }
     }
@@ -624,7 +754,7 @@ struct MicTestView: View {
                 }
             }
             .frame(height: 30)
-            .animation(.linear(duration: 0.08), value: model.micLevel)
+            .animation(OT.Motion.meter, value: model.micLevel)
             Text("“\(Copy.micLine)”")
                 .font(.system(size: 22, weight: .medium, design: OT.Board.titleDesign))
                 .foregroundStyle(phase == .listening || phase == .unavailable ? ink.primary : ink.secondary)
@@ -636,6 +766,7 @@ struct MicTestView: View {
                     .frame(width: 90)
             } else if phase == .heard {
                 Image(systemName: "checkmark.circle.fill").font(.system(size: 18)).foregroundStyle(model.accentColor)
+                    .transition(model.dotTransition)
             }
         }
     }
@@ -757,7 +888,7 @@ struct AgentsView: View {
                         }
                 }
                 .buttonStyle(.plain)
-                .animation(OT.Motion.content, value: on)
+                .animation(model.motion(OT.Motion.select), value: on)
                 .accessibilityLabel(agent.name)
                 .accessibilityValue(on ? L("Switched on") : L("Switched off"))
             }
@@ -778,7 +909,7 @@ struct AgentsView: View {
             .background(Capsule().fill(on ? ink.button : ink.fill))
             .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.press)
         .playTarget(name == Agent.comingNext.first ? .agentWish : nil, model)
     }
 }
@@ -853,7 +984,7 @@ struct DictionaryImportView: View {
                         .background(Capsule().fill(ink.button))
                         .contentShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.press)
                 .playTarget(app == .wisprFlow ? .connectApp : nil, model)
             } else {
                 smallButton(Copy.importPaste) { paste() }
@@ -904,7 +1035,7 @@ struct DictionaryImportView: View {
                 .background(Capsule().strokeBorder(ink.hairline))
                 .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.press)
     }
 
     private func choose() {
@@ -981,20 +1112,25 @@ struct SignInView: View {
     var body: some View {
         let B = OT.Board.self
         VStack(spacing: B.accountGap) {
-            switch model.signInPhase {
-            case .choosing, .canceled:
-                choices
-            case .waiting(let provider):
-                waiting(provider)
-            case .failed(let provider):
-                failed(provider)
-            case .checkEmail:
-                checkEmail
-            case .signedIn(let provider):
-                signedIn(provider)
+            // Oct 21, Ryan: each stage replaces the last where it stands (they sat on each other
+            // as both faded), a beat behind the page's new size.
+            Group {
+                switch model.signInPhase {
+                case .choosing, .canceled:
+                    choices
+                case .waiting(let provider):
+                    waiting(provider)
+                case .failed(let provider):
+                    failed(provider)
+                case .checkEmail:
+                    checkEmail
+                case .signedIn(let provider):
+                    signedIn(provider)
+                }
             }
+            .transition(model.swapTransition)
         }
-        .animation(OT.Motion.content, value: model.signInPhase)
+        .animation(model.motion(OT.Motion.morph), value: model.signInPhase)
     }
 
     // MARK: The choices
@@ -1017,7 +1153,7 @@ struct SignInView: View {
                 // FR-03: canceled, said quietly where the choices are.
                 Text(Copy.signInCanceled)
                     .font(.system(size: 12)).foregroundStyle(ink.secondary)
-                    .transition(.opacity)
+                    .transition(model.fadeTransition)
             } else {
                 Text(Copy.signInKept).font(.system(size: 12)).foregroundStyle(ink.tertiary)
             }
@@ -1036,7 +1172,7 @@ struct SignInView: View {
             .overlay(Capsule().strokeBorder(ink.hairline))
             .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.press)
     }
 
     // MARK: Waiting, failed
@@ -1086,13 +1222,13 @@ struct SignInView: View {
                         .background(Capsule().strokeBorder(ink.hairline))
                         .contentShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.press)
                 .disabled(!ready)
                 .help(ready ? "" : "You can send it again in a moment.")
                 quietButton(Copy.signInDifferentEmail) { model.useDifferentEmail() }
             }
             if let note = model.signInNote {
-                Text(note).font(.system(size: 12)).foregroundStyle(ink.tertiary).transition(.opacity)
+                Text(note).font(.system(size: 12)).foregroundStyle(ink.tertiary).transition(model.fadeTransition)
             }
         }
     }
@@ -1120,7 +1256,7 @@ struct SignInView: View {
                 .padding(.horizontal, 6).frame(height: 28)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.press)
     }
 
     private func solidButton(_ title: String, _ action: @escaping () -> Void) -> some View {
@@ -1130,7 +1266,7 @@ struct SignInView: View {
                 .background(Capsule().fill(ink.button))
                 .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.press)
     }
 }
 
@@ -1138,41 +1274,44 @@ struct SignInView: View {
 struct BreathingDot: View {
     let color: Color
     @State private var on = false
+    @Environment(\.firstRunReduced) private var reduced
+    /// Oct 21, perf: on the live stage it breathes on Core Animation (`BreathingLayer`), 0.3↔1.
+    @Environment(\.firstRunLayerLoops) private var layerLoops
+    @State private var since = CACurrentMediaTime()
 
     var body: some View {
-        Circle().fill(color)
-            .frame(width: OT.Board.waitingDot, height: OT.Board.waitingDot)
-            .opacity(on ? 1 : 0.3)
-            .onAppear { withAnimation(OT.Motion.breathe) { on = true } }
+        if layerLoops && !reduced {
+            Circle().fill(Color.clear)
+                .frame(width: OT.Board.waitingDot, height: OT.Board.waitingDot)
+                .overlay(BreathingLayer(color: color, cornerRadius: OT.Board.waitingDot / 2, continuous: false, from: 0.3,
+                                        seconds: OT.Motion.breatheSeconds, since: since))
+                .onAppear { since = CACurrentMediaTime() }
+        } else {
+            Circle().fill(color)
+                .frame(width: OT.Board.waitingDot, height: OT.Board.waitingDot)
+                .opacity(on || reduced ? 1 : 0.3)
+                .onAppear { if !reduced { withAnimation(OT.Motion.breathe) { on = true } } }
+        }
     }
 }
 
 /// Oct 15 review, OB-01.6: what Fovea remembers, in four short points before the end: what's kept,
 /// where, who reads it, and that it's yours. Continue marks it read (`memoryDisclosureSeen`).
+/// Oct 21, Ryan ("simpler is better"): the words alone (each had an accent symbol in a circle).
 struct MemoryPoints: View {
     let model: OnboardingModel
     @Environment(\.boardInk) private var ink
 
-    /// One symbol a point, in the order of `Copy.memoryPoints`.
-    private static let symbols = ["text.bubble", "laptopcomputer", "person.2", "hand.raised"]
-
     var body: some View {
         let B = OT.Board.self
         VStack(alignment: .leading, spacing: B.memoryGap) {
-            ForEach(Array(Copy.memoryPoints.enumerated()), id: \.offset) { i, point in
-                HStack(alignment: .top, spacing: 14) {
-                    Image(systemName: Self.symbols[min(i, Self.symbols.count - 1)])
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(model.accentColor)
-                        .frame(width: B.memoryIcon, height: B.memoryIcon)
-                        .background(Circle().fill(ink.fill))
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(point.title).font(B.memoryTitle).foregroundStyle(ink.primary)
-                        Text(point.detail).font(B.memoryDetail).foregroundStyle(ink.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 0)
+            ForEach(Array(Copy.memoryPoints.enumerated()), id: \.offset) { _, point in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(point.title).font(B.memoryTitle).foregroundStyle(ink.primary)
+                    Text(point.detail).font(B.memoryDetail).foregroundStyle(ink.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .frame(width: B.memoryWidth)
@@ -1188,6 +1327,8 @@ struct ClearScreen: View {
 
     var body: some View {
         // Set apart in a card of its own, the accent on its button (Oct 9, late: it went unseen).
+        // Oct 21, Ryan ("simpler is better"): the button alone carries the accent (the card was
+        // tinted and edged in it too).
         let accent = model.accentColor
         VStack(spacing: 12) {
             Text(model.screenCleared ? "Your screen is clear" : "Start on a clear screen")
@@ -1201,23 +1342,19 @@ struct ClearScreen: View {
                 .fixedSize(horizontal: false, vertical: true)
             if !model.screenCleared {
                 Button(action: { model.clearScreen() }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "rectangle.dashed").font(.system(size: 11, weight: .bold))
-                        Text("Clear my screen")
-                    }
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.white)
-                    .padding(.horizontal, 16).frame(height: 30)
-                    .background(Capsule().fill(accent))
-                    .contentShape(Capsule())
+                    Text("Clear my screen")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.white)
+                        .padding(.horizontal, 16).frame(height: 30)
+                        .background(Capsule().fill(accent))
+                        .contentShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.press)
             }
         }
         .padding(.horizontal, 22).padding(.vertical, 18)
         .frame(maxWidth: 400)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(accent.opacity(0.12)))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(accent.opacity(0.45), lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(ink.fill))
     }
 }
 
@@ -1230,9 +1367,9 @@ struct Closing: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            part(symbol: "rectangle.topthird.inset.filled", text: Copy.homeNotch)
+            part(Copy.homeNotch)
             VStack(spacing: 10) {
-                part(symbol: "eye", text: Copy.eyeTrackingTitle)
+                part(Copy.eyeTrackingTitle)
                 Button(action: { model.askEyeTracking() }) {
                     HStack(spacing: 6) {
                         if model.eyeTrackingAsked { Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)) }
@@ -1244,7 +1381,7 @@ struct Closing: View {
                     .background(Capsule().strokeBorder(ink.hairline))
                     .contentShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.press)
                 .disabled(model.eyeTrackingAsked)
                 .playTarget(.eyeTracking, model)
             }
@@ -1260,11 +1397,9 @@ struct Closing: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func part(symbol: String, text: String) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: symbol).font(.system(size: 13)).foregroundStyle(model.accentColor)
-            Text(text).font(.system(size: 14, weight: .medium)).foregroundStyle(ink.primary)
-        }
+    /// Oct 21, Ryan ("simpler is better"): the words alone (each had an accent symbol).
+    private func part(_ text: String) -> some View {
+        Text(text).font(.system(size: 14, weight: .medium)).foregroundStyle(ink.primary)
     }
 }
 
@@ -1275,6 +1410,7 @@ struct SmallSwitch: View {
     let accent: Color
     let toggle: () -> Void
     @Environment(\.boardInk) private var ink
+    @Environment(\.firstRunReduced) private var reduced
 
     var body: some View {
         Button(action: toggle) {
@@ -1288,7 +1424,7 @@ struct SmallSwitch: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .animation(OT.Motion.content, value: on)
+        .animation(reduced ? OT.Motion.reduceMotion : OT.Motion.select, value: on)
         .accessibilityValue(on ? L("Switched on") : L("Switched off"))
         .accessibilityAddTraits(.isButton)
     }
@@ -1309,7 +1445,7 @@ struct MuteButton: View {
                 .foregroundStyle(ink.tertiary)
                 .frame(width: 24, height: 24)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.press)
         .help(muted ? "Sound on" : "Mute")
     }
 }
@@ -1366,16 +1502,16 @@ struct BoardActions: View {
                     .font(.system(size: 11.5))
                     .foregroundStyle(ink.tertiary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.press)
             }
             if !centered { Spacer(minLength: 0) }
             if model.step.skip.allowed, model.skipShown {
                 Button(copy.skipLabel) { model.skipTapped() }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.press)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(ink.secondary)
                     .help(copy.skipNote ?? "")
-                    .transition(.opacity)
+                    .transition(model.fadeTransition)
                     .playTarget(.skip, model)
             }
             if model.guideButtonShown {
@@ -1387,12 +1523,12 @@ struct BoardActions: View {
                         .frame(height: large ? 32 : 28)
                         .background(Capsule().fill(enabled ? ink.button : ink.button.opacity(0.25)))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.press)
                 .playTarget(.guideButton, model)
                 .help(enabled ? "" : "Do the step first")
             }
         }
-        .animation(OT.Motion.calm, value: model.skipShown)
-        .animation(OT.Motion.calm, value: model.flow.isComplete)
+        .animation(model.motion(OT.Motion.content), value: model.skipShown)
+        .animation(model.motion(OT.Motion.content), value: model.flow.isComplete)
     }
 }

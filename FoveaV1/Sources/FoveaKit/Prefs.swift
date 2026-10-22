@@ -94,9 +94,10 @@ public enum HoverWait: String, CaseIterable, Identifiable, Codable, Sendable {
     /// The dwell before the board opens, and the most it may take, in seconds.
     public var dwell: (start: Double, cap: Double) {
         switch self {
-        case .quick: return (0.06, 0.18)
-        case .normal: return (0.12, 0.3)
-        case .relaxed: return (0.3, 0.6)
+        // Oct 21, Ryan: "expand faster when my mouse hovers" — each about half what it was.
+        case .quick: return (0.03, 0.1)
+        case .normal: return (0.06, 0.16)
+        case .relaxed: return (0.18, 0.36)
         }
     }
 }

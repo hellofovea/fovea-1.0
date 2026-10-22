@@ -42,13 +42,6 @@ struct VoiceGlowGeometry {
     /// px a second the lobes slide sideways at full voice; 0 holds them.
     var flow: CGFloat
     var bend: CGFloat
-    var bandStrength: Double, bandWidth: CGFloat, bandPosition: CGFloat, bandCurve: Double, bandSpread: Double, bandSkew: Double
-    var bandOffset: CGFloat
-    /// How far the band's ends rise toward the corners, where the rise starts, its exponent, and
-    /// how far past the sides it runs.
-    var bandTail: Double, bandTailPosition: Double, bandTailCurve: Double, bandTailOverflow: CGFloat
-    var bandAberration: Double
-    var distortion: Double, distortionDetail: Double
     var glowWidth: CGFloat, glowHeight: CGFloat, lobeSpacing: CGFloat, rangeWidth: CGFloat, rangeHeight: CGFloat
     var softness: Double
     var coreSize: CGFloat, strokeScale: CGFloat, innerScale: CGFloat, innerHeight: CGFloat, bloomScale: CGFloat,
@@ -70,20 +63,12 @@ struct VoiceGlowLook {
     /// 1, twice that at 2 (the person's dial, 0…1, doubled).
     var driftAmount: Double = 1
     var opacity: Double
-    /// The band's fringes: the package's own red, green and blue, or, for Custom, the chosen hues
-    /// (the far ends of the fan above and below, the centre between), so the whole glow follows
-    /// the spectrum.
-    var bandAbove: (Double, Double, Double) = WorkbenchTokens.VoiceGlow.bandAbove
-    var bandMid: (Double, Double, Double) = WorkbenchTokens.VoiceGlow.bandMid
-    var bandBelow: (Double, Double, Double) = WorkbenchTokens.VoiceGlow.bandBelow
 
     static func make(palette: GlowPalette, hue: Double, spread: Double, drift: Bool) -> VoiceGlowLook {
         let V = WorkbenchTokens.VoiceGlow.self
         if palette == .custom {
             let colors = V.customOffsets.map { hsb(hue + spread * $0, V.customSaturation, V.customBrightness) }
-            return VoiceGlowLook(colors: colors, hueBase: 0, drift: drift, opacity: 1,
-                                 bandAbove: hsb(hue + spread / 2, 0.85, 1), bandMid: hsb(hue, 0.85, 1),
-                                 bandBelow: hsb(hue - spread / 2, 0.85, 1))
+            return VoiceGlowLook(colors: colors, hueBase: 0, drift: drift, opacity: 1)
         }
         let mono = palette == .mono
         return VoiceGlowLook(colors: V.palettes[palette] ?? [], hueBase: mono ? 0 : hue, drift: drift && !mono,
@@ -109,23 +94,20 @@ struct VoiceGlowLook {
 /// One frame of the glow: what the package's driver writes as custom properties.
 struct VoiceGlowFrame {
     var t: Double
-    /// The followed level, and with the idle breath under it.
+    /// The followed level, and with the resting glow under it.
     var level: Double
     var eff: Double
     /// Presence, height and width multipliers.
     var glow: Double
     var h: CGFloat
     var w: CGFloat
-    /// The bend's extra height at the centre, px, and its strength 0–1.
+    /// The bend's extra height at the centre, px.
     var lift: CGFloat
-    var bendA: Double
     /// The hue drift, degrees.
     var drift: Double
     /// Each lobe's offset (before the width) and amplitude.
     var lobeX: [CGFloat]
     var lobeL: [CGFloat]
-    /// The distortion's displacement scale, px.
-    var warp: CGFloat
 }
 
 /// The driver, one per island: the envelope and the flow are kept across frames, as the
@@ -177,12 +159,12 @@ final class VoiceGlowEngine {
         for b in 0..<3 {
             bands[b] = Self.follow(bands[b], Self.shape(rawBands[b], V.threshold * 0.6), dt, V.attack, V.release * 1.15)
         }
-        let breathe = reduceMotion ? 0.5 : 0.5 + 0.5 * sin(2 * .pi * t / V.breathe)
-        let eff = level + (1 - level) * V.idle * breathe
+        // Oct 21, Ryan ("simpler is better"): silent, the glow rests still at its idle; it breathed.
+        let eff = level + (1 - level) * V.idle * 0.5
         // The flow: the spectrum slides sideways while a voice is heard, and rests when it stops.
         let span = V.lobeSpan * g.lobeSpacing * S
         if g.flow != 0, !reduceMotion {
-            phase = ((phase + g.flow * S * CGFloat(eff * dt)).truncatingRemainder(dividingBy: span) + span)
+            phase = ((phase + g.flow * S * CGFloat(level * dt)).truncatingRemainder(dividingBy: span) + span)
                 .truncatingRemainder(dividingBy: span)
         }
         var xs: [CGFloat] = [], ls: [CGFloat] = []
@@ -192,11 +174,10 @@ final class VoiceGlowEngine {
             ls.append(CGFloat(0.6 + 0.7 * bands[lobe.band]) * Self.edgeEnvelope(x, span))
         }
         let drift = reduceMotion ? 0 : -V.hueRange + 2 * V.hueRange * (1 - cos(2 * .pi * t / V.hueDuration)) / 2
-        let warp = reduceMotion ? 0 : CGFloat(g.distortion * 120) * S * CGFloat(0.15 + 0.85 * eff)
         return VoiceGlowFrame(t: t, level: level, eff: eff, glow: 0.15 + 0.85 * eff,
                               h: CGFloat(0.5 + g.reach * eff), w: CGFloat(0.85 + g.spread * eff),
-                              lift: g.bend * S * CGFloat(eff), bendA: min(1, eff), drift: drift,
-                              lobeX: xs, lobeL: ls, warp: warp)
+                              lift: g.bend * S * CGFloat(eff), drift: drift,
+                              lobeX: xs, lobeL: ls)
     }
 
     /// Noise gate, then soft saturation, so a shout rounds off instead of clipping.
@@ -237,31 +218,13 @@ enum VoiceGlowRenderer {
         let hue = look.hueBase + (look.drift ? f.drift * look.driftAmount : 0)
         let colors = look.colors.map { color(filtered($0, hue: hue, g)) }
         let fade = min(95, max(40, (70 * g.softness).rounded())) / 100
-        let pts = bandPoints(width: cw, height: ch, frame: f, geometry: g)
 
-        // The soft layers: above the band line as they are; under it, warped sideways in strips.
-        // Each layer's masks are made once, then every strip draws into them.
-        var above = ctx
-        above.clip(to: polygonAbove(pts, width: cw, height: ch))
-        let top = softLayers(in: above, edge: edge, frame: f, geometry: g, look: look)
-        drawSoft(top, edge: edge, frame: f, geometry: g, colors: colors, fade: fade, strip: nil, dx: 0)
-        var below = ctx
-        below.clip(to: polygonBelow(pts, width: cw, height: ch))
-        let under = softLayers(in: below, edge: edge, frame: f, geometry: g, look: look)
-        if f.warp > 0.5 {
-            var y = max(0, (pts.map(\.y).min() ?? ch).rounded(.down) - 1)
-            while y < ch {
-                let strip = Path(CGRect(x: -cw, y: y, width: 3 * cw, height: V.warpStrip + 0.5))
-                drawSoft(under, edge: edge, frame: f, geometry: g, colors: colors, fade: fade, strip: strip,
-                         dx: f.warp * warpNoise(y: y, t: f.t, geometry: g))
-                y += V.warpStrip
-            }
-        } else {
-            drawSoft(under, edge: edge, frame: f, geometry: g, colors: colors, fade: fade, strip: nil, dx: 0)
-        }
-
+        // Oct 21, Ryan ("simpler is better"): the inner light, its bloom and the lit edge, from the
+        // voice. The chromatic band over them (red above, green, blue below, on a wide halo) and the
+        // strips warped sideways under it are gone.
+        let layers = softLayers(in: ctx, edge: edge, frame: f, geometry: g, look: look)
+        drawSoft(layers, edge: edge, frame: f, geometry: g, colors: colors, fade: fade)
         drawStroke(in: ctx, edge: edge, frame: f, geometry: g, look: look, colors: colors, fade: fade)
-        drawBand(in: ctx, points: pts, frame: f, geometry: g, look: look, hue: hue)
     }
 
     /// The seven lobe colors as the glow shows them (drift aside), for the panel's swatches.
@@ -308,30 +271,25 @@ enum VoiceGlowRenderer {
         return (inner, bloom)
     }
 
-    /// The inner light and the bloom, within a strip, shifted `dx` sideways (the distortion; the
-    /// masks stay put).
+    /// The inner light and the bloom.
     private static func drawSoft(_ layers: (inner: GraphicsContext, bloom: GraphicsContext), edge: IslandEdge,
                                  frame f: VoiceGlowFrame, geometry g: VoiceGlowGeometry, colors: [Color],
-                                 fade: Double, strip: Path?, dx: CGFloat) {
+                                 fade: Double) {
         let V = WorkbenchTokens.VoiceGlow.self
         let S = g.scale
         let cw = edge.size.width, ch = edge.size.height
         let gw = g.glowWidth * S, gh = g.glowHeight * S
-        var inner = layers.inner
-        if let strip { inner.clip(to: strip) }
+        let inner = layers.inner
         inner.drawLayer { l in
             var shadow = l
             shadow.addFilter(.blur(radius: V.insetBlur * S / 2))
             shadow.stroke(edge.path(inset: 1), with: .color(.white.opacity(V.innerShadow)), lineWidth: 2)
-            l.translateBy(x: dx, y: 0)
             lobes(in: &l, width: cw, height: ch, frame: f, colors: colors, sw: gw * 0.9 * g.innerScale,
                   sh: gh * 0.9 * g.innerScale * g.innerHeight, y: 0, alpha: 0.46, fade: fade)
         }
-        var bloom = layers.bloom
-        if let strip { bloom.clip(to: strip) }
+        let bloom = layers.bloom
         bloom.drawLayer { l in
             l.addFilter(.blur(radius: max(0.5, V.bloomBlur * g.glowSize * S)))
-            l.translateBy(x: dx, y: 0)
             lobes(in: &l, width: cw, height: ch, frame: f, colors: colors, sw: gw * 1.15 * g.bloomScale,
                   sh: gh * 1.5 * g.bloomScale * g.bloomHeight, y: 0, alpha: 0.9, fade: min(0.95, fade + 0.02))
         }
@@ -360,55 +318,6 @@ enum VoiceGlowRenderer {
                 .init(color: .white.opacity(0.45), location: 0), .init(color: .white.opacity(0.14), location: 0.3),
                 .init(color: .white.opacity(0), location: 0.65),
             ])
-        }
-    }
-
-    /// The band: the bend's contour as a luminous ridge, the red fringe above, blue below, green
-    /// between, over a wide soft halo; the ends faded into the edge.
-    private static func drawBand(in ctx: GraphicsContext, points pts: [CGPoint], frame f: VoiceGlowFrame,
-                                 geometry g: VoiceGlowGeometry, look: VoiceGlowLook, hue: Double) {
-        let V = WorkbenchTokens.VoiceGlow.self
-        let S = g.scale
-        let alpha = min(1, 0.6 * g.bandStrength * f.bendA)
-        guard alpha > 0.005, pts.count > 1 else { return }
-        let bw = g.bandWidth * S * (1 + 0.35 * CGFloat(f.level))
-        let split = g.bandAberration * (0.35 + 0.65 * f.level)
-        let dy = CGFloat(4 + 12 * split) * S
-        let dx = CGFloat(4 * split) * S
-        let base = 0.42 * alpha
-        let thickness = 14 * bw
-        let blur = 3.5 * g.bandWidth * S / 2
-        let x0 = pts[0].x, x1 = pts[pts.count - 1].x
-        let endFade = g.bandTail > 0 ? 0.015 : 0.18
-        func faded(_ rgb: RGB, _ a: Double) -> GraphicsContext.Shading {
-            let c = color(filtered(rgb, hue: hue, g))
-            return .linearGradient(Gradient(stops: [
-                .init(color: c.opacity(0), location: 0), .init(color: c.opacity(a), location: endFade),
-                .init(color: c.opacity(a), location: 1 - endFade), .init(color: c.opacity(0), location: 1),
-            ]), startPoint: CGPoint(x: x0, y: 0), endPoint: CGPoint(x: x1, y: 0))
-        }
-        func trace(_ ox: CGFloat, _ oy: CGFloat) -> Path {
-            var p = Path()
-            p.move(to: CGPoint(x: pts[0].x + ox, y: pts[0].y + oy))
-            for q in pts.dropFirst() { p.addLine(to: CGPoint(x: q.x + ox, y: q.y + oy)) }
-            return p
-        }
-        var halo = ctx
-        halo.addFilter(.blur(radius: blur * 3))
-        halo.stroke(trace(0, 0), with: faded(V.bandCore, base * 0.3),
-                    style: StrokeStyle(lineWidth: thickness * 2.2, lineCap: .round, lineJoin: .round))
-        var ridge = ctx
-        ridge.addFilter(.blur(radius: blur))
-        let ridges: [(RGB, Double, CGFloat, CGFloat)] = [
-            (look.bandAbove, 1, dx, -dy), (look.bandMid, 0.55, dx * 0.35, -dy * 0.35), (look.bandBelow, 1, -dx, dy), (V.bandCore, 0.9, 0, 0),
-        ]
-        let ramp: [(CGFloat, Double)] = [(1, 0.16), (0.72, 0.2), (0.46, 0.26), (0.22, 0.34)]
-        for (rgb, a, ox, oy) in ridges {
-            let path = trace(ox, oy)
-            for (widthMul, alphaMul) in ramp {
-                ridge.stroke(path, with: faded(rgb, base * a * alphaMul),
-                             style: StrokeStyle(lineWidth: max(0.6, thickness * widthMul), lineCap: .round, lineJoin: .round))
-            }
         }
     }
 
@@ -447,81 +356,6 @@ enum VoiceGlowRenderer {
         e.scaleBy(x: rx, y: ry)
         e.fill(Path(ellipseIn: CGRect(x: -1, y: -1, width: 2, height: 2)),
                with: .radialGradient(Gradient(stops: stops), center: .zero, startRadius: 0, endRadius: 1))
-    }
-
-    /// The band line: an organic bell sitting on the ceiling, left to right; with a tail, it runs
-    /// the island's full width and a little past it, its ends rising toward the corners.
-    static func bandPoints(width cw: CGFloat, height ch: CGFloat, frame f: VoiceGlowFrame, geometry g: VoiceGlowGeometry) -> [CGPoint] {
-        let V = WorkbenchTokens.VoiceGlow.self
-        let S = g.scale
-        let centre = cw / 2
-        let half = V.ceilingHalfWidth * g.rangeWidth * S * f.w
-        let apexCap = ch * 0.82 * min(1, S)
-        let apex = min(apexCap, (V.ceilingHeight * g.rangeHeight * S * f.h + f.lift) * g.bandPosition)
-        let base = ch - g.bandOffset * S
-        let withTail = g.bandTail > 0.001
-        let over = withTail ? g.bandTailOverflow * S : 0
-        let x0 = withTail ? -over : centre - half
-        let x1 = withTail ? cw + over : centre + half
-        return (0...V.bandSamples).map { i in
-            let x = x0 + (x1 - x0) * CGFloat(i) / CGFloat(V.bandSamples)
-            let t = Double(max(-1, min(1, (x - centre) / max(1, half))))
-            let edgeDistance = (x < centre ? centre : cw - centre) + over
-            let y = bell(t, g) + tailLift(Double(abs(x - centre)), Double(edgeDistance), g)
-            return CGPoint(x: x, y: base - apex * CGFloat(y))
-        }
-    }
-
-    /// exp(-(|t| / σ)^p), normalised to 1 at the centre and 0 at the ends; skew widens one side.
-    static func bell(_ t: Double, _ g: VoiceGlowGeometry) -> Double {
-        let side = t < 0 ? 1 - g.bandSkew : 1 + g.bandSkew
-        let s = max(0.05, g.bandSpread * side)
-        let v = exp(-pow(abs(t) / s, g.bandCurve))
-        let tail = exp(-pow(1 / s, g.bandCurve))
-        return max(0, (v - tail) / (1 - tail))
-    }
-
-    /// The band's ends rising again toward the corners, from `bandTailPosition` of the way out.
-    static func tailLift(_ distance: Double, _ edge: Double, _ g: VoiceGlowGeometry) -> Double {
-        guard g.bandTail > 0, edge > 0 else { return 0 }
-        let start = edge * max(0, min(0.98, g.bandTailPosition))
-        guard distance > start else { return 0 }
-        let u = min(1, (distance - start) / max(1, edge - start))
-        return g.bandTail * pow(u, max(0.5, g.bandTailCurve))
-    }
-
-    private static func polygonAbove(_ pts: [CGPoint], width cw: CGFloat, height ch: CGFloat) -> Path {
-        var p = Path()
-        p.move(to: CGPoint(x: min(0, pts.first?.x ?? 0), y: 0))
-        p.addLine(to: CGPoint(x: max(cw, pts.last?.x ?? cw), y: 0))
-        p.addLine(to: CGPoint(x: max(cw, pts.last?.x ?? cw), y: ch))
-        for q in pts.reversed() { p.addLine(to: q) }
-        p.addLine(to: CGPoint(x: min(0, pts.first?.x ?? 0), y: ch))
-        p.closeSubpath()
-        return p
-    }
-
-    private static func polygonBelow(_ pts: [CGPoint], width cw: CGFloat, height ch: CGFloat) -> Path {
-        var p = Path()
-        let left = min(0, pts.first?.x ?? 0), right = max(cw, pts.last?.x ?? cw)
-        p.move(to: CGPoint(x: left, y: ch + 40))
-        p.addLine(to: CGPoint(x: left, y: ch))
-        for q in pts { p.addLine(to: q) }
-        p.addLine(to: CGPoint(x: right, y: ch))
-        p.addLine(to: CGPoint(x: right, y: ch + 40))
-        p.closeSubpath()
-        return p
-    }
-
-    /// The displacement at a height: drifting fractal noise, as the package's turbulence reads
-    /// through a strip (−0.3…0.3 of the scale).
-    private static func warpNoise(y: CGFloat, t: Double, geometry g: VoiceGlowGeometry) -> CGFloat {
-        let f = 0.05 * g.distortionDetail / Double(g.scale) / 4
-        let shift = 4 * Double(g.scale) * sin(t * 0.6 + 1.3)
-        let yy = Double(y) + shift
-        let n = 0.2 * sin(2 * .pi * f * yy + 0.8 * Double(g.scale) * sin(t * 0.9))
-            + 0.1 * sin(2 * .pi * f * 2.1 * yy + 1.7 + t * 0.4)
-        return CGFloat(n)
     }
 
     // MARK: Color

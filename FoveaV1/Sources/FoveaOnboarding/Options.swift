@@ -9,7 +9,6 @@ import OnboardingCore
 ///   `--play-from=arrive|turnOn|agents|pointAndSay|dictation|home` from a stage;
 /// - `--pace=<x>` scales every wait (0.5 is twice as fast);
 /// - `--practice-agent` never calls the real Claude Code;
-/// - `--no-typing` shows lines whole instead of typing them out;
 /// - `--mute` starts without sound. `FOVEA_NO_ACTIVATE=1` keeps the window in the background.
 struct Options {
     var step: Step?
@@ -21,7 +20,6 @@ struct Options {
     var pace: Double?
     /// Never call the real agent (tests): the practice agent answers.
     var practiceAgent = false
-    var noTyping = false
     var mute = false
     var noActivate = ProcessInfo.processInfo.environment["FOVEA_NO_ACTIVATE"] == "1"
 
@@ -48,7 +46,6 @@ struct Options {
         for arg in args where arg.hasPrefix("--play-from=") { o.playFrom = String(arg.dropFirst("--play-from=".count)); o.play = true }
         for arg in args where arg.hasPrefix("--pace=") { o.pace = Double(arg.dropFirst("--pace=".count)) }
         o.practiceAgent = args.contains("--practice-agent") || args.contains("--smoke-first-run")
-        o.noTyping = args.contains("--no-typing")
         o.mute = args.contains("--mute") || args.contains("--smoke-first-run")
         return o
     }

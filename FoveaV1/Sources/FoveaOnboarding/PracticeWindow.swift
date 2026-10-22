@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import QuartzCore
 import FoveaCore
 import OnboardingCore
 import FoveaLook
@@ -28,11 +29,11 @@ struct PracticeWindow: View {
 }
 
 /// The browser's tabs. Clicking one shows its page; while a request is open, the tab to click
-/// next breathes in the accent (Oct 9: gathering from different tabs).
+/// next is ringed in the accent (Oct 9: gathering from different tabs; Oct 21, Ryan ("simpler is
+/// better"): held still, it breathed).
 struct TabBar: View {
     let model: OnboardingModel
     var still = false
-    @State private var breathe = false
 
     var body: some View {
         HStack(spacing: 4) {
@@ -47,7 +48,7 @@ struct TabBar: View {
                         .frame(height: OT.Layout.tabBar - 8)
                         .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(on ? OT.Colors.practiceWindow : .clear))
                         .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .strokeBorder(next ? model.accentColor.opacity(breathe ? 1 : 0.4) : (on ? OT.Colors.practiceEdge : .clear),
+                            .strokeBorder(next ? model.accentColor : (on ? OT.Colors.practiceEdge : .clear),
                                           lineWidth: next ? 2 : 1))
                         .contentShape(Rectangle())
                 }
@@ -58,7 +59,6 @@ struct TabBar: View {
         .padding(.horizontal, 10)
         .frame(height: OT.Layout.tabBar)
         .background(OT.Colors.toolbar)
-        .onAppear { if !model.options.harness { withAnimation(OT.Motion.dropZone) { breathe = true } } }
     }
 }
 
@@ -286,7 +286,7 @@ struct MessagesWindow: View {
                 ForEach(Copy.linMessages, id: \.self) { bubble($0, mine: false) }
                 if let sent = model.sentReply {
                     bubble(sent, mine: true)
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        .transition(model.sentTransition)
                 }
                 // Oct 17, Ryan: taken while answering, after the words, as Messages sends a picture.
                 ForEach(model.sentReplyTaken) { taken in
@@ -294,7 +294,7 @@ struct MessagesWindow: View {
                         Spacer(minLength: 100)
                         TakenPicture(referent: taken, height: OT.Layout.takenInMessages)
                     }
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    .transition(model.sentTransition)
                 }
                 Spacer(minLength: 0)
             }
@@ -479,11 +479,23 @@ struct DictatedText: View {
 struct Caret: View {
     let accent: Color
     @State private var on = true
+    /// Oct 21, perf: on the live stage it blinks on Core Animation (`BreathingLayer`): the same
+    /// curve and length, 1↔0, with no SwiftUI frame for each step (each laid the stage out).
+    @Environment(\.firstRunLayerLoops) private var layerLoops
+    @State private var since = CACurrentMediaTime()
 
     var body: some View {
-        Rectangle().fill(accent).frame(width: 2, height: 17)
-            .opacity(on ? 1 : 0)
-            .onAppear { withAnimation(OT.Motion.caretBlink) { on = false } }
+        if layerLoops {
+            // The rectangle keeps the caret's place and baseline; its layer draws it.
+            Rectangle().fill(Color.clear).frame(width: 2, height: 17)
+                .overlay(BreathingLayer(color: accent, cornerRadius: 0, continuous: false, from: 1, to: 0,
+                                        seconds: OT.Motion.caretBlinkSeconds, since: since))
+                .onAppear { since = CACurrentMediaTime() }
+        } else {
+            Rectangle().fill(accent).frame(width: 2, height: 17)
+                .opacity(on ? 1 : 0)
+                .onAppear { withAnimation(OT.Motion.caretBlink) { on = false } }
+        }
     }
 }
 
@@ -529,5 +541,14 @@ struct FlowRow: Layout {
             rows[rows.count - 1] = row
         }
         return rows.filter { !$0.items.isEmpty }
+    }
+}
+
+private extension OnboardingModel {
+    /// What's sent in Messages fades in (Oct 21, Ryan ("simpler is better"): it rose from the
+    /// window's foot, the whole window's height).
+    var sentTransition: AnyTransition {
+        if options.harness { return .identity }
+        return .asymmetric(insertion: .opacity.animation(motion(OT.Motion.partIn)), removal: .opacity.animation(motion(OT.Motion.contentOut)))
     }
 }

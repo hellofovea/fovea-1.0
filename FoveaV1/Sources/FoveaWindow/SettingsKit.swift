@@ -20,7 +20,10 @@ import FoveaKit
 /// thinking, "Off" a shortcut not set and a permission turned off), looked up by a key of its own
 /// so Chinese can say each: the English as given, the Chinese under `key` in window.strings.
 func L(_ key: StaticString, english: String.LocalizationValue) -> String {
-    String(localized: LocalizedStringResource(key, defaultValue: english, locale: FoveaLocale.shared.locale, bundle: .main))
+    // Oct 21, perf: remembered (FoveaKit's `LookupMemo`); the lookup itself is as it was.
+    LookupMemo.shared.value(language: FoveaLocale.shared.language, key: key, english: english) {
+        String(localized: LocalizedStringResource(key, defaultValue: english, locale: FoveaLocale.shared.locale, bundle: .main))
+    }
 }
 
 // MARK: - Native
@@ -397,6 +400,7 @@ struct InkToggle: View {
 /// A value and its chevrons in a pill; a menu of the choices with a check on the current one.
 struct InlinePicker<Value: Hashable>: View {
     @Environment(\.palette) private var palette
+    @Environment(\.motion) private var motion
     let options: [Value]
     @Binding var selection: Value
     let label: (Value) -> String
@@ -461,7 +465,7 @@ struct InlinePicker<Value: Hashable>: View {
         .overlay(Capsule().strokeBorder(palette.ink(T.Shade.line), lineWidth: 0.5))
         .contentShape(Capsule())
         .onHover { hover = $0 }
-        .animation(.easeOut(duration: T.Motion.hover), value: hover)
+        .animation(motion.animation(.hover), value: hover)
     }
 }
 
@@ -515,130 +519,10 @@ struct StatusLabel: View {
     }
 }
 
-// MARK: - Choice tiles
-
-/// A choice shown, not named (Geist's Choicebox, Bartender's previews): the whole tile is the
-/// button, shaded as Aside's cards and lifted a step under the pointer; the chosen one has an
-/// ink edge and a check in its corner. Arrow keys move the choice.
-struct ChoiceTiles<Value: Hashable, Picture: View>: View {
-    @Environment(\.palette) private var palette
-    @Environment(\.motion) private var motion
-    struct Option { let value: Value; let title: String; let detail: String }
-    let options: [Option]
-    @Binding var selection: Value
-    @ViewBuilder let picture: (Value, Bool) -> Picture
-
-    @State private var hovered: Value?
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            ForEach(options, id: \.value) { option in
-                let on = option.value == selection
-                // Concentric: the picture inset 6 pt in a tile rounded 14, so rounded 8.
-                let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
-                Button { withAnimation(motion.animation(.swap)) { selection = option.value } } label: {
-                    VStack(alignment: .leading, spacing: 0) {
-                        picture(option.value, on)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 80)
-                            .background(palette.ink(0.04))
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(L(key: option.title)).font(.system(size: 13, weight: .semibold)).foregroundStyle(palette.text)
-                            Text(L(key: option.detail)).font(.system(size: 11.5)).foregroundStyle(palette.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .padding(.horizontal, 4)
-                        .padding(.top, 10)
-                        .padding(.bottom, 4)
-                    }
-                    .padding(6)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .settingsSurface(shape, hovered == option.value && !on ? .raised : .resting)
-                    // Chosen: the ink, as Aside's active chip is.
-                    .overlay(shape.strokeBorder(on ? palette.ink(0.85) : .clear, lineWidth: 1.5))
-                    .overlay(alignment: .topTrailing) {
-                        if on {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 8.5, weight: .bold))
-                                .foregroundStyle(palette.card)
-                                .frame(width: 16, height: 16)
-                                .background(Circle().fill(palette.text))
-                                .padding(12)
-                                .transition(.scale(scale: 0.6).combined(with: .opacity))
-                        }
-                    }
-                    .contentShape(shape)
-                }
-                .buttonStyle(.plain)
-                .onHover { h in
-                    withAnimation(motion.animation(.hover)) { if h { hovered = option.value } else if hovered == option.value { hovered = nil } }
-                }
-                .accessibilityLabel(L(key: option.title))
-                .accessibilityAddTraits(on ? [.isSelected] : [])
-            }
-        }
-        .focusable()
-        .focusEffectDisabled()
-        .onMoveCommand { direction in
-            guard let i = options.firstIndex(where: { $0.value == selection }) else { return }
-            let j = direction == .left ? i - 1 : (direction == .right ? i + 1 : i)
-            if options.indices.contains(j) { withAnimation(motion.animation(.swap)) { selection = options[j].value } }
-        }
-    }
-}
-
 // MARK: - Keys
 
-/// A shortcut as keys: one cap per key, no "+" between, muted words where a key needs saying
-/// ("Left", "twice"). Click to record: the caps become a well that says so; Esc cancels.
-struct KeyCaps: View {
-    @Environment(\.palette) private var palette
-    let keys: [String]
-    var large = false
-    @State private var recording = false
-
-    var body: some View {
-        Button {
-            recording.toggle()
-            if recording {
-                Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(2.5))
-                    recording = false
-                }
-            }
-        } label: {
-            Group {
-                if recording {
-                    Text("Type a shortcut")
-                        .font(.system(size: large ? 13 : 12, weight: .medium))
-                        .foregroundStyle(palette.secondary)
-                        .padding(.horizontal, 10)
-                        .frame(height: large ? 32 : 22)
-                        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(palette.text.opacity(0.05)))
-                        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(palette.text, lineWidth: 1.5))
-                } else {
-                    HStack(spacing: 4) {
-                        ForEach(Array(keys.enumerated()), id: \.offset) { _, key in
-                            if key.hasPrefix("~") {
-                                Text(L(key: String(key.dropFirst()))).font(.system(size: large ? 13 : 11.5)).foregroundStyle(palette.tertiary)
-                            } else {
-                                KeyCapView(key: key, large: large)
-                            }
-                        }
-                    }
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onExitCommand { recording = false }
-        .help("Click, then press the new keys")
-        .accessibilityLabel(keys.map { $0.hasPrefix("~") ? L(key: String($0.dropFirst())) : $0 }.joined(separator: " "))
-    }
-}
-
-/// One key: paper with a hairline and a slightly darker bottom edge, the glyph in ink.
+/// One key: paper with a hairline, the glyph in ink. Oct 21, Ryan ("simpler is better"): flat,
+/// without the darker bottom edge and the shadow that made it a 3D key.
 struct KeyCapView: View {
     @Environment(\.palette) private var palette
     let key: String
@@ -651,11 +535,7 @@ struct KeyCapView: View {
             .foregroundStyle(palette.text)
             .padding(.horizontal, large ? 9 : 6)
             .frame(minWidth: h, minHeight: h)
-            .overlay(alignment: .bottom) {
-                shape.fill(palette.ink(0.08)).frame(height: 1.5).padding(.horizontal, 2).offset(y: -0.25)
-                    .mask(shape)
-            }
-            .shading(shape, .control)
+            .shading(shape, .flat)
     }
 }
 
@@ -668,7 +548,6 @@ struct ChipWell<Item: Identifiable>: View {
     let items: [Item]
     let title: (Item) -> String
     var icon: ((Item) -> NSImage?)?
-    var marked: ((Item) -> Bool)?
     let addTitle: String
     let onRemove: (Item) -> Void
     let onAdd: ((String) -> Void)?
@@ -680,7 +559,7 @@ struct ChipWell<Item: Identifiable>: View {
     var body: some View {
         FlowLayout(spacing: 6) {
             ForEach(items) { item in
-                Capsule_(text: title(item), icon: icon?(item), marked: marked?(item) ?? false,
+                Capsule_(text: title(item), icon: icon?(item),
                          onRemove: { onRemove(item) }, onTap: onTap.map { tap in { tap(item) } })
             }
             if adding {
@@ -727,9 +606,9 @@ struct ChipWell<Item: Identifiable>: View {
 
 private struct Capsule_: View {
     @Environment(\.palette) private var palette
+    @Environment(\.motion) private var motion
     let text: String
     let icon: NSImage?
-    let marked: Bool
     let onRemove: () -> Void
     let onTap: (() -> Void)?
     @State private var hover = false
@@ -737,28 +616,27 @@ private struct Capsule_: View {
     var body: some View {
         HStack(spacing: 5) {
             if let icon { Image(nsImage: icon).resizable().frame(width: 16, height: 16) }
-            if marked {
-                Image(systemName: "sparkle").font(.system(size: 9, weight: .semibold)).foregroundStyle(palette.text.opacity(0.4))
-            }
             Text(text).font(.system(size: 12.5)).foregroundStyle(palette.text)
-            if hover {
-                Button(action: onRemove) {
-                    Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).foregroundStyle(palette.secondary)
-                        .frame(width: 14, height: 14)
-                        .background(Circle().fill(palette.fill))
-                }
-                .buttonStyle(.plain)
-                .help("Remove \(text)")
-                .transition(.opacity)
+            // Oct 21, Ryan ("simpler is better"): the × has its room all the time and shows under
+            // the pointer, so the chip doesn't widen and push the row along.
+            Button(action: onRemove) {
+                Image(systemName: "xmark").font(.system(size: 8, weight: .bold)).foregroundStyle(palette.secondary)
+                    .frame(width: 14, height: 14)
+                    .background(Circle().fill(palette.fill))
             }
+            .buttonStyle(.plain)
+            .help("Remove \(text)")
+            .opacity(hover ? 1 : 0)
+            .allowsHitTesting(hover)
+            .accessibilityHidden(!hover)
         }
         .padding(.leading, icon == nil ? 10 : 5)
-        .padding(.trailing, hover ? 5 : 10)
+        .padding(.trailing, 5)
         .frame(height: 24)
         .background(Capsule().fill(palette.ink(hover ? T.Shade.fillHover : T.Shade.fill)))
         .overlay(Capsule().strokeBorder(palette.ink(T.Shade.line), lineWidth: 0.5))
         .contentShape(Capsule())
-        .onHover { h in withAnimation(.easeOut(duration: T.Motion.hover)) { hover = h } }
+        .onHover { h in withAnimation(motion.animation(.hover)) { hover = h } }
         .onTapGesture { onTap?() }
     }
 }

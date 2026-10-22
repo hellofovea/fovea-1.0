@@ -10,36 +10,10 @@ import FoveaIsland
 extension OnboardingModel {
     // MARK: Permissions, as macOS asks
 
-    /// The line from the notch, dropped: on the list, Fovea joins it already on (macOS 27 adds a
-    /// dropped app switched on; REAL_MAC.md). Then the other list.
-    func tileDropped(at point: CGPoint) {
-        tileDrag = nil
-        guard let pane = settingsPane, settingsListFrame.insetBy(dx: -20, dy: -20).contains(point) else { return }
-        animate(OT.Motion.content) { _ = inList.insert(pane) }
-        sound.cue(.tick)
-        if pane == .screenRecording {
-            animate(OT.Motion.content) { _ = switchedOn.insert(pane) }
-            after(OT.Timing.reopenAlert, "reopen") { [weak self] in self?.animate(OT.Motion.calm) { self?.alert = .reopen } }
-        } else {
-            grant(pane)
-        }
-    }
-
-    /// The help's way: Fovea already in the list, its switch flipped on.
-    func toggleSwitch(_ permission: Permission) {
-        guard inList.contains(permission), !switchedOn.contains(permission) else { return }
-        animate(OT.Motion.content) { _ = switchedOn.insert(permission) }
-        if permission == .screenRecording {
-            after(OT.Timing.reopenAlert, "reopen") { [weak self] in self?.animate(OT.Motion.calm) { self?.alert = .reopen } }
-        } else {
-            grant(permission)
-        }
-    }
-
     /// The one button before the system's own prompt (Apple HIG: a plain verb, then macOS asks).
     func askMicrophone() {
         guard let host else {
-            animate(OT.Motion.calm) { alert = .microphone }
+            animate(OT.Motion.content) { alert = .microphone }
             return
         }
         // macOS's own prompts: the microphone, then speech recognition (1.0 turns words into text
@@ -51,35 +25,6 @@ extension OnboardingModel {
                 return
             }
             self.grant(.microphone)
-        }
-    }
-
-    func alertAnswered(_ allow: Bool) {
-        guard let shown = alert else { return }
-        animate(OT.Motion.calm) { alert = nil }
-        switch shown {
-        case .microphone:
-            guard allow else {
-                say(L("Fovea needs the microphone to hear you. Allow it in System Settings, or skip for now."), hold: true)
-                return
-            }
-            grant(.microphone)
-        case .reopen:
-            reopen(now: allow)
-        }
-    }
-
-    /// macOS wants Fovea to reopen before Screen Recording takes: it does, and comes back here.
-    private func reopen(now: Bool) {
-        if now {
-            animate(OT.Motion.calm) { flash = true }
-            after(OT.Timing.reopenPause, "reopened") { [weak self] in
-                guard let self else { return }
-                self.animate(OT.Motion.slow) { self.flash = false }
-                self.grant(.screenRecording)
-            }
-        } else {
-            grant(.screenRecording)
         }
     }
 
@@ -100,7 +45,7 @@ extension OnboardingModel {
             // The first list done: System Settings turns to the second (Fovea opens it by its link).
             after(OT.Timing.nextList, "nextList") { [weak self] in
                 guard let self else { return }
-                self.animate(OT.Motion.calm) { self.settingsPane = .screenRecording }
+                self.animate(OT.Motion.content) { self.settingsPane = .screenRecording }
             }
         }
     }
@@ -114,7 +59,7 @@ extension OnboardingModel {
     // MARK: Your agents
 
     func toggleAgent(_ agent: Agent) {
-        animate(OT.Motion.content) {
+        animate(OT.Motion.select) {
             if agentsOn.contains(agent) { agentsOn.remove(agent) } else { agentsOn.insert(agent) }
         }
         sound.cue(.tick)
@@ -124,7 +69,7 @@ extension OnboardingModel {
     func toggleWish(_ name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        animate(OT.Motion.content) {
+        animate(OT.Motion.select) {
             if let i = flow.agentWishes.firstIndex(of: trimmed) { flow.agentWishes.remove(at: i) } else { flow.agentWishes.append(trimmed) }
         }
         sound.cue(.tick)
@@ -244,6 +189,6 @@ extension OnboardingModel {
         guard !eyeTrackingAsked else { return }
         if !options.harness { FeedbackStore.append("Eye tracking: asked to join the beta") }
         sound.cue(.allow)
-        animate(OT.Motion.content) { eyeTrackingAsked = true }
+        animate(OT.Motion.select) { eyeTrackingAsked = true }
     }
 }

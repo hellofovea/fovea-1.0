@@ -330,6 +330,8 @@ struct ChatPill: View {
     let open: Bool
     @State private var hovering = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Oct 21, perf: its band is showing (MockIsland's `BandShown`); its clock pauses when not.
+    @Environment(\.islandBandShown) private var bandShown
 
     var body: some View {
         let C = WorkbenchTokens.Chat.self
@@ -337,11 +339,13 @@ struct ChatPill: View {
         let agent = ChatAgent.named(chat?.agent ?? ChatBook.predictedAgent)
         let routed = model.chatRouted
         let still = routed || model.snapshotMode || reduceMotion
+        // Oct 21, perf: "Choosing chat" breathed on every frame at rest, Choose chat faded out.
+        let clockPaused = still || !bandShown
         let shape = RoundedRectangle(cornerRadius: C.pillRadius, style: .continuous)
         Button { model.setChatLevel(open ? .closed : .projects) } label: {
             HStack(spacing: C.pillSpacing) {
                 ZStack {
-                    TimelineView(.animation(minimumInterval: 1 / 30, paused: still)) { context in
+                    TimelineView(.animation(minimumInterval: 1 / 30, paused: clockPaused)) { context in
                         Circle()
                             .fill(C.placeholderFill)
                             .opacity(routed ? 0 : breath(context.date))
@@ -356,7 +360,7 @@ struct ChatPill: View {
                 }
                 .frame(width: C.icon, height: C.icon)
                 ZStack(alignment: .leading) {
-                    TimelineView(.animation(minimumInterval: 1 / 30, paused: still)) { context in
+                    TimelineView(.animation(minimumInterval: 1 / 30, paused: clockPaused)) { context in
                         Text("Choosing chat")
                             .foregroundStyle(C.pillPlaceholder)
                             .opacity(routed ? 0 : breath(context.date))
@@ -604,7 +608,7 @@ struct ChatRail: View {
                     .overlay(tab.strokeBorder(increased ? C.contrastStroke : .clear, lineWidth: 1))
                     .frame(width: C.tab.width, height: C.tab.height)
                     .position(x: cell.midX, y: cell.midY)
-                    .animation(model.snapshotMode ? nil : (reduceMotion ? .easeOut(duration: 0.1) : C.agentSwap), value: active)
+                    .animation(model.snapshotMode ? nil : (reduceMotion ? WorkbenchTokens.Spring.fade : C.agentSwap), value: active)
             }
             // Viewing another agent: a dot under the one whose chat the request goes to.
             if let chosenAgent, chosenAgent != active, let cell = layout.cells.first(where: { $0.agent == chosenAgent })?.frame {

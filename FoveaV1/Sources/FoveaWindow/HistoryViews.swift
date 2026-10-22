@@ -37,7 +37,7 @@ struct HomeFeed: View {
             }
             if model.archiveStyle == .inline, let day = model.archiveDay {
                 InlineDay(day: day, columns: layout.columns)
-                    .transition(.reveal)
+                    .transition(.opacity)
             }
         }
     }
@@ -73,7 +73,7 @@ struct CalendarSection<Content: View>: View {
                 if model.years.count > 1 {
                     SlidingSegments(segments: model.years.map { .init(value: $0, title: String($0), help: L("Show \(String($0))")) },
                                     selection: year, height: 22, fontSize: 11.5, padding: 10) { y in
-                        model.animate(.swap) { model.calendarYear = y }
+                        model.cut { model.calendarYear = y }
                     }
                     .accessibilityLabel("Year")
                 } else {
@@ -83,11 +83,12 @@ struct CalendarSection<Content: View>: View {
                 Text(Self.yearTotal(total, String(year), matches: model.filtering))
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(palette.tertiary)
-                    .contentTransition(.numericText())
             }
+            // Oct 21, Ryan ("simpler is better"): another year shows at once (it faded out and in,
+            // its total rolling).
             content()
                 .id(year)
-                .transition(.blockSwap)
+                .transition(.identity)
         }
     }
 
@@ -111,15 +112,20 @@ enum CalendarWords {
     /// A month's name: the English format as written, or the Chinese template's.
     static func formatter(_ english: String, chinese template: String) -> DateFormatter {
         let cal = Lines.calendar
-        let f = DateFormatter(); f.calendar = cal; f.timeZone = cal.timeZone
-        if chinese {
-            f.locale = FoveaLocale.shared.locale
-            f.setLocalizedDateFormatFromTemplate(template)
-        } else {
-            f.locale = cal.locale
-            f.dateFormat = english
+        // Oct 21, perf: made once per format, language and calendar (CapturesCore's `FormatterMemo`).
+        let chinese = chinese
+        let language = FoveaLocale.shared.locale.identifier
+        return FormatterMemo.shared.formatter(["calendar", chinese ? language : "en", english, template, FormatterMemo.key(cal)]) {
+            let f = DateFormatter(); f.calendar = cal; f.timeZone = cal.timeZone
+            if chinese {
+                f.locale = FoveaLocale.shared.locale
+                f.setLocalizedDateFormatFromTemplate(template)
+            } else {
+                f.locale = cal.locale
+                f.dateFormat = english
+            }
+            return f
         }
-        return f
     }
 
     /// The calendar whose weekday names to show (its layout stays `Lines.calendar`'s).
@@ -606,7 +612,7 @@ struct DayHeader: View {
                     .disabled(model.neighborDay(1) == nil)
                 if closable {
                     BarDivider()
-                    IconButton(symbol: "xmark", help: "Close the day") { model.animate(.swap) { model.archiveDay = nil } }
+                    IconButton(symbol: "xmark", help: "Close the day") { model.animate(.layout) { model.archiveDay = nil } }
                 }
             }
         }
@@ -624,7 +630,7 @@ struct InlineDay: View {
             DayHeader(day: day, closable: true)
             CaptureGrid(matches: model.matches(on: day), columns: columns, dayHeaders: false, emptyNote: "")
                 .id(day)
-                .transition(.blockSwap)
+                .transition(.identity)
         }
     }
 }

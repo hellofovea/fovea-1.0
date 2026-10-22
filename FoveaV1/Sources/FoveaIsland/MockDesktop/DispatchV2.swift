@@ -183,14 +183,12 @@ struct V2SessionHeader: View {
             ChatAgentIcon(agent: ChatAgent.named(task.agent), size: avatar)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    // Feedback #15: the name made from the request; the request's words while it's made.
+                    // Feedback #15: the name made from the request.
                     Text(model.v2Title(task))
                         .font(V.titleFont)
-                        .foregroundStyle(model.v2Naming.contains(task.id) ? WorkbenchTokens.FeedbackV2.namingColor : V.titleColor)
+                        .foregroundStyle(V.titleColor)
                         .lineLimit(1)
                         .truncationMode(.tail)
-                        .id(model.v2Title(task))
-                        .transition(.opacity)
                     V2Badge(text: quick ? L("Quick answer") : task.project)
                 }
                 V2StateLine(model: model, task: task)
@@ -207,7 +205,6 @@ struct V2SessionHeader: View {
 struct V2SendContent: View {
     let model: WorkbenchModel
     let layout: V2SendLayout
-    @Namespace private var space
 
     var body: some View {
         let V = WorkbenchTokens.V2.self
@@ -224,7 +221,7 @@ struct V2SendContent: View {
                 // What was taken, as one stack (feedback #1); the chat; the model; send.
                 HStack(spacing: V.attachmentGap) {
                     if !model.liveReferents.isEmpty {
-                        V2ReferentPile(model: model, space: space)
+                        V2ReferentPile(model: model)
                     }
                     Spacer(minLength: V.attachBottom)
                     V2ChatPill(model: model)
@@ -265,14 +262,16 @@ struct V2SendContent: View {
             }
             .frame(width: V2Geometry.contentWidth, alignment: .topLeading)
             .offset(x: V2Geometry.contentX, y: V2Geometry.top(model.metrics))
-            // A taken thing, looked at closer: it grows from its thumbnail over the window.
+            // A taken thing, looked at closer: it fades in over the window (Oct 21, Ryan, "simpler
+            // is better": it no longer grows out of its thumbnail).
             if let id = model.v2Inspecting, let referent = model.liveReferents.first(where: { $0.id == id }) {
-                V2AttachmentInspect(model: model, referent: referent, layout: layout, space: space)
+                V2AttachmentInspect(model: model, referent: referent, layout: layout)
             }
         }
         .frame(width: layout.outline.size.width, height: layout.outline.size.height, alignment: .topLeading)
-        .animation(WorkbenchTokens.V2.resize, value: model.v2Browsing)
-        .animation(WorkbenchTokens.V2.resize, value: model.v2ModelSheet)
+        // Oct 21, Ryan: opening with a little bounce, folding back without.
+        .animation(model.v2Browsing ? WorkbenchTokens.V2.resize : WorkbenchTokens.V2.fold, value: model.v2Browsing)
+        .animation(model.v2ModelSheet ? WorkbenchTokens.V2.resize : WorkbenchTokens.V2.fold, value: model.v2ModelSheet)
         .panelScheme()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Choose chat")
@@ -310,7 +309,7 @@ struct V2ChatPill: View {
             .background(Capsule(style: .continuous).fill(hovering ? C.pillFillHover : C.pillFill))
             .contentShape(Capsule(style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(IslandPressStyle())
         .disabled(locked)
         .onHover { hovering = $0 }
         .help(locked ? "Sending to \(pick.title)" : "\(ChatAgent.named(pick.agent).name) · \(pick.project ?? L("Quick answer")). Every chat: ⌃")
@@ -340,7 +339,7 @@ struct V2SendButton: View {
             .frame(width: V.sendSize, height: V.sendSize)
             .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(IslandPressStyle())
         .disabled(sending != nil)
         .onHover { hovering = $0 }
         .help("Send (fn⌃, Return)")
@@ -367,7 +366,7 @@ struct V2SuggestionChip: View {
             .background(Capsule(style: .continuous).fill(chosen ? V.chipChosenFill : (hovering ? V.hoverFill : V.chipFill)))
             .contentShape(Capsule(style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(IslandPressStyle())
         .onHover { hovering = $0 }
         .help("\(ChatAgent.named(pick.agent).name)\(pick.project.map { " · \($0)" } ?? "") · \(pick.reason)")
         .accessibilityLabel("\(pick.title), \(pick.reason)")
@@ -375,13 +374,11 @@ struct V2SuggestionChip: View {
     }
 }
 
-/// A taken thing in Choose chat: a screenshot, a passage, a file, as its card; it lifts under the
-/// pointer and opens larger on a click.
+/// A taken thing in Choose chat: a screenshot, a passage, a file, as its card; it opens larger on a
+/// click.
 struct V2AttachmentThumb: View {
     let model: WorkbenchModel
     let referent: CapturedReferent
-    let space: Namespace.ID
-    @State private var hovering = false
 
     var body: some View {
         let V = WorkbenchTokens.V2.self
@@ -393,13 +390,8 @@ struct V2AttachmentThumb: View {
             .clipShape(RoundedRectangle(cornerRadius: V.attachmentRadius, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: V.attachmentRadius, style: .continuous).strokeBorder(WorkbenchTokens.ink(0.2), lineWidth: 0.75))
             .overlay(alignment: .bottomLeading) { kindBadge.padding(3) }
-            .matchedGeometryEffect(id: referent.id, in: space, isSource: model.v2Inspecting != referent.id)
-            .opacity(model.v2Inspecting == referent.id ? 0 : 1)
-            .scaleEffect(hovering ? WorkbenchTokens.Referents.hoverScale : 1)
-            .animation(model.cardMotion.hover, value: hovering)
-            .onHover { hovering = $0 }
             .onTapGesture {
-                withAnimation(model.cardMotion.fan) { model.v2Inspecting = referent.id }
+                withAnimation(WorkbenchTokens.V2.inspectFade) { model.v2Inspecting = referent.id }
             }
             .help(referent.source)
             .accessibilityLabel("\(referent.kind.label) from \(referent.source)")
@@ -428,7 +420,6 @@ struct V2AttachmentInspect: View {
     let model: WorkbenchModel
     let referent: CapturedReferent
     let layout: V2SendLayout
-    let space: Namespace.ID
 
     var body: some View {
         let V = WorkbenchTokens.V2.self
@@ -444,7 +435,6 @@ struct V2AttachmentInspect: View {
                     .aspectRatio(contentMode: .fit)
                     .frame(width: w, height: h)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .matchedGeometryEffect(id: referent.id, in: space, isSource: true)
                     .onTapGesture { close() }
                 Text("\(referent.kind.label) · \(referent.source)")
                     .font(V.hintFont).foregroundStyle(V.subColor)
@@ -458,7 +448,7 @@ struct V2AttachmentInspect: View {
     }
 
     private func close() {
-        withAnimation(model.cardMotion.fan) { model.v2Inspecting = nil }
+        withAnimation(WorkbenchTokens.V2.inspectFade) { model.v2Inspecting = nil }
     }
 }
 
@@ -695,6 +685,7 @@ struct V2DetachedLayer: View {
     let model: WorkbenchModel
     var chats = true
     var pulling = true
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let size = V2DetachedLayout.size
@@ -703,11 +694,16 @@ struct V2DetachedLayer: View {
             if chats {
                 ForEach(model.v2Detached) { item in
                     if let side = item.docked {
+                        // Oct 21, Ryan: tucked in, its tab slides in from that edge (and back out to it).
+                        // Oct 21 motion review: under Reduce Motion it only fades, nothing slides.
                         V2DockedTab(model: model, item: item, side: side)
+                            .transition(reduceMotion ? .opacity : .tuck(side))
                     } else {
-                        // At its own size, its top-left where it is.
+                        // At its own size, its top-left where it is; it goes, and comes back, as a
+                        // window does: a little smaller and faded.
                         V2DetachedWindow(model: model, item: item)
                             .frame(width: item.size.width, height: item.size.height)
+                            .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: WorkbenchTokens.V2.tuckScale)))
                             .position(x: item.origin.x + item.size.width / 2, y: item.origin.y + item.size.height / 2)
                     }
                 }
@@ -773,14 +769,17 @@ struct V2DetachedWindow: View {
         }
         .padding(V.detachedPadding)
         .frame(width: size.width, height: size.height, alignment: .topLeading)
-        // Native: a glass panel, as macOS's popover dragged off into a panel.
+        // Native: a glass panel, as macOS's popover dragged off into a panel. Oct 21, Ryan
+        // ("simpler is better"): one edge (the glass's own rim in Native, a hairline on the
+        // Original's fill) and a lighter, closer shadow; it had a second edge over the glass's
+        // and a shadow of 22 pt.
         .surface(shape, original: V.detachedFill)
-        .overlay(shape.strokeBorder(V.detachedBorder, lineWidth: 0.75))
+        .overlay { if !WorkbenchTokens.isNative { shape.strokeBorder(V.detachedBorder, lineWidth: 0.75) } }
         .overlay(alignment: .bottomTrailing) {
             if !ghost { V2ScaleGrip(model: model, item: item) }
         }
         .clipShape(shape)
-        .shadow(color: .black.opacity(0.45), radius: 22, y: 10)
+        .shadow(color: V.detachedShadow, radius: V.detachedShadowRadius, y: V.detachedShadowY)
         .simultaneousGesture(pinch)
         .opacity(ghost ? 0.92 : 1)
         .panelScheme()
@@ -789,18 +788,23 @@ struct V2DetachedWindow: View {
     }
 
     /// A pinch on the trackpad resizes the window, as its corner does; the words keep their size.
+    /// Oct 21, Ryan: past its sizes it gives a little, then springs back on release.
     private var pinch: some Gesture {
         MagnifyGesture()
             .onChanged { value in
                 let start = pinchStart ?? item.size
                 if pinchStart == nil { pinchStart = item.size }
                 model.resizeDetachedV2(item.id, to: CGSize(width: start.width * value.magnification,
-                                                           height: start.height * value.magnification))
+                                                           height: start.height * value.magnification), elastic: true)
             }
-            .onEnded { _ in pinchStart = nil }
+            .onEnded { _ in
+                pinchStart = nil
+                model.endResizeDetachedV2(item.id)
+            }
     }
 
-    /// Dragging the header moves the window; let go with the pointer at a side, it tucks in.
+    /// Dragging the header moves the window, 1:1 with the pointer; let go with the pointer at a
+    /// side, it tucks in. Oct 21, Ryan: let go, it carries the release velocity on into a spring.
     private var move: some Gesture {
         DragGesture(minimumDistance: 2, coordinateSpace: .named(ScreenSpace.name))
             .onChanged { value in
@@ -810,7 +814,7 @@ struct V2DetachedWindow: View {
             }
             .onEnded { value in
                 dragStart = nil
-                model.endMoveDetachedV2(item.id, pointer: value.location)
+                model.endMoveDetachedV2(item.id, pointer: value.location, velocity: value.velocity)
             }
     }
 }
@@ -842,9 +846,12 @@ struct V2ScaleGrip: View {
                     let from = start ?? item.size
                     if start == nil { start = item.size }
                     model.resizeDetachedV2(item.id, to: CGSize(width: from.width + value.translation.width,
-                                                               height: from.height + value.translation.height))
+                                                               height: from.height + value.translation.height), elastic: true)
                 }
-                .onEnded { _ in start = nil }
+                .onEnded { _ in
+                    start = nil
+                    model.endResizeDetachedV2(item.id)
+                }
         )
         .help("Drag to make it bigger or smaller (or pinch)")
         .accessibilityElement()
@@ -927,13 +934,13 @@ struct V2Conversation: View {
             .overlay(alignment: .topTrailing) {
                 if railed {
                     V2TurnRail(turns: turns, inView: inView) { id in
-                        withAnimation(V.resize) { proxy.scrollTo(id, anchor: .top) }
+                        withAnimation(WorkbenchTokens.Spring.rows) { proxy.scrollTo(id, anchor: .top) }
                     }
                 }
             }
             // A new question: it comes into view.
             .onChange(of: turns.count) { _, _ in
-                withAnimation(V.resize) { proxy.scrollTo(now, anchor: .top) }
+                withAnimation(WorkbenchTokens.Spring.rows) { proxy.scrollTo(now, anchor: .top) }
             }
         }
     }
@@ -1000,8 +1007,9 @@ struct V2TurnRail: View {
                 .frame(width: V.railCardWidth)
                 .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(V.railCardFill))
                 .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(V.detachedBorder, lineWidth: 0.75))
-                .shadow(color: .black.opacity(0.4), radius: 12, y: 4)
-                .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .topTrailing)))
+                // Oct 21, Ryan ("simpler is better"): a lighter shadow, and it fades (no scale).
+                .shadow(color: V.railCardShadow, radius: V.railCardShadowRadius, y: 3)
+                .transition(.opacity)
             }
         }
         .onHover { inside in withAnimation(V.railMotion) { open = inside } }
@@ -1042,7 +1050,7 @@ struct V2FollowUpField: View {
                         ? (text.isEmpty ? WorkbenchTokens.ink(0.12) : WorkbenchTokens.Native.accent)
                         : Color.white.opacity(text.isEmpty ? 0.35 : 1)))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(IslandPressStyle())
             .disabled(text.isEmpty)
             .help("Send (Return)")
         }
@@ -1066,11 +1074,26 @@ struct V2FollowUpField: View {
 
 /// A chat tucked into a side of the screen: a tab with its agent and its state; a click or a pull
 /// brings the window back out.
+/// Oct 21, Ryan: a tucked tab comes in from its own edge of the screen and goes back out to it.
+private struct TuckOffset: ViewModifier {
+    let x: CGFloat
+    func body(content: Content) -> some View { content.offset(x: x) }
+}
+
+extension AnyTransition {
+    static func tuck(_ side: V2Detached.Side) -> AnyTransition {
+        let away = WorkbenchTokens.V2.tabSize.width + 12
+        return AnyTransition.modifier(active: TuckOffset(x: side == .left ? -away : away), identity: TuckOffset(x: 0))
+            .combined(with: .opacity)
+    }
+}
+
+/// Oct 21, Ryan ("simpler is better"): it no longer widens under the pointer; one edge, a light
+/// shadow.
 struct V2DockedTab: View {
     let model: WorkbenchModel
     let item: V2Detached
     let side: V2Detached.Side
-    @State private var hovering = false
 
     var body: some View {
         let V = WorkbenchTokens.V2.self
@@ -1084,18 +1107,15 @@ struct V2DockedTab: View {
                 AgentStateGlyph(task: task, size: 11, paused: model.snapshotMode)
             }
         }
-        .frame(width: size.width + (hovering ? 6 : 0), height: size.height)
+        .frame(width: size.width, height: size.height)
         .surface(shape, original: V.detachedFill)
-        .overlay(shape.strokeBorder(V.detachedBorder, lineWidth: 0.75))
-        .shadow(color: .black.opacity(0.35), radius: 10)
+        .overlay { if !WorkbenchTokens.isNative { shape.strokeBorder(V.detachedBorder, lineWidth: 0.75) } }
+        .shadow(color: V.tabShadow, radius: V.tabShadowRadius)
         .contentShape(shape)
-        .onHover { hovering = $0 }
-        .animation(WorkbenchTokens.Chat.hover, value: hovering)
         .onTapGesture { withAnimation(WorkbenchTokens.V2.resize) { model.undockV2(item.id) } }
         .gesture(DragGesture(minimumDistance: 6).onEnded { _ in withAnimation(WorkbenchTokens.V2.resize) { model.undockV2(item.id) } })
         .help("Pull the chat back out")
-        .position(x: side == .left ? (size.width + (hovering ? 6 : 0)) / 2
-                                   : model.detachedArea.width - (size.width + (hovering ? 6 : 0)) / 2,
+        .position(x: side == .left ? size.width / 2 : model.detachedArea.width - size.width / 2,
                   y: item.dockY + size.height / 2)
         .accessibilityLabel("Tucked chat")
         .accessibilityAddTraits(.isButton)
@@ -1110,10 +1130,12 @@ struct V2Typed: View {
     var rate: Double = WorkbenchTokens.V2.typeRate
     @State private var start = Date()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Oct 21, perf: its band is showing (MockIsland's `BandShown`); its clock pauses when not.
+    @Environment(\.islandBandShown) private var bandShown
 
     var body: some View {
         let still = paused || reduceMotion
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: still)) { context in
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: still || !bandShown)) { context in
             let t = context.date.timeIntervalSince(start)
             let count = still ? text.count : min(text.count, Int(t * rate))
             let caret = !still && (count < text.count || Int(t / (WorkbenchTokens.V2.caretBlink / 2)) % 2 == 0)

@@ -53,7 +53,7 @@ extension OnboardingModel {
         guard step == .dictation else { return }
         let over: DictationWindow? = OT.Layout.feedbackFrame.contains(point) ? .feedback
             : OT.Layout.messagesFrame.contains(point) ? .messages : nil
-        if over != pointerOver { animate(OT.Motion.content) { pointerOver = over } }
+        if over != pointerOver { animate(OT.Motion.hover) { pointerOver = over } }
     }
 
     var openSession: PracticeSession? {

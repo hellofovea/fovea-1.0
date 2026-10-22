@@ -1061,3 +1061,13 @@
 "From %@:" = "来自 %@：";
 "%@, in %@" = "%1$@，位于 %2$@";
 "Fovea Problem Report" = "Fovea 问题报告";
+/* Oct 21, Ryan: the expanded card's Copy, Save and Delete. */
+"Copy (⌘C)" = "拷贝（⌘C）";
+"Save…" = "存储…";
+"Save… (⌘S)" = "存储…（⌘S）";
+"Undo (⌘Z)" = "撤销（⌘Z）";
+"Saved to %@" = "已存储到“%@”";
+"Save Capture" = "存储记录";
+"Save Words" = "存储文字";
+"A folder with the words and what you took with them." = "一个文件夹，包含这段文字和你截取的内容。";
+"“%@” — %@" = "“%1$@”——%2$@";

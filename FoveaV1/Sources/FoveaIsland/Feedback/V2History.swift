@@ -124,8 +124,9 @@ struct V2OutlineRail: View {
         .background(RoundedRectangle(cornerRadius: V.outlineCardRadius, style: .continuous).fill(V.outlineCardFill))
         .overlay(RoundedRectangle(cornerRadius: V.outlineCardRadius, style: .continuous)
             .strokeBorder(V.outlineCardBorder, lineWidth: 0.5))
-        .shadow(color: V.outlineCardShadow, radius: 16, y: 6)
-        .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .trailing)))
+        // Oct 21, Ryan ("simpler is better"): a lighter shadow, and it fades (no scale).
+        .shadow(color: V.outlineCardShadow, radius: V.outlineCardShadowRadius, y: 3)
+        .transition(.opacity)
     }
 
     private func row(_ item: V2OutlineItem) -> some View {
@@ -181,7 +182,8 @@ struct V2SessionHistory: View {
                         VStack(alignment: .leading, spacing: V.historyQuestionGap) {
                             // The person's request on its band, gone to by it (a short view, so
                             // the landing's margin holds however tall the exchange is); the
-                            // agent's answer open on the black, its creature in the margin.
+                            // agent's answer open on the black. Oct 21, Ryan ("simpler is
+                            // better"): no creature in the margin beside it.
                             // Oct 15 review, QA07: the last request, editable once it's answered.
                             Group {
                                 if turn.id == now {
@@ -195,7 +197,6 @@ struct V2SessionHistory: View {
                             }
                             .id(V2Outline.turnID(turn.id))
                             Group { if turn.id == now { current } else { past(turn) } }
-                                .overlay(alignment: .topLeading) { speaker(now: turn.id == now) }
                         }
                         .outlineTop(V2Outline.turnID(turn.id), in: space)
                     }
@@ -217,7 +218,7 @@ struct V2SessionHistory: View {
             .overlay(alignment: .trailing) {
                 if items.count > 1 {
                     V2OutlineRail(items: items, inView: inView, height: layout.body - 2 * V.gap, shown: model.v2OutlineShown) { id in
-                        withAnimation(V.resize) { proxy.scrollTo(id, anchor: landing) }
+                        withAnimation(WorkbenchTokens.Spring.rows) { proxy.scrollTo(id, anchor: landing) }
                     }
                     .padding(.trailing, V.outlineInset)
                 }
@@ -240,20 +241,6 @@ struct V2SessionHistory: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Every request in this session")
-    }
-
-    /// Who answers: the agent's creature, in the margin beside where its answer starts; at work in
-    /// the exchange now, at ease beside the earlier ones.
-    private func speaker(now: Bool) -> some View {
-        let V = WorkbenchTokens.V2.self
-        let width = V.speakerSize * 1.9, height = V.speakerSize * 1.7
-        return AgentCreature(pose: now ? CreaturePose.of(task, model: model) : .idle, agent: task.agent, size: V.speakerSize,
-                             traits: CreatureTraits(seed: task.id), progress: now ? creatureProgress(task) : nil,
-                             still: model.snapshotMode || !now || model.notchState != .v2Chat)
-            .frame(width: width, height: height)
-            .offset(x: -V.speakerHang - width / 2, y: (WorkbenchTokens.FeedbackV2.stepsRow - height) / 2)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
     }
 
     @ViewBuilder private var current: some View {

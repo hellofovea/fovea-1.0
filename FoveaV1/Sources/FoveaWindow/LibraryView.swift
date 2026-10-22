@@ -134,7 +134,7 @@ struct AppChips: View {
             ForEach(apps, id: \.self) { app in
                 let on = model.query.app == app
                 Button {
-                    model.animate(.swap) { model.query.app = on ? nil : app }
+                    model.animate(.fadeIn) { model.query.app = on ? nil : app }
                 } label: {
                     HStack(spacing: 5) {
                         Image(nsImage: Art.menuIcon(app, in: captures))
@@ -166,7 +166,7 @@ struct FilterMenuButton: View {
         let captures = model.library.captures
         let on = model.query.app != nil || model.query.date != nil || model.query.tag != nil
         Menu {
-            Picker("App", selection: Binding(get: { model.query.app }, set: { v in model.animate(.swap) { model.query.app = v } })) {
+            Picker("App", selection: Binding(get: { model.query.app }, set: { v in model.animate(.fadeIn) { model.query.app = v } })) {
                 Label("All Apps", systemImage: "square.grid.2x2").labelStyle(.titleAndIcon).tag(String?.none)
                 Divider()
                 ForEach(CaptureSearch.apps(in: captures), id: \.self) { name in
@@ -177,7 +177,7 @@ struct FilterMenuButton: View {
             }
             .pickerStyle(.inline)
             Divider()
-            Picker("Date", selection: Binding(get: { model.query.date }, set: { v in model.animate(.swap) { model.query.date = v } })) {
+            Picker("Date", selection: Binding(get: { model.query.date }, set: { v in model.animate(.fadeIn) { model.query.date = v } })) {
                 Text("Any Time").tag(CaptureQuery.DateFilter?.none)
                 ForEach(CaptureQuery.DateFilter.allCases, id: \.self) { d in
                     Text(d.title).tag(CaptureQuery.DateFilter?.some(d))
@@ -205,7 +205,6 @@ struct CaptureList: View {
     @Environment(\.palette) private var palette
     @FocusState private var focused: Bool
     @State private var hovered: String?
-    @Namespace private var plate
 
     var body: some View {
         let groups = CaptureGrid.days(model.listed, now: model.now)
@@ -235,7 +234,7 @@ struct CaptureList: View {
                         .id(LibraryIDs.day(day.matches[0].capture.time))
                         .accessibilityAddTraits(.isHeader)
                         ForEach(day.matches, id: \.capture.id) { m in
-                            SidebarRow(match: m, hovered: $hovered, plate: plate).id(m.capture.id)
+                            SidebarRow(match: m, hovered: $hovered).id(m.capture.id)
                         }
                     }
                 }
@@ -272,7 +271,6 @@ struct SidebarRow: View {
     @Environment(\.palette) private var palette
     let match: CaptureMatch
     @Binding var hovered: String?
-    let plate: Namespace.ID
 
     var body: some View {
         let c = match.capture
@@ -310,17 +308,16 @@ struct SidebarRow: View {
                 if selected {
                     shape.fill(palette.fillStrong)
                 } else if hovered == c.id {
-                    // One plate, gliding to the row under the pointer.
-                    shape.fill(palette.fill).matchedGeometryEffect(id: "hover", in: plate)
+                    shape.fill(palette.fill)
                 }
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // Oct 21, Ryan ("simpler is better"): the row under the pointer fills where it is (one
+        // plate glided from row to row).
         .onHover { inside in
-            withAnimation(.interpolatingSpring(duration: model.motion.seconds(0.2), bounce: 0)) {
-                if inside { hovered = c.id } else if hovered == c.id { hovered = nil }
-            }
+            if inside { hovered = c.id } else if hovered == c.id { hovered = nil }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
@@ -367,7 +364,7 @@ struct MiniCalendar: View {
                 }
             }
             .id(month.first)
-            .transition(.blockSwap)
+            .transition(.identity)
         }
     }
 
@@ -458,17 +455,14 @@ struct LibraryPage: View {
     @ViewBuilder private var content: some View {
         if model.page == .settings {
             SettingsPage()
-                .transition(.page(forward: model.pageForward))
         } else if let note = model.note {
             CaptureNote(capture: note)
                 .id(note.id)
-                .transition(.blockSwap)
+                .transition(.identity)
         } else if model.page == .day {
             CapturesPage(day: true)
-                .transition(.page(forward: model.pageForward))
         } else {
             CapturesPage()
-                .transition(.page(forward: model.pageForward))
         }
     }
 }
@@ -530,7 +524,7 @@ struct PageIsland: View {
                     if settings {
                         ForEach(SettingsPane.allCases, id: \.self) { pane in
                             segment(pane.title, kind: nil, on: model.settingsPane == pane) {
-                                model.animate(.swap) { model.settingsPane = pane }
+                                model.animate(.fadeIn) { model.settingsPane = pane }
                             }
                         }
                     } else {
@@ -544,7 +538,7 @@ struct PageIsland: View {
                 .padding(.bottom, 2)
                 .frame(height: T.Library.islandHeight)
                 .background { island }
-                .animation(model.motion.animation(.open), value: settings)
+                .animation(model.motion.animation(.layout), value: settings)
             }
         }
     }
@@ -591,7 +585,7 @@ struct PageIsland: View {
 
     @ViewBuilder private func segmented(settings: Bool) -> some View {
         if settings {
-            Picker("Pane", selection: Binding(get: { model.settingsPane }, set: { p in model.animate(.swap) { model.settingsPane = p } })) {
+            Picker("Pane", selection: Binding(get: { model.settingsPane }, set: { p in model.animate(.fadeIn) { model.settingsPane = p } })) {
                 ForEach(SettingsPane.allCases, id: \.self) { Text($0.title).tag($0) }
             }
             .pickerStyle(.segmented)
@@ -619,7 +613,6 @@ struct CaptureNote: View {
     @Environment(CapturesModel.self) private var model
     @Environment(\.palette) private var palette
     let capture: Capture
-    @State private var shown = false
 
     var body: some View {
         let match = model.match(for: capture)
@@ -642,14 +635,11 @@ struct CaptureNote: View {
                         }
                     }
                     .frame(maxWidth: min(inner, T.Layout.detailMeasure), alignment: .leading)
-                    .modifier(Stagger(index: 1, shown: shown))
                     if !capture.attachments.isEmpty {
-                        DetailAttachments(capture: capture, width: inner, lendTiles: false)
-                            .modifier(Stagger(index: 2, shown: shown))
+                        DetailAttachments(capture: capture, width: inner)
                     }
                     CaptureFooter(capture: capture)
                         .frame(width: inner)
-                        .modifier(Stagger(index: 3, shown: shown))
                 }
                 .padding(.horizontal, metrics.padding)
                 .padding(.top, 8)
@@ -662,24 +652,6 @@ struct CaptureNote: View {
             NoteActions(capture: capture)
                 .padding(16)
         }
-        .onAppear {
-            if model.motion.reduce { shown = true; return }
-            withAnimation(model.motion.animation(.open)) { shown = true }
-        }
-    }
-}
-
-/// A note's block arriving: opacity and a few points of rise, each block 55 ms after the one
-/// before (Aside's note blocks); Reduce Motion keeps the fade only.
-struct Stagger: ViewModifier {
-    @Environment(\.motion) private var motion
-    let index: Int
-    let shown: Bool
-    func body(content: Content) -> some View {
-        content
-            .opacity(shown ? 1 : 0)
-            .offset(y: shown || motion.reduce ? 0 : 6)
-            .animation(motion.animation(.open).delay(motion.seconds(0.055 * Double(index))), value: shown)
     }
 }
 
@@ -697,7 +669,7 @@ struct NoteActions: View {
             IconButton(symbol: model.copiedID == capture.id ? "checkmark" : "doc.on.doc", help: "Copy",
                        confirmed: model.copiedID == capture.id) { model.copy(capture) }
                 .disabled(capture.failed)
-            SaveMenu(capture: capture)
+            SaveButton(capture: capture)
             IconButton(symbol: "trash", help: "Delete (⌘⌫)", role: .destructive) { model.delete(capture.id) }
                 .keyboardShortcut(.delete, modifiers: .command)
         }
