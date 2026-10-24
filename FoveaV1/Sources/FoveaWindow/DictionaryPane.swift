@@ -10,8 +10,8 @@ import FoveaLook
 // a word opened in a sheet to change its spelling, the ways it's heard ("Also heard as", added and
 // removed) and whether it's on; signed out, the list stays to read, with a line to sign in; and
 // words brought in from other dictation apps, from a file or pasted. The words are the dictionary
-// store's (`dictionary.json`); their other spellings and On/Off are kept beside it until
-// `DictionaryWord` holds them (`WordExtrasFile`).
+// store's (`dictionary.json`); their other spellings and On/Off are kept beside it
+// (`WordExtrasFile`), and the store reads them (Oct 23: `DictionaryRules`).
 
 /// A word's other spellings, past the one `DictionaryWord.heardAs` holds, and whether it's on.
 struct WordExtras: Codable, Equatable {
@@ -20,8 +20,8 @@ struct WordExtras: Codable, Equatable {
 }
 
 /// Where `WordExtras` are kept: `dictionary-extras.json`, beside `dictionary.json` in Fovea's folder.
-/// Off words and the extra spellings reach speech recognition once the dictionary store reads them
-/// (Wiring needed in the Oct 15 report).
+/// The dictionary store reads it (as CapturesCore's `WordSpellings`, the same fields), so Off words
+/// leave speech recognition and every spelling becomes its word (Oct 23).
 enum WordExtrasFile {
     static func url(_ folder: URL?) -> URL? { folder?.appendingPathComponent("dictionary-extras.json") }
 }

@@ -100,6 +100,7 @@ extension WorkbenchModel {
         stopTranscribing()
         notchState = .cancelled
         startUndoClock()
+        live?.director?.islandDidEmit(.cancelled)
         return true
     }
 
@@ -116,6 +117,7 @@ extension WorkbenchModel {
         default:
             notchState = .voiceFlow
         }
+        live?.director?.islandDidEmit(.restored)
         return true
     }
 

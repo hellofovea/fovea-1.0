@@ -97,13 +97,22 @@ struct NotchPane: View {
         // and only it shows Hue, Spread and Drift, as the first run shows it.
         SettingsSection("Glow", note: "The light in the voice bar while you talk to an agent. The notch glows with it as you choose.") {
             SettingsCard {
-                GlowTiles(selection: $model.prefs.glow.animation(motion.animation(.layout)), prefs: prefs)
-                    .cardPadding()
+                if WindowLook.isAligned {
+                    AlignedAuraTiles(selection: $model.prefs.glow.animation(motion.animation(.layout)), prefs: prefs)
+                        .cardPadding()
+                } else {
+                    GlowTiles(selection: $model.prefs.glow.animation(motion.animation(.layout)), prefs: prefs)
+                        .cardPadding()
+                }
                 if glow == .custom {
                     VStack(spacing: 0) {
                         RowDivider()
                         SettingsRow("Hue", detail: "\(Int(prefs.glowHue))°") {
-                            SpectrumSlider(value: $model.prefs.glowHue)
+                            if WindowLook.isAligned {
+                                AlignedHueSlider(value: $model.prefs.glowHue)
+                            } else {
+                                SpectrumSlider(value: $model.prefs.glowHue)
+                            }
                         }
                         .help("The hue your colors fan out from")
                         RowDivider()
@@ -114,11 +123,15 @@ struct NotchPane: View {
                         .help("How far your seven colors fan across the wheel: 0° is one color, 360° a full spectrum")
                         RowDivider()
                         SettingsRow("Drift", detail: "How much the colors wander round the wheel.") {
+                            if WindowLook.isAligned {
+                                AlignedDriftSlider(value: $model.prefs.glowDrift, accent: palette.accent)
+                            } else {
                             HStack(spacing: 8) {
                                 Text("Still").font(.system(size: 11)).foregroundStyle(palette.secondary)
                                 Slider(value: $model.prefs.glowDrift, in: 0...1)
                                     .frame(width: 160)
                                 Text("Lively").font(.system(size: 11)).foregroundStyle(palette.secondary)
+                            }
                             }
                         }
                         RowDivider()
@@ -185,8 +198,13 @@ struct NotchPane: View {
 
         HStack {
             Spacer()
-            Button("Restore Defaults") { confirmRestore = true }
-                .disabled(prefs.notchIsDefault)
+            if WindowLook.isAligned {
+                PillButton(AlignedCopy.sentence("Restore Defaults")) { confirmRestore = true }
+                    .disabled(prefs.notchIsDefault)
+            } else {
+                Button("Restore Defaults") { confirmRestore = true }
+                    .disabled(prefs.notchIsDefault)
+            }
         }
         .alert("Restore the notch's defaults?", isPresented: $confirmRestore) {
             Button("Restore Defaults") { model.animate(.layout) { model.prefs.restoreNotch() } }
@@ -371,10 +389,13 @@ struct PictureChoices<Value: Hashable, Picture: View>: View {
                             .frame(maxWidth: .infinity)
                             .frame(height: pictureHeight)
                             .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(.black.opacity(0.12), lineWidth: 0.5))
+                            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .strokeBorder(WindowLook.isAligned ? palette.hairline : .black.opacity(0.12), lineWidth: 0.5))
                             .padding(3)
+                            // Aligned: the chosen one ringed as the first run rings its tiles.
                             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .strokeBorder(on ? palette.accent : .clear, lineWidth: 2.5))
+                                .strokeBorder(on ? (WindowLook.isAligned ? palette.secondary : palette.accent) : .clear,
+                                              lineWidth: WindowLook.isAligned ? T.Aligned.chosenRing : 2.5))
                         Text(L(key: option[keyPath: title]))
                             .font(.system(size: 11.5, weight: on ? .semibold : .regular))
                             .foregroundStyle(palette.text)
@@ -393,6 +414,149 @@ struct PictureChoices<Value: Hashable, Picture: View>: View {
                 .accessibilityLabel(L(key: option[keyPath: title]))
                 .accessibilityAddTraits(on ? [.isSelected] : [])
             }
+        }
+    }
+}
+
+// MARK: - Aligned (Oct 24): the first run's Make it yours, in Settings
+
+/// The light's choices as the first run shows them (AuraChip): the seven colors as dots on the
+/// notch's black, the name under it, the chosen one ringed in the secondary ink; three to a row.
+private struct AlignedAuraTiles: View {
+    @Environment(\.palette) private var palette
+    @Binding var selection: GlowPalette
+    let prefs: Prefs
+
+    var body: some View {
+        let A = T.Aligned.self
+        let options = GlowPalette.templates + [.custom]
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: A.auraColumns), spacing: 8) {
+            ForEach(options, id: \.self) { option in
+                let on = option == selection
+                let drawn = prefs.drawn(option)
+                let colors = option.colors(hue: drawn.hue, spread: drawn.spread)
+                Button { selection = option } label: {
+                    VStack(spacing: 6) {
+                        HStack(spacing: A.auraDotGap) {
+                            ForEach([5, 3, 1, 0, 2, 4, 6].filter { $0 < colors.count }, id: \.self) { i in
+                                Circle().fill(colors[i]).frame(width: A.auraDot, height: A.auraDot)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: A.auraChipHeight)
+                        .background(RoundedRectangle(cornerRadius: A.auraChipRadius, style: .continuous).fill(A.auraChipBack))
+                        .overlay(RoundedRectangle(cornerRadius: A.auraChipRadius, style: .continuous).strokeBorder(palette.hairline))
+                        Text(option == .custom ? L("Customize") : option.title)
+                            .font(.system(size: 11, weight: on ? .semibold : .regular))
+                            .foregroundStyle(on ? palette.text : palette.tertiary)
+                            .lineLimit(1)
+                    }
+                    .padding(A.chosenRingPadding)
+                    .background(RoundedRectangle(cornerRadius: A.chosenRingRadius, style: .continuous)
+                        .strokeBorder(on ? palette.secondary : .clear, lineWidth: A.chosenRing))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(AlignedPress())
+                .help(option == .custom ? L("Your own colors: Hue, Spread and Drift") : L("\(option.title), as it ships"))
+                .accessibilityLabel(option == .custom ? L("Customize") : option.title)
+                .accessibilityAddTraits(on ? [.isSelected] : [])
+            }
+        }
+    }
+}
+
+/// A press in Aligned: 0.97 on the press itself, quick (the first run's `PressStyle`).
+struct AlignedPress: ButtonStyle {
+    @Environment(\.motion) private var motion
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !motion.reduce ? T.Aligned.pressScale : 1)
+            .animation(motion.animation(.press), value: configuration.isPressed)
+    }
+}
+
+/// The hue as the first run sets it: a 10 pt spectrum, a 16 pt knob filled with its hue.
+private struct AlignedHueSlider: View {
+    @Environment(\.isEnabled) private var isEnabled
+    @Binding var value: Double
+
+    var body: some View {
+        let A = T.Aligned.self
+        GeometryReader { geo in
+            let thumb = A.sliderThumb
+            let travel = max(1, geo.size.width - thumb)
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(LinearGradient(colors: stride(from: 0.0, through: 360, by: 30).map { Color(hue: $0 / 360, saturation: 0.8, brightness: 1) },
+                                         startPoint: .leading, endPoint: .trailing))
+                    .frame(height: A.hueTrack)
+                    .padding(.horizontal, thumb / 2 - A.hueTrack / 2)
+                Circle()
+                    .fill(Color(hue: value / 360, saturation: 0.8, brightness: 1))
+                    .overlay(Circle().strokeBorder(A.knobEdge, lineWidth: 2))
+                    .shadow(color: A.knobShadow, radius: 1, y: 0.5)
+                    .frame(width: thumb, height: thumb)
+                    .offset(x: travel * CGFloat(value / 360))
+            }
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0).onChanged { drag in
+                guard isEnabled else { return }
+                value = Double(max(0, min(1, (drag.location.x - thumb / 2) / travel))) * 360
+            })
+        }
+        .frame(width: 220, height: A.sliderThumb + 4)
+        .accessibilityElement()
+        .accessibilityLabel("Hue")
+        .accessibilityValue("\(Int(value)) degrees")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: value = min(360, value + 10)
+            case .decrement: value = max(0, value - 10)
+            @unknown default: break
+            }
+        }
+    }
+}
+
+/// How much the colors wander, as the first run's dial: a 6 pt track filled in the accent as far
+/// as it's turned, a white knob; Still and Lively at its ends.
+private struct AlignedDriftSlider: View {
+    @Environment(\.palette) private var palette
+    @Binding var value: Double
+    let accent: Color
+
+    var body: some View {
+        let A = T.Aligned.self
+        HStack(spacing: 8) {
+            Text("Still").font(.system(size: 11)).foregroundStyle(palette.tertiary)
+            GeometryReader { geo in
+                let thumb = A.sliderThumb
+                let travel = max(1, geo.size.width - thumb)
+                ZStack(alignment: .leading) {
+                    Capsule().fill(palette.ink(A.secondaryFill)).frame(height: A.driftTrack)
+                    Capsule().fill(accent).frame(width: thumb / 2 + travel * value, height: A.driftTrack)
+                    Circle()
+                        .fill(A.knobEdge)
+                        .overlay(Circle().strokeBorder(palette.hairline))
+                        .shadow(color: A.knobShadow, radius: 1, y: 0.5)
+                        .frame(width: thumb, height: thumb)
+                        .offset(x: travel * value)
+                }
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0).onChanged { drag in
+                    value = Double(max(0, min(1, (drag.location.x - thumb / 2) / travel)))
+                })
+            }
+            .frame(width: 160, height: 20)
+            Text("Lively").font(.system(size: 11)).foregroundStyle(palette.tertiary)
+        }
+        .accessibilityElement()
+        .accessibilityLabel("Drift")
+        .accessibilityValue("\(Int(value * 100)) percent")
+        .accessibilityAdjustableAction { direction in
+            value = max(0, min(1, value + (direction == .increment ? 0.1 : -0.1)))
         }
     }
 }

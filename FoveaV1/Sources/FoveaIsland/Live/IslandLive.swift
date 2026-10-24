@@ -120,7 +120,9 @@ final class IslandLive {
         if sessionApp == nil { sessionApp = AXReader.frontmostApp }
         do {
             // Oct 15 review, ST-04.2/3: with Tidy my words off, speech recognition adds no punctuation.
-            try await voice.start(locale: prefs.prefs.language.speechLocale, contextual: dictionary.contextualStrings,
+            // Oct 23, Ryan: in every language the person speaks (English and Chinese both on: both
+            // listen, and the surer words are kept; the primary language's on a tie).
+            try await voice.start(locales: prefs.prefs.chosenLanguages.map(\.speechLocale), contextual: dictionary.contextualStrings,
                                   punctuates: tidiesWords)
             return nil
         } catch let failure as VoiceFailure {
@@ -149,11 +151,9 @@ final class IslandLive {
         }
         var result = await voice.finish()
         level = 0
-        var text = result.text
-        for (heard, word) in dictionary.replacements where !heard.isEmpty {
-            text = text.replacingOccurrences(of: heard, with: word, options: [.caseInsensitive])
-        }
-        result.text = written(text)
+        // Oct 23: every spelling of the words that are on, made whole-word (it was any match,
+        // inside longer words too, and Off words were made as well).
+        result.text = written(dictionary.written(result.text))
         return result
     }
 
@@ -389,6 +389,19 @@ package enum IslandEvent: Equatable {
     case dictationLanded
     case logged(CaptureKind)
     case rested
+    /// Oct 23, Ryan (the first run teaches the rest): a session opened from the board; a chat
+    /// pulled out of the notch, tucked at a side as a tab, and brought back; a session expanded.
+    case sessionOpened, chatPulledOut, chatTucked, chatBroughtBack, sessionExpanded
+    /// The first run's agent asked to edit a file; the person allowed it, or denied it.
+    case approvalAnswered(allowed: Bool)
+    /// Esc on a voice bar, and ⌘Z (or Undo) bringing it back.
+    case cancelled, restored
+    /// The stack opened, one of it looked at closely, one taken out (its place in the stack).
+    case stackOpened, referentInspected, referentRemoved(index: Int)
+    /// A message typed while the agent works, waiting its turn; a session stopped; answered again.
+    case queued, stopped(String), answeredAgain(String)
+    /// Words held at the notch with nowhere to paste them, and copied from there.
+    case heldWords, heldCopied
 
     package enum TakenKind: Equatable { case region, wholeScreen, passage, file }
 }
@@ -420,4 +433,11 @@ package protocol IslandDirector: AnyObject {
     func acceptFile(_ url: URL) -> Bool
     /// Its agent works the session (returns false to leave it to the script).
     func runSession(_ id: String, words: String, referents: [IslandReferent], followUp: Bool) -> Bool
+    /// Oct 23, Ryan: Answer again on one of its sessions: its agent answers the last request again
+    /// (returns false to leave it to the script).
+    func rerunSession(_ id: String) -> Bool
+}
+
+package extension IslandDirector {
+    func rerunSession(_ id: String) -> Bool { false }
 }

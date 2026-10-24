@@ -233,18 +233,21 @@ package final class OnboardingCoordinator: OnboardingHost {
 
 
     func previewAura(_ on: Bool) {
+        previewReturn?.cancel()
         if on { island.showPreview(.aura, seconds: 3600) } else { island.endPreview() }
     }
 
     /// The board a moment at the notch (Make it yours), then the glow again if a light was being
-    /// picked, else nothing.
-    func previewPanel() {
-        island.showPreview(.panel, seconds: 3)
+    /// picked, else nothing. Oct 23, Ryan: the glow never came back: the board opening told the run
+    /// the notch was the board now, so the light picked was forgotten; the run says it itself now.
+    /// The board goes straight over to the glow, with no closing between.
+    func previewPanel(thenLight: Bool) {
         previewReturn?.cancel()
+        island.showPreview(.panel, seconds: 3600)
         previewReturn = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(3.2))
-            guard !Task.isCancelled else { return }
-            if self.model.step == .makeItYours, self.model.island == .auraPreview { self.island.showPreview(.aura, seconds: 3600) }
+            try? await Task.sleep(for: .seconds(OT.Motion.lookShown))
+            guard !Task.isCancelled, self.model.step == .makeItYours else { return }
+            if thenLight { self.island.showPreview(.aura, seconds: 3600) } else { self.island.endPreview() }
         }
     }
     private var previewReturn: Task<Void, Never>?
@@ -252,7 +255,15 @@ package final class OnboardingCoordinator: OnboardingHost {
     func listeningLevel(_ level: Double) { island.setListeningLevel(level) }
     func islandRest() { island.rest() }
     func clearIslandSessions() { island.clearSessions() }
-    func languageChanged() { island.setChats([model.practiceChat]) }
+    func languageChanged() { island.setChats(model.chatsOffered(for: model.step)) }
+    // Oct 23, Ryan: what the first run now teaches with a session.
+    func offerChats(_ chats: [IslandChat]) { island.setChats(chats) }
+    func sessionTitle(_ id: String) -> String? { island.sessionTitle(id) }
+    func askToEdit(_ id: String, file: String, question: String) { island.askToEdit(id, file: file, question: question) }
+    func allowEdit(_ id: String) { island.allowEdit(id) }
+    func pullOut(_ id: String) { island.pullOut(id) }
+    func tuck(_ id: String) { island.tuck(id) }
+    func bringBack(_ id: String) { island.bringBack(id) }
     func openBoard() { island.openBoard() }
     func openIslandSession(_ id: String) { island.openSession(id) }
     func stageRequest(words: String, items: [StagedReferent]) { island.stageRequest(words: words, items: items) }

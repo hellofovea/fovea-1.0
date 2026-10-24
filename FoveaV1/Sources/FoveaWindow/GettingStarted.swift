@@ -34,11 +34,19 @@ struct GettingStartedPane: View {
         ("dictation", "Dictation", "Your words typed into two windows."),
     ]
 
+    /// Oct 23, Ryan: what the tour doesn't cover, by its practice (OnboardingCore's `PracticeAgain`
+    /// raw values).
+    static let moreToTry: [(step: String, title: String, detail: String)] = [
+        ("takeFew", "Take a few things", "Several screenshots in one request; look at one, take one out."),
+        ("whileWorking", "While it works", "Type while the agent works, answer again with another model, and stop it."),
+        ("nowhereToType", "Nowhere to type", "Where your words wait when there's no box to type in."),
+    ]
+
     var body: some View {
         SettingsSection("The tour") {
             SettingsCard {
                 SettingsRow("Take the tour again", detail: "The first run, from the start. Your captures and settings stay as they are.") {
-                    Button("Replay the Tour") { model.replayTour() }
+                    PaneButton("Replay the Tour") { model.replayTour() }
                 }
             }
         }
@@ -48,7 +56,18 @@ struct GettingStartedPane: View {
                 ForEach(Array(Self.tasks.enumerated()), id: \.element.step) { i, task in
                     if i > 0 { RowDivider() }
                     SettingsRow(task.title, detail: task.detail) {
-                        Button("Practise") { model.practise(task.step, task.title) }
+                        PaneButton("Practise") { model.practise(task.step, task.title) }
+                    }
+                }
+            }
+        }
+
+        SettingsSection("More to try", note: "What the tour doesn't cover, a minute each, with the practice agent.") {
+            SettingsCard {
+                ForEach(Array(Self.moreToTry.enumerated()), id: \.element.step) { i, task in
+                    if i > 0 { RowDivider() }
+                    SettingsRow(task.title, detail: task.detail) {
+                        PaneButton("Try It") { model.practise(task.step, task.title) }
                     }
                 }
             }
@@ -70,7 +89,7 @@ struct GettingStartedPane: View {
             } footer: {
                 Text("Yours to change in Shortcuts.")
                 Spacer()
-                Button("Open Shortcuts") { model.openSettings(.shortcuts) }
+                PaneButton("Open Shortcuts") { model.openSettings(.shortcuts) }
             }
         }
     }

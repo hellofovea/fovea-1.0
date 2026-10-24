@@ -52,7 +52,7 @@ enum T {
         static let pageRadius: CGFloat = 10
         /// Aside's card radius (its "Next up" card): a little rounder than the page's corner, as a
         /// small thing reads rounder at the same radius.
-        static let cardRadius: CGFloat = 12
+        static var cardRadius: CGFloat { WindowLook.isAligned ? T.Aligned.cardRadius : 12 }
         /// Paste 5's header band, for the corner icon.
         static let headerHeight: CGFloat = 50
         /// The small, whole app icon (its artwork is about 80 % of this).
@@ -265,6 +265,97 @@ enum T {
     }
 }
 
+/// Oct 24, Ryan: "do you think the app itself is aligned with the design of the onboarding and the
+/// notch… generate a new version of the app ui for me to compare with the old." Two looks of one
+/// window: as it is (Current), or drawn in the notch's and the first run's language (Aligned).
+/// View › Window Design switches them, at once; `--window-look=aligned` starts with Aligned. Every
+/// change and its reason: docs/window/ALIGNED.md.
+enum WindowLook: String, CaseIterable {
+    case current, aligned
+
+    /// The look being drawn. The views read it through `T.Aligned` and the palette; the window's
+    /// content is drawn again when it changes (MainView's `.id`).
+    static var shown: WindowLook = {
+        let args = CommandLine.arguments
+        if let flag = args.first(where: { $0.hasPrefix("--window-look=") }) {
+            return WindowLook(rawValue: String(flag.dropFirst("--window-look=".count))) ?? .current
+        }
+        return UserDefaults.standard.string(forKey: storeKey).flatMap(WindowLook.init(rawValue:)) ?? .current
+    }()
+    static var isAligned: Bool { shown == .aligned }
+    static let storeKey = "fovea.window.look"
+
+    var title: String { self == .current ? "Current Design" : "Aligned Design" }
+}
+
+extension T {
+    /// The Aligned look (`WindowLook`): the window in the notch's and the first run's language.
+    /// Values are the notch's (WorkbenchTokens `Board`, `V2`, `Native`) or the first run's
+    /// (OnboardingTokens `OT`), named where they come from; docs/window/ALIGNED.md.
+    enum Aligned {
+        // The label ladder: the notch's board (title .92, line .60, time .40) and the first run's
+        // (.94 / .62 / .40). The Mac's own is lighter (.85 / .50 / .26).
+        static let text = 0.92, secondary = 0.60, tertiary = 0.40
+        /// Hairlines and a surface's rule: the board's .08.
+        static let hairline = 0.08
+
+        // Surfaces: content is opaque (HIG: glass is for controls), so the page is the window's
+        // own color, and what sits on it is a fill, as the first run's cards and the notch's rows
+        // are: no edge, no shadow. Light: the window white with cards at ink 4.5 %; dark: #1E1E1E
+        // with cards at white 7 % (the first run: 5 % and 9 %), each laid down as one opaque
+        // color (`cardOpaqueLight` / `cardOpaqueDark`), so a card's color can also be drawn on.
+        static let pageLight: UInt32 = 0xFFFFFF, pageDark: UInt32 = 0x1E1E1E
+        /// A card's and a Settings group's corner: the first run's cards and the notch's outline
+        /// card (14, rows 8 inside 6 of padding).
+        static let cardRadius: CGFloat = 14
+
+        // Type: the notch's row (title 13.5 semibold, line 11.5); display titles in New York, as
+        // the first run's pages are titled (30 semibold there), tracked tighter as they grow
+        // (Apple's tracking tables; Emil Kowalski: hierarchy from weight, size and leading).
+        static let title = Font.system(size: 13.5, weight: .semibold)
+        static let meta = Font.system(size: 11.5)
+        /// The first run's display face: New York, or the system face in Chinese (OT.Board).
+        static var displayDesign: Font.Design { FoveaLocale.shared.language == .chinese ? .default : .serif }
+        static func display(_ size: CGFloat) -> Font { .system(size: size, weight: .semibold, design: displayDesign) }
+        /// -2 % of the size: large type reads loose at the tracking small type wants.
+        static func displayTracking(_ size: CGFloat) -> CGFloat { -0.02 * size }
+        static let paneTitle: CGFloat = 26
+        static let dayTitle: CGFloat = 19
+        static let emptyTitle: CGFloat = 22
+
+        // Buttons: one family with the notch's (Native: the accent, lighter under the pointer,
+        // lighter again pressed; the secondary a fill with no edge) at the first run's heights.
+        static let primaryHover = 0.85, primaryPressed = 0.72
+        static let secondaryFill = 0.07, secondaryHover = 0.11, secondaryPressed = 0.15
+        static let buttonHeight: CGFloat = 28, buttonHeightLarge: CGFloat = 32
+        /// A press: 0.97, on the press itself, quick on the ease-out (Emil Kowalski: 100–160 ms;
+        /// the notch's and the first run's `press`, 0.14 s).
+        static let pressScale: CGFloat = 0.97
+        static let press = Motion.Timing(Motion.easeOut, 0.12)
+        /// A round icon button's plate at rest and under the pointer (the notch's .08 / .14).
+        static let iconPlate = 0.06, iconPlateHover = 0.12
+
+        // A choice of a few: the first run's (NotchChoiceRow): a track, the chosen one solid ink
+        // (white in dark) with the page's color for its words; 0.12 s on the ease-out.
+        static let trackLight = 0.05, trackDark = 0.09
+        static let select = Motion.Timing(Motion.easeOut, 0.12)
+
+        // The sidebar: the Mac's symbols, in ink; the chosen row a fill, its symbol in the accent
+        // (the board's highlighted row is the ink at 6 %). Oct 24, Ryan: "the icons here are way
+        // too big… a better fit with the words beside them": the symbol a point under the words
+        // (the Mac's sidebar list had scaled it up to its own icon size), in a column as wide as
+        // the widest, 7 pt to the words.
+        static let sidebarSymbol: CGFloat = 12
+        static let sidebarSymbolColumn: CGFloat = 16
+        static let sidebarGap: CGFloat = 7
+        static let sidebarText: CGFloat = 13
+        static let sidebarChosen = 0.07
+
+        // States, the notch's: done green, needs you orange, failed red with a cross.
+        static let stateGlyph: CGFloat = 12
+    }
+}
+
 /// The window's color scheme. Three of Fovea's own, from the design-language study (OKLCH-built,
 /// contrast measured against the card; notes in the scratchpad's research-language/), and the
 /// two it started from, for comparison.
@@ -336,6 +427,8 @@ struct Palette {
     /// Something that needs you (a permission missing), and something that can't be undone.
     var warning: Color = Color(nsColor: .systemOrange)
     var danger: Color = Color(nsColor: .systemRed)
+    /// Something done (the notch's Complete): the system green.
+    var done: Color = Color(nsColor: .systemGreen)
     /// The calendar's five shades: no captures, then four levels; and text on the darkest two.
     var heat: [Color] = []
     var onHeat: Color = .white
@@ -384,7 +477,29 @@ struct Palette {
             p.heat = [p.fill, accent.opacity(dark ? 0.35 : 0.22), accent.opacity(dark ? 0.55 : 0.42), accent.opacity(dark ? 0.78 : 0.68), accent]
             p.onHeat = .white
         }
+        if WindowLook.isAligned { p.align() }
         return p
+    }
+
+    /// The Aligned look (`T.Aligned`): the notch's label ladder and hairline, the page the
+    /// window's own color with cards as fills on it, and no color for a capture's kind (the
+    /// notch's Voiceflow is "never a color"; Dispatch's color is the person's light, not purple).
+    private mutating func align() {
+        let A = T.Aligned.self
+        let k: Color = isDark ? .white : .black
+        text = k.opacity(A.text)
+        secondary = k.opacity(A.secondary)
+        tertiary = k.opacity(A.tertiary)
+        hairline = k.opacity(A.hairline)
+        background = Color(hex: isDark ? A.pageDark : A.pageLight)
+        pageColor = nil
+        card = Color(hex: isDark ? A.cardOpaqueDark : A.cardOpaqueLight)
+        raised = Color(hex: isDark ? 0x2A2A2A : 0xFFFFFF)
+        kinds = [secondary, secondary, secondary]
+        // The island pill (the chosen filter, a chosen segment): the first run's, solid ink, white
+        // in dark, with the page's color for its words.
+        pill = isDark ? .white : .black
+        onPill = Color(hex: isDark ? A.pageDark : A.pageLight)
     }
 
     /// A palette from its hexes: text ladder, canvas, card, raised, hairline.
@@ -551,6 +666,8 @@ struct MotionSpec: Equatable {
         case fadeIn, fadeOut, searchOpen, searchClose, toastIn, toastOut
         /// A hover's color: `ease`.
         case hover
+        /// Aligned: a button giving to the press (`T.Aligned.press`).
+        case press
     }
 
     static func timing(_ role: Role) -> T.Motion.Timing {
@@ -558,7 +675,9 @@ struct MotionSpec: Equatable {
         case .layout: return T.Motion.layout
         case .zoomOpen: return T.Motion.zoomOpen
         case .zoomClose: return T.Motion.zoomClose
-        case .select: return T.Motion.select
+        // Aligned: the first run's quick ease-out (a choice made often; the slow start lagged).
+        case .select: return WindowLook.isAligned ? T.Aligned.select : T.Motion.select
+        case .press: return T.Aligned.press
         case .searchOpen: return T.Motion.searchOpen
         case .searchClose: return T.Motion.searchClose
         case .fadeIn: return T.Motion.fadeIn
@@ -635,4 +754,57 @@ extension AnyTransition {
         return .asymmetric(insertion: .opacity.animation(.timingCurve(i.curve.0, i.curve.1, i.curve.2, i.curve.3, duration: i.duration)),
                            removal: .opacity.animation(.timingCurve(o.curve.0, o.curve.1, o.curve.2, o.curve.3, duration: o.duration)))
     }
+}
+
+// MARK: Aligned · Home
+
+extension T.Aligned {
+    /// A card's header, the notch board row's: where it went at the front (the board's 26 pt agent
+    /// icon, a step smaller on a card), 10 pt to the words, 2 pt between the title and its line.
+    static let cardIcon: CGFloat = 24
+    static let cardIconGap: CGFloat = 10
+    static let cardLineGap: CGFloat = 2
+    /// The card's fill laid on the page, as one opaque color: the card is drawn twice where it
+    /// grows into the expanded card, and over the window's grey there (light: white with ink at
+    /// 4.5 %; dark: #1E1E1E with white at 7 %).
+    static let cardOpaqueLight: UInt32 = 0xF4F4F4, cardOpaqueDark: UInt32 = 0x2E2E2E
+    /// A day's count beside its title, and the calendar's total: the system face's even digits.
+    static let countSize: CGFloat = 13
+    /// A day's own page: its date as the first run titles a page.
+    static let dayPageTitle: CGFloat = 26
+    /// The toast: on the toolbar's glass, its words in the label color, its action in the accent.
+    static let toastHeight: CGFloat = 34
+}
+
+// MARK: Aligned · Settings
+
+extension T.Aligned {
+    /// A choice of a few in Settings: the first run's (NotchChoiceRow): 22 pt pills, each 10 pt in
+    /// on its words, on a track that holds them 2 pt in; 11.5 pt words.
+    static let segmentHeight: CGFloat = 22, segmentInset: CGFloat = 2, segmentPadding: CGFloat = 10, segmentFont: CGFloat = 11.5
+    /// A pane's title over its line, as the first run titles a page over its body.
+    static let paneTitleGap: CGFloat = 6
+    static let paneLine: CGFloat = 13
+    /// A row's description: the notch's line.
+    static let rowDetail: CGFloat = 11.5
+    /// A section's header over its group: the notch's titles are semibold, never bold.
+    static let sectionHeader = Font.system(size: 13, weight: .semibold)
+    /// The light's tiles: the first run's AuraChip, the seven colors as dots on the notch's black,
+    /// three to a row as the first run lays them; the chosen one ringed in the secondary ink.
+    static let auraChipBack = Color.black
+    static let auraChipHeight: CGFloat = 26, auraChipRadius: CGFloat = 8
+    static let auraDot: CGFloat = 8, auraDotGap: CGFloat = 3, auraColumns = 3
+    static let chosenRing: CGFloat = 1.5, chosenRingRadius: CGFloat = 10, chosenRingPadding: CGFloat = 4
+    /// The accent's swatches: the first run's (16 pt, a 7 pt white dot on the chosen one, a
+    /// hairline round each, the chosen one ringed 2 pt out).
+    static let swatch: CGFloat = 16, swatchDot: CGFloat = 7, swatchGap: CGFloat = 10, swatchRingGap: CGFloat = 2
+    static let swatchDotColor = Color.white
+    static let multicolor: [Color] = [.red, .orange, .yellow, .green, .blue, .purple, .pink, .red]
+    /// The hue and the drift: the first run's sliders (a 10 pt spectrum and a 6 pt track filled in
+    /// the accent, a 16 pt white knob).
+    static let hueTrack: CGFloat = 10, driftTrack: CGFloat = 6, sliderThumb: CGFloat = 16
+    static let knobEdge = Color.white, knobShadow = Color.black.opacity(0.3)
+    /// A text field on a pane: a fill rounded 8, as the notch's model menu and the first run's
+    /// fields are; its accent ring while it has the keyboard.
+    static let fieldRadius: CGFloat = 8
 }

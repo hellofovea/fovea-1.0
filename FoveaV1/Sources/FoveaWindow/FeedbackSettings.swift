@@ -333,7 +333,7 @@ private struct RequestedLanguagesRow: View {
         VStack(alignment: .leading, spacing: 0) {
             SettingsRow("Other languages", detail: "We'll add it soon. Fovea listens in English or Chinese for now.") {
                 TextField("Type a language, then press Return", text: $draft)
-                    .textFieldStyle(.roundedBorder)
+                    .paneField()
                     .frame(width: 240)
                     .onSubmit(add)
             }
@@ -430,8 +430,7 @@ struct ProfileSection: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer()
-                        Button("Sign In…") { model.startSignIn() }
-                            .buttonStyle(.borderedProminent)
+                        PaneButton("Sign In…", prominent: true) { model.startSignIn() }
                     }
                     .cardPadding()
                 } else {
@@ -466,7 +465,7 @@ struct ProfileSection: View {
                     RowDivider()
                     SettingsRow("Name", detail: "How Fovea and your agents greet you.") {
                         TextField("Name", text: $model.profileName)
-                            .textFieldStyle(.roundedBorder)
+                            .paneField()
                             .frame(width: 200)
                     }
                     if model.nameSaveFailed {
@@ -747,8 +746,7 @@ struct PlanUsageCard: View {
                 Spacer()
                 // Not while a payment is on its way: that is the upgrade.
                 if model.planAlert != .paymentProcessing {
-                    Button("Upgrade…") { model.scrollTarget = "plans" }
-                        .buttonStyle(.borderedProminent)
+                    PaneButton("Upgrade…", prominent: true) { model.scrollTarget = "plans" }
                 }
             } else if f >= 0.9 {
                 Text("Almost out: \(Int(((1 - f) * 100).rounded()))% left until \(Lines.day(usage.resets)).")

@@ -18,11 +18,20 @@ import FoveaLook
 struct SettingsSidebar: View {
     @Environment(CapturesModel.self) private var model
     @Environment(\.controlActiveState) private var activeState
+    @Environment(\.palette) private var palette
 
     var body: some View {
+        if WindowLook.isAligned {
+            aligned
+        } else {
+            current
+        }
+    }
+
+    private var current: some View {
         let accent = model.accent.color ?? .accentColor
         let front = activeState != .inactive
-        List(selection: Binding(get: { model.settingsCategory }, set: { picked in
+        return List(selection: Binding(get: { model.settingsCategory }, set: { picked in
             if let picked { model.pickSettings(picked) }
         })) {
             ForEach(Array(SettingsCategory.groups.enumerated()), id: \.offset) { _, group in
@@ -40,6 +49,39 @@ struct SettingsSidebar: View {
                         }
                         .tag(category)
                         .listRowBackground(chosen ? SidebarMark(color: front ? accent : Color.primary.opacity(0.1)) : nil)
+                    }
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .accessibilityLabel("Settings")
+    }
+
+    /// Aligned: each row drawn here, so the symbol keeps its size (the sidebar list scales a
+    /// Label's icon up to the Mac's sidebar icon size) and no system selection shows under the
+    /// row's own quiet fill, as the notch's board marks its row. Oct 24, Ryan.
+    private var aligned: some View {
+        let accent = model.accent.color ?? .accentColor
+        let A = T.Aligned.self
+        return List {
+            ForEach(Array(SettingsCategory.groups.enumerated()), id: \.offset) { _, group in
+                Section {
+                    ForEach(group) { category in
+                        let chosen = category == model.settingsCategory
+                        Button { model.pickSettings(category) } label: {
+                            HStack(spacing: A.sidebarGap) {
+                                AlignedSidebarSymbol(category: category, color: chosen ? accent : palette.secondary)
+                                Text(category.title)
+                                    .font(.system(size: A.sidebarText, weight: chosen ? .semibold : .regular))
+                                    .foregroundStyle(palette.text)
+                                Spacer(minLength: 0)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .listRowBackground(chosen ? SidebarMark(color: palette.ink(A.sidebarChosen)) : nil)
+                        .accessibilityAddTraits(chosen ? .isSelected : [])
                     }
                 }
             }
@@ -89,16 +131,46 @@ struct SettingsIcon: View {
     }
 }
 
+/// Aligned: a section as the notch and the first run draw a symbol, the outline in ink (the
+/// filled one where the Mac has no outline), no tile; the notch drawn.
+private struct AlignedSidebarSymbol: View {
+    let category: SettingsCategory
+    let color: Color
+
+    var body: some View {
+        let size = T.Aligned.sidebarSymbol
+        Group {
+            if let symbol = category.symbol {
+                Image(systemName: Self.outline(symbol)).font(.system(size: size, weight: .regular))
+            } else {
+                // A little under the symbols' box: drawn edge to edge, it read larger than they do.
+                NotchGlyph(color: color).frame(width: size * 1.1, height: size * 0.8)
+            }
+        }
+        .foregroundStyle(color)
+        .frame(width: T.Aligned.sidebarSymbolColumn)
+        .accessibilityHidden(true)
+    }
+
+    /// "person.fill" → "person", where the Mac has the outline.
+    static func outline(_ symbol: String) -> String {
+        guard symbol.hasSuffix(".fill") else { return symbol == "info" ? "info.circle" : symbol }
+        let plain = String(symbol.dropLast(5))
+        return NSImage(systemSymbolName: plain, accessibilityDescription: nil) != nil ? plain : symbol
+    }
+}
+
 /// The notch's symbol: a screen's top edge, the Island hanging from it.
 private struct NotchGlyph: View {
+    var color: Color = .white
     var body: some View {
         GeometryReader { geo in
             let w = geo.size.width, h = geo.size.height
             ZStack(alignment: .top) {
                 RoundedRectangle(cornerRadius: h * 0.18, style: .continuous)
-                    .strokeBorder(.white, lineWidth: max(1, h * 0.13))
+                    .strokeBorder(color, lineWidth: max(1, h * 0.13))
                 IslandShape(topRadius: h * 0.08, bottomRadius: h * 0.16)
-                    .fill(.white)
+                    .fill(color)
                     .frame(width: w * 0.44, height: h * 0.34)
             }
         }
@@ -114,8 +186,39 @@ struct PaneHeader: View {
     let category: SettingsCategory
 
     var body: some View {
-        // Eye tracking's picture says it in full until your session is in.
-        if category != .eyeTracking || model.prefs.gaze == .collected { line }
+        if WindowLook.isAligned {
+            titled
+        } else {
+            // Eye tracking's picture says it in full until your session is in.
+            if category != .eyeTracking || model.prefs.gaze == .collected { line }
+        }
+    }
+
+    /// Aligned: the pane titled as the first run titles a page ("Make it yours" over its line):
+    /// its name large in the first run's face, what it's for under it. The toolbar no longer
+    /// names it too.
+    private var titled: some View {
+        let A = T.Aligned.self
+        return VStack(alignment: .leading, spacing: A.paneTitleGap) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                // The first run's face, set closer in than the window's own design.
+                Text(category.title)
+                    .alignedDisplay(A.paneTitle)
+                    .foregroundStyle(palette.text)
+                if category == .eyeTracking { SoonPill(text: "Beta") }
+            }
+            if category != .eyeTracking || model.prefs.gaze == .collected {
+                Text(category.summary)
+                    .font(.system(size: A.paneLine))
+                    .foregroundStyle(palette.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, T.Native.rowInset)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text("\(category.title). \(category.summary)"))
+        .accessibilityAddTraits(.isHeader)
     }
 
     private var line: some View {
@@ -184,7 +287,7 @@ struct NativeSettingsPage: View {
                 // One section at a time: each opens at its top, as a pane does.
                 .id(model.settingsLayout == .sidebarPanes ? "pane-\(model.settingsCategory.rawValue)" : "page")
                 .scrollIndicators(.automatic)
-                .background(palette.nativePage, ignoresSafeAreaEdges: [])
+                .background(WindowLook.isAligned ? palette.background : palette.nativePage, ignoresSafeAreaEdges: [])
                 .onAppear { scroll(proxy, animated: false) }
                 .onChange(of: model.settingsScroll?.count) { scroll(proxy, animated: true) }
                 // The snapshot harness scrolls to a part of a section by its id.

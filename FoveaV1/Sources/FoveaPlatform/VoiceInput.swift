@@ -1,5 +1,6 @@
 import AVFoundation
 import Speech
+import FoveaKit
 
 // The microphone and the words: one AVAudioEngine feeds both, the level for the waveform and the
 // glow, the buffers for on-device speech recognition. From the shipping app's AudioServices.swift.
@@ -40,16 +41,30 @@ public final class VoiceInput {
     public private(set) var isListening = false
 
     private let engine = AVAudioEngine()
-    private var recognizer: SFSpeechRecognizer?
-    private var request: SFSpeechAudioBufferRecognitionRequest?
-    private var task: SFSpeechRecognitionTask?
+    /// Oct 23, Ryan: one recognizer for each language the person speaks, all fed the same audio;
+    /// the first is the primary language's.
+    private var lanes: [Lane] = []
     private var speechFailure: VoiceFailure?
-    private var finalText: String?
     private var finalWaiters: [CheckedContinuation<Void, Never>] = []
     private var startedAt = Date()
     private var smoothed: Float = 0
 
     public init() {}
+
+    /// One language listening: its request, what it has heard so far, and its last words.
+    private final class Lane {
+        let recognizer: SFSpeechRecognizer
+        let request: SFSpeechAudioBufferRecognitionRequest
+        var task: SFSpeechRecognitionTask?
+        var partial = ""
+        var final: SFTranscription?
+        var done = false
+        /// It failed with nothing heard.
+        var failedEmpty = false
+        init(recognizer: SFSpeechRecognizer, request: SFSpeechAudioBufferRecognitionRequest) {
+            self.recognizer = recognizer; self.request = request
+        }
+    }
 
     public static var microphoneStatus: AVAuthorizationStatus { AVCaptureDevice.authorizationStatus(for: .audio) }
     public static var speechStatus: SFSpeechRecognizerAuthorizationStatus { SFSpeechRecognizer.authorizationStatus() }
@@ -80,36 +95,49 @@ public final class VoiceInput {
     /// the level, and says why there are no words). `punctuates`: speech recognition adds the
     /// punctuation (off with Tidy my words off, Oct 15 review ST-04.2/3).
     public func start(locale: String, contextual: [String] = [], punctuates: Bool = true) async throws {
+        try await start(locales: [locale], contextual: contextual, punctuates: punctuates)
+    }
+
+    /// Oct 23, Ryan: listening in each of the person's languages at once (English and Chinese
+    /// both on), the primary first. Each recognizer hears the same audio; `finish()` keeps the
+    /// words the recognizers are surest of, the primary language's on a tie. A language this Mac
+    /// can't recognize just isn't listened in; none at all is `speechUnavailable`, as before.
+    public func start(locales: [String], contextual: [String] = [], punctuates: Bool = true) async throws {
         cancel()
         guard await Self.requestMicrophone() else { throw VoiceFailure.microphoneDenied }
         partial = ""
-        finalText = nil
         speechFailure = nil
         smoothed = 0
         startedAt = Date()
 
         if await Self.requestSpeech() {
-            let r = SFSpeechRecognizer(locale: Locale(identifier: locale)) ?? SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
-            if let r, r.isAvailable {
-                recognizer = r
+            var seen = Set<String>()
+            var recognizers = locales.filter { seen.insert($0).inserted }
+                .compactMap { SFSpeechRecognizer(locale: Locale(identifier: $0)) }.filter(\.isAvailable)
+            if recognizers.isEmpty, let fallback = SFSpeechRecognizer(locale: Locale(identifier: "en-US")), fallback.isAvailable {
+                recognizers = [fallback]
+            }
+            for r in recognizers {
                 let request = SFSpeechAudioBufferRecognitionRequest()
                 request.shouldReportPartialResults = true
                 request.requiresOnDeviceRecognition = r.supportsOnDeviceRecognition
                 request.taskHint = .dictation
                 request.addsPunctuation = punctuates
                 request.contextualStrings = Array(contextual.prefix(100))
-                self.request = request
-                task = r.recognitionTask(with: request) { [weak self] result, error in
+                let lane = Lane(recognizer: r, request: request)
+                lane.task = r.recognitionTask(with: request) { [weak self, weak lane] result, error in
                     let text = result?.bestTranscription.formattedString
+                    let transcription = result?.isFinal == true ? result?.bestTranscription : nil
                     let isFinal = result?.isFinal ?? false
                     let failed = error != nil
                     DispatchQueue.main.async {
-                        self?.recognized(text: text, isFinal: isFinal, failed: failed)
+                        guard let lane else { return }
+                        self?.recognized(lane, text: text, final: transcription, isFinal: isFinal, failed: failed)
                     }
                 }
-            } else {
-                speechFailure = .speechUnavailable
+                lanes.append(lane)
             }
+            if lanes.isEmpty { speechFailure = .speechUnavailable }
         } else {
             speechFailure = .speechDenied
         }
@@ -120,9 +148,9 @@ public final class VoiceInput {
             cancel()
             throw VoiceFailure.microphoneUnavailable
         }
-        let request = self.request
+        let requests = lanes.map(\.request)
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
-            request?.append(buffer)
+            for request in requests { request.append(buffer) }
             let level = VoiceInput.level(of: buffer)
             DispatchQueue.main.async {
                 guard let self, self.isListening else { return }
@@ -145,12 +173,12 @@ public final class VoiceInput {
     public func finish(timeout: Double = 2.5) async -> VoiceResult {
         let seconds = Date().timeIntervalSince(startedAt)
         stopEngine()
-        request?.endAudio()
-        if speechFailure == nil, finalText == nil, task != nil {
+        lanes.forEach { $0.request.endAudio() }
+        if speechFailure == nil, lanes.contains(where: { !$0.done }) {
             await withTaskGroup(of: Void.self) { group in
                 group.addTask { @MainActor in
                     await withCheckedContinuation { c in
-                        if self.finalText != nil { c.resume() } else { self.finalWaiters.append(c) }
+                        if self.lanes.allSatisfy(\.done) { c.resume() } else { self.finalWaiters.append(c) }
                     }
                 }
                 group.addTask {
@@ -161,20 +189,24 @@ public final class VoiceInput {
                 group.cancelAll()
             }
         }
-        let text = (finalText ?? partial).trimmingCharacters(in: .whitespacesAndNewlines)
-        let failure: VoiceFailure? = text.isEmpty ? (speechFailure ?? nil) : nil
-        task?.cancel()
-        task = nil
-        request = nil
+        let heard = lanes.map { lane -> SpeechCandidate in
+            let text = (lane.final?.formattedString ?? lane.partial).trimmingCharacters(in: .whitespacesAndNewlines)
+            return SpeechCandidate(text: text, confidence: lane.final.map(Self.confidence) ?? 0)
+        }
+        let text = SpeechCandidate.pick(heard).map { heard[$0].text } ?? ""
+        // Nothing heard: why, if speech couldn't run or every recognizer failed (else no words).
+        let allFailed = !lanes.isEmpty && lanes.allSatisfy(\.failedEmpty)
+        let failure: VoiceFailure? = text.isEmpty ? (speechFailure ?? (allFailed ? .recognitionFailed : nil)) : nil
+        lanes.forEach { $0.task?.cancel() }
+        lanes = []
         return VoiceResult(text: text, failure: failure, seconds: seconds)
     }
 
     /// Stops at once, keeping nothing.
     public func cancel() {
         stopEngine()
-        task?.cancel()
-        task = nil
-        request = nil
+        lanes.forEach { $0.task?.cancel() }
+        lanes = []
         releaseWaiters()
     }
 
@@ -186,16 +218,28 @@ public final class VoiceInput {
         onLevel?(0)
     }
 
-    private func recognized(text: String?, isFinal: Bool, failed: Bool) {
+    private func recognized(_ lane: Lane, text: String?, final: SFTranscription?, isFinal: Bool, failed: Bool) {
+        guard lanes.contains(where: { $0 === lane }) else { return }
         if let text, !text.isEmpty {
-            partial = text
-            onPartial?(text)
+            lane.partial = text
+            // The words so far, in the primary language (or the other, while it has none).
+            let shown = lanes.first?.partial.isEmpty == false ? lanes[0].partial : text
+            if shown != partial { partial = shown; onPartial?(shown) }
         }
+        if let final { lane.final = final }
         if isFinal || failed {
-            finalText = partial
-            if failed, partial.isEmpty, speechFailure == nil { speechFailure = .recognitionFailed }
-            releaseWaiters()
+            if failed, lane.partial.isEmpty { lane.failedEmpty = true }
+            lane.done = true
+            if lanes.allSatisfy(\.done) { releaseWaiters() }
         }
+    }
+
+    /// How sure a recognizer is of its words: its segments' confidence, weighted by how long each
+    /// was said (0…1).
+    private static func confidence(_ t: SFTranscription) -> Float {
+        let total = t.segments.reduce(0) { $0 + max($1.duration, 0.01) }
+        guard total > 0 else { return 0 }
+        return t.segments.reduce(Float(0)) { $0 + $1.confidence * Float(max($1.duration, 0.01)) } / Float(total)
     }
 
     private func releaseWaiters() {

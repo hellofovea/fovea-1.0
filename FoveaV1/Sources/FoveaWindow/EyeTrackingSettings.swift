@@ -396,7 +396,7 @@ private struct CollectorDownload: View {
                     Text("Your session: 9 min 40 s, 312 dots.").font(.system(size: 12.5, weight: .medium)).foregroundStyle(palette.text)
                     HStack(spacing: 10) {
                         TextButton("Watch Recording") { model.say(L("Would play the recording in the Collector (simulated)")) }
-                        PillButton("Send Session", symbol: "paperplane", kind: .prominent) { model.sendSession() }
+                        PillButton(AlignedCopy.sentence("Send Session"), symbol: "paperplane", kind: .prominent) { model.sendSession() }
                         TextButton("Delete It", role: .destructive) { model.discardSession() }
                     }
                     Text("It's sent only if you choose to.").font(.system(size: 11.5)).foregroundStyle(palette.secondary)

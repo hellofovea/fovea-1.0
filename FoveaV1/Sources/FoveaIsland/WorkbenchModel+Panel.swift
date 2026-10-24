@@ -329,6 +329,20 @@ extension WorkbenchModel {
     /// Allow what a task asked for: it goes on.
     func allowTask(_ id: String) {
         guard let task = agentTasks.first(where: { $0.id == id }), task.state == .needsYou else { return }
+        // Oct 23, Ryan: the first run's agent asked; it goes on once it's allowed (the director's).
+        if directorSessions.contains(id), let director = live?.director {
+            decideV2(id, L("Allowed"))
+            cases.scopes[id] = nil
+            cases.approvalFiles[id] = nil
+            if let i = agentTasks.firstIndex(where: { $0.id == id }) {
+                withAnimation(WorkbenchTokens.Panel.change) {
+                    agentTasks[i].state = .working
+                    agentTasks[i].ask = nil
+                }
+            }
+            director.islandDidEmit(.approvalAnswered(allowed: true))
+            return
+        }
         // Oct 15 review, QA14: for how long (just this once, or the session), and a line saying
         // what it goes on to do.
         let scope = v2Scope(id)
@@ -358,6 +372,11 @@ extension WorkbenchModel {
     /// Deny it: the agent goes on without it.
     func denyTask(_ id: String) {
         guard let task = agentTasks.first(where: { $0.id == id }), task.state == .needsYou else { return }
+        // Oct 23, Ryan: the first run's agent keeps asking (in practice the list has to be made).
+        if directorSessions.contains(id), let director = live?.director {
+            director.islandDidEmit(.approvalAnswered(allowed: false))
+            return
+        }
         // Oct 15 review, QA14: a line saying what was decided.
         decideV2(id, L("Denied · going on without it"))
         cases.scopes[id] = nil
@@ -407,6 +426,8 @@ extension WorkbenchModel {
             agentTasks[i].age = 0
             agentTasks[i].inState = 0
         }
+        // Oct 23, Ryan: the first run's agent stops too.
+        live?.director?.islandDidEmit(.stopped(id))
     }
 
     /// Try a failed (or stopped) task again.

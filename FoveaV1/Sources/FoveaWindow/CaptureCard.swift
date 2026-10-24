@@ -14,6 +14,18 @@ struct CardFramesKey: PreferenceKey {
 
 enum Space { static let root = "captures-root" }
 
+extension Palette {
+    /// What a card is drawn on. Aligned: its fill laid on the page as one opaque color, since a
+    /// card's face is drawn again inside the expanded card as it grows (a see-through fill would
+    /// show the grey under it there, and double where the face sits on the card).
+    var cardSurface: Color {
+        WindowLook.isAligned ? Color(hex: isDark ? T.Aligned.cardOpaqueDark : T.Aligned.cardOpaqueLight) : card
+    }
+    /// The expanded card: Aligned, the raised surface (white, or a step above #1E1E1E), as the
+    /// notch's floating cards are the window's own color.
+    var detailSurface: Color { WindowLook.isAligned ? raised : card }
+}
+
 /// A capture as Paste draws a clipboard item: a header naming what it is and when, the app it
 /// went into as a large icon cut by the corner, and the thing itself filling the body. No footer.
 struct CaptureCard: View {
@@ -30,7 +42,7 @@ struct CaptureCard: View {
         // (its shadow grew on hover and it shrank to 0.97 when pressed); the click opens it.
         Button { model.open(c.id) } label: {
             CardFace(match: match, side: side)
-                .shading(RoundedRectangle(cornerRadius: T.Layout.cardRadius, style: .continuous), .resting)
+                .shading(RoundedRectangle(cornerRadius: T.Layout.cardRadius, style: .continuous), .resting, fill: palette.cardSurface)
         }
         .buttonStyle(.plain)
         .overlay { if model.selectedID == c.id && !lent { SelectionRing() } }
@@ -120,7 +132,7 @@ struct CardFace: View {
                 .frame(width: side)
         }
         .frame(width: headerWidth ?? side, height: side, alignment: .topLeading)
-        .background(palette.card)
+        .background(palette.cardSurface)
         .clipShape(RoundedRectangle(cornerRadius: T.Layout.cardRadius, style: .continuous))
     }
 }
@@ -134,10 +146,51 @@ struct CardHeader: View {
     let capture: Capture
 
     var body: some View {
-        switch model.iconStyle {
-        case .corner: band
-        case .small, .leading: line
+        if WindowLook.isAligned {
+            alignedLine
+        } else {
+            switch model.iconStyle {
+            case .corner: band
+            case .small, .leading: line
+            }
         }
+    }
+
+    /// Aligned (Oct 24): the notch's board row. Where it went at the front, then the title over
+    /// one line of what it is and when (the board's title and line, 13.5 semibold over 11.5), the
+    /// times in the system face's even digits. A theme that only repeats the words has no title
+    /// line: the type and the time head the card.
+    private var alignedLine: some View {
+        let A = T.Aligned.self
+        let spacing = model.cardSpacing
+        let pad = spacing.padding(model.cardSize)
+        return HStack(alignment: .top, spacing: A.cardIconGap) {
+            appIcon(A.cardIcon)
+            VStack(alignment: .leading, spacing: A.cardLineGap) {
+                if !echoes {
+                    HStack(spacing: 5) {
+                        if capture.failed || capture.notSent { FailedMark(capture: capture) }
+                        Text(title).font(A.title).foregroundStyle(palette.text)
+                    }
+                }
+                HStack(spacing: 5) {
+                    if echoes, capture.notSent { FailedMark(capture: capture) }
+                    KindMark(kind: capture.kind)
+                    ViewThatFits(in: .horizontal) {
+                        Text("\(capture.kind.title) · \(when)\(requests)")
+                        Text(requests.isEmpty ? "\(capture.kind.title) · \(when)" : "\(when)\(requests)")
+                    }
+                    .font(A.meta).foregroundStyle(palette.secondary).monospacedDigit()
+                }
+                // With the title gone, the line sits level with the icon's middle.
+                .frame(minHeight: echoes ? A.cardIcon : nil)
+            }
+            Spacer(minLength: 0)
+        }
+        .lineLimit(1)
+        .padding(.horizontal, pad)
+        .padding(.top, pad + spacing.metrics.headerTop)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// One line: the type in bold, the compact time on its baseline, the icon at the end,
@@ -383,7 +436,7 @@ struct AttachmentTile: View {
                     .padding(.bottom, 26)
                     .padding(.horizontal, 10)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .background(palette.card.overlay(palette.header))
+                    .background(palette.cardSurface.overlay(palette.header))
             case .file:
                 VStack(spacing: 4) {
                     Image(nsImage: Art.fileIcon(a.fileType)).resizable().frame(width: compact ? 34 : 44, height: compact ? 34 : 44)
@@ -395,7 +448,7 @@ struct AttachmentTile: View {
                         .padding(.horizontal, 6)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(palette.card.overlay(palette.header))
+                .background(palette.cardSurface.overlay(palette.header))
             }
             if showsBadge { AttachmentBadge(index: a.index, size: 15).padding(6) }
         }
@@ -467,7 +520,8 @@ struct FailedMark: View {
     let capture: Capture
     var body: some View {
         if capture.notSent {
-            Image(systemName: "exclamationmark.circle.fill")
+            // Aligned: the notch's Failed, a cross (its "!" means Needs you, in orange).
+            Image(systemName: WindowLook.isAligned ? "xmark.circle.fill" : "exclamationmark.circle.fill")
                 .font(.system(size: 12))
                 .foregroundStyle(palette.danger)
                 .help("Not sent: open it to send it again")

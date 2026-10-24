@@ -488,6 +488,7 @@ extension WorkbenchModel {
         withAnimation(WorkbenchTokens.V2.resize) {
             v2Queue[id, default: []].append(V2QueuedAsk(text: text, images: images))
         }
+        live?.director?.islandDidEmit(.queued)
     }
 
     /// Send now: the session takes it in at once, mid-turn (steering), out of the line.
@@ -557,6 +558,11 @@ extension WorkbenchModel {
         }
         v2FinishedAt[id] = nil
         v2Started[id] = Date()
+        // Oct 23, Ryan: the first run's agent answers again (More to try's While it works).
+        if directorSessions.contains(id), let director = live?.director, director.rerunSession(id) {
+            director.islandDidEmit(.answeredAgain(id))
+            return
+        }
         run(id, from: 0, script: script, pace: request.pace)
     }
 

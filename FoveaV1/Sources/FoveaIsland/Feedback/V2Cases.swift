@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import FoveaCore
 import FoveaKit
+import FoveaPlatform
 
 // The dev team's review of Oct 15 (docs/v1/REVIEW_2026-10-15.md), Dispatch's sessions: the cases
 // the design missed, as Ryan decided them. The flow is here; the views are in V2CaseViews.swift;
@@ -399,6 +400,10 @@ extension WorkbenchModel {
         withAnimation(WorkbenchTokens.Cases.change) { cases.editing = nil }
         let request = v2Requests[id] ?? v2Request
         let script = v2FollowUps.contains(id) ? request.followUp.script : request.script
+        // Oct 23, Ryan: what Fovea heard, put right by the person, teaches the dictionary the words
+        // corrected (Learned, with what was heard as "Also heard as").
+        let heard = v2Followed[id] ?? agentTasks[i].request
+        live?.dictionary.learn(heard: heard, corrected: words, in: L("the notch"))
         v2Followed[id] = words
         v2Scripts[id] = script
         v2Runs[id]?.cancel()
@@ -525,17 +530,26 @@ extension WorkbenchModel {
     }
 
     /// Open in <agent> (Oct 17, Ryan: "don't have Continue, have Open in agent"; QA12, QA26): the
-    /// session in its own agent, one way wherever it shows. Simulated: its bar says it opened there
-    /// a moment (the notch, a pulled-out chat); from the board, where there's no bar, the board
-    /// goes, as the agent's app comes forward. There the person manages it (and its queue).
+    /// session in its own agent, one way wherever it shows. Its bar says it opened there a moment
+    /// (the notch, a pulled-out chat); from the board, where there's no bar, the board goes, as the
+    /// agent's app comes forward. There the person manages it (and its queue). Oct 23, Ryan: it
+    /// opens for real (`AgentLauncher`: Claude Code in Terminal, Codex in its app), in the app
+    /// itself only, never in a smoke run or a picture; what stops it is said on the bar.
     func openInAgentV2(_ id: String) {
         guard let task = v2Task(id), v2OpensInAgent(task) else { return }
         v2ChatInteracted = true
         v2ChatHold?.cancel()
         cases.editing = nil
+        let agent = ChatAgent.named(task.agent)
+        var line = V2BarLine(text: L("Opened in \(agent.name)"), symbol: "arrow.up.forward")
+        if let live, live.smoke == nil, !snapshotMode {
+            if case .failure(let failure) = AgentLauncher.open(agent.id == ChatAgent.codex.id ? .codex : .claude) {
+                line = V2BarLine(text: failure.sentence, failed: true, symbol: "exclamationmark.triangle")
+            }
+        }
         let shown = (notchState == .v2Chat && v2Focus == id) || v2Detached.contains { $0.id == id && $0.docked == nil }
         if shown {
-            showBarLine(id, V2BarLine(text: L("Opened in \(ChatAgent.named(task.agent).name)"), symbol: "arrow.up.forward"))
+            showBarLine(id, line)
         } else if panelOpen {
             closeAgentPanel()
         }

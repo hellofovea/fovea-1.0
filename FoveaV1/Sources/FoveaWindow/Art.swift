@@ -4,6 +4,8 @@ import SwiftUI
 import FoveaCore
 import CapturesCore
 import FoveaKit
+import FoveaStore
+import ImageIO
 
 /// Pictures the window draws: a region you took (cropped from its drawn screen), a file's icon,
 /// an app's icon.
@@ -19,12 +21,26 @@ enum Art {
         return image
     }
 
-    /// The region you took: the part of its drawn screen, at the size it was on screen.
+    /// Where the pictures taken with captures are kept (`media:` files), set by the window.
+    static var media: MediaStore?
+
+    /// The longest side, in pixels, a kept picture is read at: a card and the expanded card show
+    /// it far smaller, and a picture taken of a whole screen would otherwise be decoded whole.
+    private static let mediaPixels = 1600
+
+    /// The region you took: the part of its drawn screen, at the size it was on screen. Oct 23,
+    /// Ryan: a picture taken with ⌘ is the file Fovea kept (`media:`), read once at a size the
+    /// window can show; it was a grey tile, only the drawn samples were found.
     static func region(_ attachment: Attachment) -> NSImage? {
         guard attachment.kind == .region, let art = attachment.art else { return nil }
         let c = attachment.crop
         let key = "\(art)#\(c.x),\(c.y),\(c.w),\(c.h)"
         if let hit = cache[key] { return hit }
+        if let url = media?.url(for: art) {
+            guard let image = kept(url, crop: c) else { return nil }
+            cache[key] = image
+            return image
+        }
         guard let image = screen(art), let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
         let w = CGFloat(cg.width), h = CGFloat(cg.height)
         let rect = CGRect(x: c.x * w, y: c.y * h, width: c.w * w, height: c.h * h).integral
@@ -32,6 +48,27 @@ enum Art {
         let out = NSImage(cgImage: cropped, size: NSSize(width: rect.width / 2, height: rect.height / 2))
         cache[key] = out
         return out
+    }
+
+    /// A kept picture, decoded at most `mediaPixels` on its longest side, at the size it was on
+    /// screen (taken at 2×, as the drawn screens are).
+    private static func kept(_ url: URL, crop c: UnitRect) -> NSImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
+              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let fullW = props[kCGImagePropertyPixelWidth] as? CGFloat,
+              let fullH = props[kCGImagePropertyPixelHeight] as? CGFloat else { return nil }
+        let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                        kCGImageSourceCreateThumbnailWithTransform: true,
+                                        kCGImageSourceThumbnailMaxPixelSize: mediaPixels]
+        guard var cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        if c != .full {
+            let w = CGFloat(cg.width), h = CGFloat(cg.height)
+            let rect = CGRect(x: c.x * w, y: c.y * h, width: c.w * w, height: c.h * h).integral
+            guard let cropped = cg.cropping(to: rect) else { return nil }
+            cg = cropped
+        }
+        let size = NSSize(width: fullW * c.w / 2, height: fullH * c.h / 2)
+        return NSImage(cgImage: cg, size: size)
     }
 
     /// A file's icon, as Finder draws its type.

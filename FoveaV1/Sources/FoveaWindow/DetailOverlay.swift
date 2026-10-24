@@ -144,7 +144,7 @@ private struct ExpandingCard: View, Animatable {
                 .accessibilityHidden(true)
 
             ZStack(alignment: .topLeading) {
-                palette.card
+                palette.detailSurface
 
                 if let source, cardFace > 0.001 {
                     CardFace(match: sourceMatch, side: source.width, headerWidth: f.width)
@@ -167,7 +167,7 @@ private struct ExpandingCard: View, Animatable {
             .simultaneousGesture(TapGesture().onEnded { if closing { model.reopen() } }, including: closing ? .all : .subviews)
             // A hairline just inside its edge and one soft shadow, floating over the page.
             .overlay(shape.strokeBorder(palette.edge, lineWidth: 0.5))
-            .background(shape.fill(palette.card).shadow(color: .black.opacity(palette.isDark ? 0.4 : 0.14), radius: 24, y: 10))
+            .background(shape.fill(palette.detailSurface).shadow(color: .black.opacity(palette.isDark ? 0.4 : 0.14), radius: 24, y: 10))
             .opacity(reduce ? Double(p) : 1)
             .offset(x: f.minX, y: f.minY)
         }

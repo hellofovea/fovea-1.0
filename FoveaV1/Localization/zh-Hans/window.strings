@@ -1071,3 +1071,42 @@
 "Save Words" = "存储文字";
 "A folder with the words and what you took with them." = "一个文件夹，包含这段文字和你截取的内容。";
 "“%@” — %@" = "“%1$@”——%2$@";
+
+/* Oct 23, Ryan: Settings › Getting Started's More to try. */
+"More to try" = "更多可以试试";
+"What the tour doesn't cover, a minute each, with the practice agent." = "导览没有涉及的内容，每项约一分钟，由练习 Agent 来完成。";
+"Try It" = "试试";
+"Several screenshots in one request; look at one, take one out." = "一次请求里放几张截图；放大看一张，再拿掉一张。";
+"Type while the agent works, answer again with another model, and stop it." = "趁 Agent 工作时输入，换个模型重新回答，再让它停下。";
+"Where your words wait when there's no box to type in." = "没有输入框时，你的话会留在哪里。";
+
+/* Oct 24: View › Window Design (docs/window/ALIGNED.md). */
+"Current Design" = "当前设计";
+"Aligned Design" = "统一设计";
+
+/* Oct 24, Aligned · Home */
+"No captures yet" = "还没有记录";
+
+/* Oct 24, Aligned · Settings: buttons in sentence case (AlignedCopy). */
+"Replay the tour" = "重新开始导览";
+"Open shortcuts" = "打开快捷键";
+"Restore defaults" = "恢复默认设置";
+"Sign in…" = "登录…";
+"Sign out" = "退出登录";
+"Access log…" = "访问记录…";
+"Add word…" = "添加词语…";
+"Watch recording" = "观看录像";
+"Delete it" = "删除";
+"Collect again" = "重新采集";
+"Try again" = "重试";
+"Delete originals…" = "删除原始数据…";
+"Send session" = "发送采集数据";
+"Report a problem…" = "报告问题…";
+"Check for updates" = "检查更新";
+"Install and relaunch" = "安装并重新启动";
+"Bring in" = "导入";
+"Open settings" = "打开设置";
+"Reset all…" = "全部重置…";
+"Choose a plan…" = "选择套餐…";
+"Update payment ↗" = "更新付款方式 ↗";
+"Reset to default" = "恢复默认";

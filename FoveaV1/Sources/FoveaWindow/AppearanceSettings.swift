@@ -36,7 +36,11 @@ struct AppearancePane: View {
                         Text("What's chosen, what you took, and the words you pointed with.")
                             .font(.system(size: 11)).foregroundStyle(palette.secondary)
                     }
-                    AccentDots(selection: $model.accent)
+                    if WindowLook.isAligned {
+                        AlignedSwatches(selection: $model.accent)
+                    } else {
+                        AccentDots(selection: $model.accent)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .cardPadding()
@@ -164,6 +168,45 @@ private struct AccentDots: View {
             }
             Text(selection == .multicolor ? L("Multicolor: follows your Mac") : L(key: selection.title))
                 .font(.system(size: 11)).foregroundStyle(palette.secondary)
+        }
+    }
+}
+
+/// Aligned (Oct 24): the accent as the first run's Make it yours shows it: 16 pt swatches, a white
+/// dot in the chosen one, a hairline round each and the chosen one ringed in the secondary ink,
+/// its name at the row's end.
+private struct AlignedSwatches: View {
+    @Environment(\.palette) private var palette
+    @Binding var selection: AccentChoice
+
+    var body: some View {
+        let A = T.Aligned.self
+        HStack(spacing: A.swatchGap) {
+            ForEach(AccentChoice.allCases, id: \.self) { choice in
+                let on = choice == selection
+                Button { selection = choice } label: {
+                    ZStack {
+                        if let color = choice.color {
+                            Circle().fill(color)
+                        } else {
+                            Circle().fill(AngularGradient(colors: A.multicolor, center: .center))
+                        }
+                        if on { Circle().fill(A.swatchDotColor).frame(width: A.swatchDot, height: A.swatchDot) }
+                    }
+                    .frame(width: A.swatch, height: A.swatch)
+                    .overlay(Circle().strokeBorder(palette.hairline))
+                    .padding(A.swatchRingGap)
+                    .overlay(Circle().strokeBorder(on ? palette.secondary : .clear, lineWidth: A.chosenRing))
+                    .contentShape(Circle())
+                }
+                .buttonStyle(AlignedPress())
+                .help(L(key: choice.title))
+                .accessibilityLabel(L(key: choice.title))
+                .accessibilityAddTraits(on ? [.isSelected] : [])
+            }
+            Text(selection == .multicolor ? L("Multicolor: follows your Mac") : L(key: selection.title))
+                .font(.system(size: 12)).foregroundStyle(palette.secondary)
+                .padding(.leading, 4)
         }
     }
 }

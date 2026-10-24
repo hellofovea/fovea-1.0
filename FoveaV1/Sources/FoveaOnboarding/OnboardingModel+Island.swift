@@ -27,9 +27,11 @@ extension OnboardingModel {
 /// What the first run asks of the rest of Fovea (OnboardingCoordinator does it).
 @MainActor
 protocol OnboardingHost: AnyObject {
-    /// The notch shows the Dispatch bar with its glow, or the board, while choices are made.
+    /// The notch shows the Dispatch bar with its glow, or the board, while choices are made. After
+    /// the board's look has been seen, the glow again if a light was picked (`thenLight`), else
+    /// nothing.
     func previewAura(_ on: Bool)
-    func previewPanel()
+    func previewPanel(thenLight: Bool)
     /// The microphone test's bar, and its level.
     func listening(_ on: Bool)
     func listeningLevel(_ level: Double)
@@ -59,6 +61,17 @@ protocol OnboardingHost: AnyObject {
     /// The primary language changed on the hello page (Oct 18, Ryan): the island's practice chat
     /// is named again.
     func languageChanged()
+    // Oct 23, Ryan: what the first run now teaches with a session.
+    /// The chats Choose chat offers now.
+    func offerChats(_ chats: [IslandChat])
+    func sessionTitle(_ id: String) -> String?
+    /// The agent asks to edit a file (Needs you, Deny and Allow); allowed for the person.
+    func askToEdit(_ id: String, file: String, question: String)
+    func allowEdit(_ id: String)
+    /// A session pulled out of the notch, tucked at a side, brought back ("Do it for me").
+    func pullOut(_ id: String)
+    func tuck(_ id: String)
+    func bringBack(_ id: String)
 }
 
 extension OnboardingModel: IslandDirector {
@@ -110,7 +123,98 @@ extension OnboardingModel: IslandDirector {
             break
         case .rested:
             if case .voice = island, step == .dictation { dictationTarget = nil }
+            // Oct 23, Ryan: the undo let go by in Messages: that window's try again, from fn.
+            if step == .dictation, flow.waitingFor?.contains(.replyRestored) == true {
+                flow.forget([.replyKey, .replyCancelled])
+                hint(L("Too late to bring it back. Point at Messages and press \(keys.spoken(.dictation)) again."))
+            }
             island = .rest
+        // Oct 23, Ryan (the first run teaches the rest): what the island did, as the steps wait for it.
+        case .sessionOpened:
+            island = .session
+            if step == .hover { caughtUp(.openedSession) }
+        case .chatPulledOut:
+            if step == .hover { caughtUp(.pulledOut) }
+        case .chatTucked:
+            if step == .hover { caughtUp(.tucked) }
+        case .chatBroughtBack:
+            if step == .hover { caughtUp(.broughtBack) }
+        case .sessionExpanded:
+            if step == .followUp { softBeat(.expanded) }
+        case .approvalAnswered(let allowed):
+            approvalAnswered(allowed)
+        case .cancelled:
+            if step == .dictation { softBeat(.replyCancelled) }
+        case .restored:
+            if step == .dictation { softBeat(.replyRestored) }
+        case .stackOpened:
+            if step == .takeFew { softBeat(.stackOpened) }
+        case .referentInspected:
+            if step == .takeFew { softBeat(.referentInspected) }
+        case .referentRemoved(let index):
+            if referents.indices.contains(index) { referents.remove(at: index) }
+            if step == .takeFew { softBeat(.referentRemoved) }
+        case .queued:
+            if step == .whileWorking { softBeat(.queued) }
+        case .stopped(let id):
+            stopped(id)
+        case .answeredAgain:
+            if step == .whileWorking { softBeat(.answeredAgain) }
+        case .heldWords:
+            island = .held
+            if step == .nowhereToType { softBeat(.heldShown) }
+        case .heldCopied:
+            if step == .nowhereToType { softBeat(.heldTaken) }
+        }
+    }
+
+    /// Oct 23, Ryan: a beat the first run teaches with a session, counted when it's the one waited
+    /// for (or one the step takes in any order), and never a missed try: early, it's let pass.
+    func softBeat(_ beat: Beat) {
+        guard flow.waitingFor?.contains(beat) == true || (step.anyOrder.contains(beat) && flow.remaining.contains { $0.contains(beat) })
+        else { return }
+        self.beat(beat)
+    }
+
+    /// Watching the update: a beat that can only come after the ones before it (pulled out, it was
+    /// open; tucked, it was out) counts them too, so a quick answer that opened by itself, pulled
+    /// straight out, is no missed try.
+    func caughtUp(_ beat: Beat) {
+        let order: [Beat] = [.hoverNotch, .openedSession, .pulledOut, .tucked, .broughtBack]
+        guard let i = order.firstIndex(of: beat) else { return }
+        for earlier in order[..<i] where !flow.done.contains(earlier) { softBeat(earlier) }
+        softBeat(beat)
+    }
+
+    /// The packing list's edit answered at the notch: allowed, the agent goes on; denied, it asks
+    /// again, and the bar says why.
+    private func approvalAnswered(_ allowed: Bool) {
+        guard let waiting = awaitingApproval else { return }
+        guard allowed else {
+            hint(L("In practice, Allow it so the list gets made."))
+            return
+        }
+        awaitingApproval = nil
+        softBeat(.approved)
+        dispatch(waiting.request, session: waiting.session, turn: waiting.turn)
+    }
+
+    /// Stop on one of the first run's sessions: its agent stops too.
+    private func stopped(_ islandID: String) {
+        guard let session = sessions.first(where: { $0.islandID == islandID }) else { return }
+        runner.cancel()
+        cancelWaits(prefixed: Self.agentWait + session.id.uuidString)
+        if step == .whileWorking { softBeat(.stopped) }
+    }
+
+    /// What's missing before fn ⌃ again, said on the bar.
+    var notQuite: String {
+        let request = keys.spoken(.request)
+        switch step {
+        case .packList: return L("Not quite. Take the line and the packing list, then press \(request).")
+        case .takeFew: return L("Not yet. Take two parts, open them, look at one and take one out, then press \(request).")
+        case .whileWorking: return L("Not yet. Press \(request) to start.")
+        default: return L("Not quite. Take the numbers and the pull requests, then press \(request).")
         }
     }
 
@@ -125,6 +229,8 @@ extension OnboardingModel: IslandDirector {
             if notchTaught, !step.isReading { hint(L("Not yet. Follow this step first.")) }
             return false
         }
+        // Oct 23, Ryan: Nowhere to type: anywhere, the desktop above all.
+        if step == .nowhereToType { return true }
         if step == .dictation {
             guard pointerOver != nil else {
                 hint(L("Put your pointer on a window first."))
@@ -158,9 +264,7 @@ extension OnboardingModel: IslandDirector {
     func allowsFinish(continuing: Bool) -> Bool {
         guard isPracticeTry, !continuing else { return true }
         guard flow.waitingFor?.contains(.finish) == true else {
-            hint(step == .packList
-                 ? L("Not quite. Take the line and the packing list, then press \(keys.spoken(.request)).")
-                 : L("Not quite. Take the numbers and the pull requests, then press \(keys.spoken(.request))."))
+            hint(notQuite)
             return false
         }
         beat(.finish)
@@ -218,6 +322,10 @@ extension OnboardingModel: IslandDirector {
             sound.cue(.capture)
             if step == .weeklyUpdate, let beat = Self.weeklyParts.first(where: { $0.tab == currentTab }),
                pageFrame.contains(rect.center) { self.beat(beat) }
+            // Oct 23, Ryan: More to try's two parts, ⌘ held.
+            if step == .takeFew, referents.filter({ if case .region = $0.kind { true } else { false } }).count >= 2 {
+                softBeat(.twoTaken)
+            }
         case .passage:
             let paragraph = paragraphFrames.first { $0.value.insetBy(dx: -4, dy: -4).intersects(rect) }?.key ?? OT.Practice.snowParagraph
             referents.append(TakenReferent(kind: .passage(paragraph), tab: currentTab))
@@ -235,10 +343,17 @@ extension OnboardingModel: IslandDirector {
     // Oct 18, Ryan: the words land in the window under the pointer when they land, not the one
     // under it when the listening started (that one only if the pointer's off both).
     func pasteTarget() -> Bool {
-        step == .dictation && dictationLanding != nil
+        // Oct 23, Ryan: Nowhere to type: nothing takes the words until they're held at the notch
+        // and the feedback window is clicked into, for Paste.
+        if step == .nowhereToType { return island == .held && typingInto != nil }
+        return step == .dictation && dictationLanding != nil
     }
 
     func paste(_ text: String) -> Bool {
+        if step == .nowhereToType, island == .held, let target = typingInto {
+            land(text, in: target)
+            return true
+        }
         guard step == .dictation, let target = dictationLanding else { return false }
         land(text, in: target)
         return true
@@ -294,18 +409,41 @@ extension OnboardingModel: IslandDirector {
     /// Return on Choose chat: the request goes to Claude Code (or the practice agent), with the
     /// pictures the island took, saved where the agent can open them.
     func runSession(_ id: String, words: String, referents taken: [IslandReferent], followUp: Bool) -> Bool {
+        // Oct 23, Ryan: the packing list sent to the weekly update's chat goes into that session,
+        // as the next request there.
+        if followUp, step == .packList, !flow.done.contains(.send), let index = sessions.lastIndex(where: { $0.islandID == id }) {
+            let practiceRequest = handed(words, taken)
+            sessions[index].turns.append(.init(ask: practiceRequest.words, answer: nil, task: .packList))
+            sent(practiceRequest, in: index, turn: sessions[index].turns.count - 1)
+            return true
+        }
         if followUp {
             guard let index = sessions.lastIndex(where: { $0.islandID == id }) else { return false }
-            sessions[index].turns.append(.init(ask: words, answer: nil))
+            // Oct 23, Ryan: in While it works, the message that waited its turn.
+            let task: Step = step == .whileWorking ? .whileWorking : .followUp
+            sessions[index].turns.append(.init(ask: words, answer: nil, task: task))
             openSessionID = sessions[index].id
-            flow.add(PracticeRecord(kind: .dispatch, words: words, agent: agentName, chat: OT.Practice.chat,
-                                    theme: L("Sorting the packing list"), secondsBeforeEnd: 150))
-            dispatch(PracticeRequest(words: words, referents: [], step: .followUp), session: sessions[index].id,
+            if task == .followUp {
+                flow.add(PracticeRecord(kind: .dispatch, words: words, agent: agentName, chat: OT.Practice.chat,
+                                        theme: L("Sorting the packing list"), secondsBeforeEnd: 150))
+            }
+            dispatch(PracticeRequest(words: words, referents: [], step: task), session: sessions[index].id,
                      turn: sessions[index].turns.count - 1)
             return true
         }
         guard isPracticeTry else { return false }
-        // The pictures, as files the agent can open.
+        let practiceRequest = handed(words, taken)
+        var session = PracticeSession(task: step, title: theme(of: practiceRequest), agent: agentName,
+                                      turns: [.init(ask: practiceRequest.words, answer: nil, task: step)])
+        session.islandID = id
+        sessions.append(session)
+        sent(practiceRequest, in: sessions.count - 1, turn: 0)
+        return true
+    }
+
+    /// The request as the agent is handed it: the words, and what was taken, the pictures as files
+    /// it can open.
+    private func handed(_ words: String, _ taken: [IslandReferent]) -> PracticeRequest {
         var withPaths = referents
         for (i, r) in taken.enumerated() where i < withPaths.count {
             if let png = r.png {
@@ -315,20 +453,61 @@ extension OnboardingModel: IslandDirector {
                 withPaths[i].path = url
             }
         }
-        let practiceRequest = PracticeRequest(words: words.isEmpty ? (copy.script ?? "") : words, referents: withPaths, step: step)
+        return PracticeRequest(words: words.isEmpty ? (copy.script ?? "") : words, referents: withPaths, step: step)
+    }
+
+    /// Sent: kept for Home, and to the agent. Oct 23, Ryan: the packing list's agent asks before it
+    /// edits the list.
+    private func sent(_ practiceRequest: PracticeRequest, in index: Int, turn: Int) {
         request = practiceRequest
         sound.cue(.step)
-        var session = PracticeSession(task: step, title: theme(of: practiceRequest), agent: agentName,
-                                      turns: [.init(ask: practiceRequest.words, answer: nil)])
-        session.islandID = id
-        sessions.append(session)
+        let session = sessions[index]
         openSessionID = session.id
         flow.add(PracticeRecord(kind: .dispatch, words: practiceRequest.words, referents: practiceRequest.referents.map(record),
                                 agent: agentName, chat: OT.Practice.chat, theme: theme(of: practiceRequest),
                                 secondsBeforeEnd: step == .weeklyUpdate ? 300 : 200))
-        dispatch(practiceRequest, session: session.id, turn: 0)
+        if step == .packList {
+            packSessionID = session.id
+            beat(.send)
+            askBeforeEditing(session: session.id, request: practiceRequest, turn: turn)
+            return
+        }
+        dispatch(practiceRequest, session: session.id, turn: turn)
         beat(.send)
+    }
+
+    /// Oct 23, Ryan: the agent reads the request, then asks to edit the list: the session needs you
+    /// at the notch (and the menu bar's icon says so) until it's allowed there.
+    private func askBeforeEditing(session id: UUID, request: PracticeRequest, turn: Int) {
+        awaitingApproval = (id, request, turn)
+        guard let islandID = sessions.first(where: { $0.id == id })?.islandID else { return }
+        let reading = L("Reading your words")
+        agentActivity = reading
+        host?.sessionActivity(islandID, reading)
+        after(OT.Send.practiceBeat, Self.agentWait + id.uuidString + ":ask") { [weak self] in
+            guard let self, self.awaitingApproval?.session == id else { return }
+            self.host?.askToEdit(islandID, file: PracticeFiles.list, question: L("Edit \(PracticeFiles.list)?"))
+        }
+    }
+
+    /// Oct 23, Ryan: Answer again on one of the first run's sessions: its last request answered
+    /// again (in While it works, the practice agent takes its time, to be stopped).
+    func rerunSession(_ id: String) -> Bool {
+        guard let index = sessions.lastIndex(where: { $0.islandID == id }), let last = sessions[index].turns.last else { return false }
+        let task = last.task ?? sessions[index].task
+        sessions[index].turns.append(.init(ask: last.ask, answer: nil, task: task, rerun: true))
+        dispatch(PracticeRequest(words: last.ask, referents: [], step: task), session: sessions[index].id,
+                 turn: sessions[index].turns.count - 1)
         return true
+    }
+
+    /// The chats Choose chat offers in a step. Oct 23, Ryan: for the packing list, a new chat
+    /// (picked) and the weekly update's, when it was sent.
+    func chatsOffered(for step: Step) -> [IslandChat] {
+        let chat = practiceChat
+        guard step == .packList, let weekly = sessions.last(where: { $0.task == .weeklyUpdate })?.islandID,
+              let title = host?.sessionTitle(weekly) else { return [chat] }
+        return [IslandChat(agent: chat.agent, chat: "", project: chat.project), IslandChat(agent: chat.agent, chat: title, project: chat.project)]
     }
 
     /// The chat Choose chat offers in the first run: the practice chat with the agent.

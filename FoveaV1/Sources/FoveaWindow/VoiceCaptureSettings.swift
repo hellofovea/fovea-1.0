@@ -416,12 +416,12 @@ struct PrivacyRulesCard: View {
                 if let kind = adding {
                     HStack(spacing: 8) {
                         TextField(kind == .website ? L("Part of a web address, e.g. bank") : L("Words, e.g. 验证码"), text: $text)
-                            .textFieldStyle(.roundedBorder)
+                            .paneField()
                             .focused($focused)
                             .onSubmit { commit(kind) }
                             .onAppear { focused = true }
-                        Button("Add") { commit(kind) }.disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
-                        Button("Cancel") { adding = nil; text = "" }
+                        PaneButton("Add") { commit(kind) }.disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
+                        PaneButton("Cancel") { adding = nil; text = "" }
                     }
                     .padding(.vertical, 6)
                 }

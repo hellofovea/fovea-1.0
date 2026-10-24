@@ -17,6 +17,8 @@ enum IslandPhase: Equatable {
     case review
     case board
     case session
+    /// Oct 23, Ryan: words held at the notch, with nowhere to type them.
+    case held
 }
 
 enum VoiceKind: Equatable {
@@ -81,6 +83,10 @@ struct PracticeSession: Equatable, Identifiable {
     struct Turn: Equatable {
         var ask: String
         var answer: String?
+        /// Oct 23, Ryan: the task the turn is (the packing list can go into the weekly update's
+        /// session), and whether it's Answer again.
+        var task: Step? = nil
+        var rerun = false
     }
     let id = UUID()
     /// Its session on the real island.
@@ -100,8 +106,8 @@ enum PracticeScreen: Equatable {
 
     static func `for`(_ step: Step) -> PracticeScreen {
         switch step {
-        case .weeklyUpdate, .hover, .packList, .followUp: .page
-        case .dictation: .dictation
+        case .weeklyUpdate, .hover, .packList, .followUp, .takeFew, .whileWorking: .page
+        case .dictation, .nowhereToType: .dictation
         default: .empty
         }
     }
@@ -341,6 +347,15 @@ final class OnboardingModel {
     /// Everything sent so far, newest last; the board lists them.
     var sessions: [PracticeSession] = []
     var openSessionID: UUID?
+    /// Oct 23, Ryan: the session the packing list went into (its own, or the weekly update's), for
+    /// asking more.
+    var packSessionID: UUID?
+    /// The packing list's request, sent and waiting for the edit to be allowed.
+    var awaitingApproval: (session: UUID, request: PracticeRequest, turn: Int)?
+    /// The update opened as Quick Look would, held until it's brought back (it would cover the tab).
+    var heldPreview: String?
+    /// More to try's Nowhere to type: the window clicked into, for the held words' Paste.
+    var typingInto: DictationWindow?
     /// Tasks whose answer has come back: lasting, so a step that starts after the answer still
     /// sees it.
     var answered: Set<Step> = []
@@ -622,6 +637,12 @@ final class OnboardingModel {
     /// Waits named with this survive a step change (the practice agent's lines and its answer).
     static let agentWait = "agent:"
 
+    /// Oct 23, Ryan: one session's agent work stopped (Stop at the notch), the rest left going.
+    func cancelWaits(prefixed prefix: String) {
+        for (key, task) in tasks where key.hasPrefix(prefix) { task.cancel() }
+        tasks = tasks.filter { !$0.key.hasPrefix(prefix) }
+    }
+
     /// The agent's work stopped, real or practice (a task started over, Oct 17).
     func cancelAgentWork() {
         runner.cancel()
@@ -735,6 +756,9 @@ final class OnboardingModel {
             answered.remove(.followUp)
             editedFiles.remove(PracticeFiles.list)
             filesCleared = false
+            packSessionID = nil
+            awaitingApproval = nil
+            heldPreview = nil
             if step == .weeklyUpdate || !practice.exists {
                 // Fresh copies of the files and the pages: the update not written yet.
                 practice.create()
@@ -787,11 +811,16 @@ final class OnboardingModel {
             doItForMe()
             return
         case .hover:
-            // As if the notch were hovered: the board opens, the update on it (Done, or the
-            // practice answer standing in if the agent is slow), to open as any day.
-            beat(.hoverNotch)
-            if !answered.contains(.weeklyUpdate) { usePracticeAnswer() }
-            showIsland(.board, OT.Motion.open)
+            hoverForYou()
+            return
+        case .packList where flow.done.contains(.send):
+            // Oct 23, Ryan: sent, the way past is the edit allowed for you, then the practice
+            // answer if the agent is slow; never the request put together again.
+            if let waiting = awaitingApproval, let id = sessions.first(where: { $0.id == waiting.session })?.islandID {
+                host?.allowEdit(id)
+            } else if !answered.contains(.packList) {
+                usePracticeAnswer()
+            }
             return
         case .agents:
             // No agents: the practice agent answers the tasks.
@@ -801,6 +830,38 @@ final class OnboardingModel {
             break
         }
         moveOn(flow.skip())
+    }
+
+    /// Oct 23, Ryan: watching the update, the way past does the beat the step waits on: the board
+    /// as if the notch were hovered (the practice answer standing in if the agent is slow), the
+    /// update opened, pulled out, tucked at the side, brought back.
+    func hoverForYou() {
+        let id = sessions.last { $0.task == .weeklyUpdate }?.islandID
+        switch waitingBeat {
+        case .hoverNotch?, nil:
+            beat(.hoverNotch)
+            if !answered.contains(.weeklyUpdate) { usePracticeAnswer() }
+            showIsland(.board, OT.Motion.open)
+        case .openedSession?:
+            if let id { host?.openIslandSession(id) }
+        case .pulledOut?:
+            if let id { host?.pullOut(id) }
+        case .tucked?:
+            if let id { host?.tuck(id) }
+        case .broughtBack?:
+            if let id { host?.bringBack(id) }
+        case .answer?:
+            usePracticeAnswer()
+        default:
+            break
+        }
+    }
+
+    /// The way past, as the step now has it (Oct 23, Ryan: watching the update, "Open it for me"
+    /// opens it; past that, each beat is done for you).
+    var skipLabel: String {
+        if step == .hover, let beat = waitingBeat, ![.hoverNotch, .openedSession].contains(beat) { return Copy.doItForMe }
+        return copy.skipLabel
     }
 
     func jump(to step: Step) {
@@ -816,8 +877,13 @@ final class OnboardingModel {
         // page (they can change while the tour is put away).
         if let prefs = host?.prefs { keys = KeyMap(prefs: prefs) }
         readMotion()
-        // The notch pulled down for Make it yours goes back up when it's done.
-        if step != .makeItYours { host?.previewAura(false) }
+        // The notch pulled down for Make it yours goes back up when it's done; come back to, it
+        // waits for a light or a look to be touched again.
+        lightShown = false
+        if step != .makeItYours {
+            host?.previewAura(false)
+            if island == .auraPreview { island = .rest }
+        }
         stopMicTest()
         stepStarted = Date()
         skipShown = step.skip == .now
@@ -833,8 +899,8 @@ final class OnboardingModel {
             // A file opened stays open only for the follow-up on it.
             if step != .followUp { previewFile = nil }
             switch step {
-            case .packList, .followUp: currentTab = .trail
-            case .weeklyUpdate: currentTab = .analytics
+            case .packList, .followUp, .whileWorking: currentTab = .trail
+            case .weeklyUpdate, .takeFew: currentTab = .analytics
             default: if !openTabs.contains(currentTab) { currentTab = .analytics }
             }
         }
@@ -873,8 +939,9 @@ final class OnboardingModel {
             if answered.contains(.weeklyUpdate) { beat(.answer) }
         case .followUp:
             // The packing list waits on the board (or is already open): the person opens it, as
-            // they would any day, and asks more there.
-            if let session = sessions.last(where: { $0.task == .packList }) {
+            // they would any day, and asks more there. Oct 23, Ryan: in its own session, or in the
+            // weekly update's if it was sent there.
+            if let session = packSession {
                 openSessionID = session.id
             } else {
                 say(L("Send the packing list first: press \(keys.spoken(.request))."), hold: false)
@@ -882,7 +949,22 @@ final class OnboardingModel {
         case .dictationIntro, .dictation, .dictionary, .memory, .home:
             if step == .home { clearPracticeFiles() }
             say(copy.caption, hold: false)
+        // More to try (Oct 23, Ryan).
+        case .takeFew, .whileWorking:
+            say(copy.caption, hold: false)
+        case .nowhereToType:
+            // Nothing typed into yet: the words have nowhere to go.
+            typingInto = nil
+            pointerOver = nil
+            if !options.harness { _ = NSApp.keyWindow?.makeFirstResponder(nil) }
         }
+        // Oct 23, Ryan: the chats Choose chat offers for this step (two for the packing list).
+        host?.offerChats(chatsOffered(for: step))
+    }
+
+    /// The session the packing list went into (Oct 23, Ryan: its own, or the weekly update's).
+    var packSession: PracticeSession? {
+        sessions.first { $0.id == packSessionID } ?? sessions.last { $0.task == .packList }
     }
 
     private func resetPractice() {
@@ -924,9 +1006,7 @@ final class OnboardingModel {
             return
         }
         guard isPracticeTry else { flow.retry(); return }
-        say(step == .packList
-            ? L("Not quite. Take the line and the packing list, then press \(keys.spoken(.request)).")
-            : L("Not quite. Take the numbers and the pull requests, then press \(keys.spoken(.request))."), hold: true)
+        say(notQuite, hold: true)
         flow.retry()
         referents = []
         marks = []
@@ -950,6 +1030,14 @@ final class OnboardingModel {
         case .weeklyUpdate:
             // Sent: the agent works while the next step shows where to watch it.
             moveOn(flow.advance())
+        case .hover:
+            // Oct 23, Ryan: brought back, the update opens as Quick Look would (held till now: it
+            // would have covered the tab).
+            sound.cue(.step)
+            if let name = heldPreview {
+                heldPreview = nil
+                showPreview(name)
+            }
         default:
             // A page moved on by its own button sounds once, as it goes (continueTapped).
             if !step.isReading { sound.cue(.step) }
@@ -1030,8 +1118,10 @@ final class OnboardingModel {
             return note
         }
         let armed = waitingBeat?.tab != nil && screenshotArmed
+        let parts = referents.filter { if case .region = $0.kind { return true } else { return false } }.count
         return Copy.instruction(waitingBeat, step: step, armed: armed, tab: currentTab, keys: keys,
-                                agent: connectedAgents.first?.name)
+                                agent: sendsToRealAgent ? agentName : connectedAgents.first?.name,
+                                answered: answered.contains(.weeklyUpdate), count: parts)
     }
 
     // MARK: The Island
@@ -1114,7 +1204,9 @@ final class OnboardingModel {
     func setAccent(_ accent: AccentName) {
         animate(OT.Motion.select) { flow.personal.accent = accent }
         host?.prefs.accent = accent
-        // The accent shows on the progress line at the foot of the page (Oct 10), not the notch.
+        // The accent shows on the progress line at the foot of the page (Oct 10), and, Oct 23,
+        // Ryan, at the notch too: the board, its buttons and marks in it, as Settings shows it.
+        host?.previewPanel(thenLight: lightShown)
         sound.cue(.tick)
     }
     func setAura(_ aura: AuraPalette) {
@@ -1135,29 +1227,36 @@ final class OnboardingModel {
     }
 
     /// The light being picked: the notch pulls down and glows, and keeps glowing while it's on
-    /// this page, so the choice can be seen (Oct 9). Not before a light is touched.
+    /// this page, so the choice can be seen (Oct 9). Not before a light is touched. Oct 23, Ryan:
+    /// every time, whatever the notch showed last (the board for a look, or nothing): it was asked
+    /// only while the run thought the notch was resting, and after a look's board it never was.
     private func showAura() {
-        guard step == .makeItYours, island != .auraPreview else { return }
+        guard step == .makeItYours else { return }
+        lightShown = true
         showIsland(.auraPreview, OT.Motion.barOpen)
     }
+    /// A light was touched on this visit to Make it yours: the notch glows in it again once a
+    /// look's board has been seen.
+    var lightShown = false
+
     /// The notch's look (Oct 9): the glass light or dark, its panels attached or floating, the
     /// room it takes. The board shows at the notch, so the choice is seen.
     func setNotchAppearance(_ a: NotchAppearance) {
         animate(OT.Motion.select) { notchAppearance = a }
         host?.prefs.notchAppearance = a
-        host?.previewPanel()
+        host?.previewPanel(thenLight: lightShown)
         sound.cue(.tick)
     }
     func setNotchPanels(_ p: NativePanels) {
         animate(OT.Motion.select) { notchPanels = p }
         host?.prefs.panels = p
-        host?.previewPanel()
+        host?.previewPanel(thenLight: lightShown)
         sound.cue(.tick)
     }
     func setNotchDensity(_ d: NotchDensity) {
         animate(OT.Motion.select) { notchDensity = d }
         host?.prefs.density = d
-        host?.previewPanel()
+        host?.previewPanel(thenLight: lightShown)
         sound.cue(.tick)
     }
 

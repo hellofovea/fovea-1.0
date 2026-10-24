@@ -25,6 +25,8 @@ struct MainView: View {
             }
         }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { model.gridWidth = $0 }
+        // Oct 24: the look switched, everything is drawn again in it (the tokens read it).
+        .id(model.look)
         .fontDesign(model.titleDesign.design)
         // Inside the palette and motion below, so the sheets are given them.
         .modifier(WindowSheets())
@@ -46,7 +48,9 @@ struct MainView: View {
     /// window's (`T.Layout.pageRadius`). Fovea's own schemes frame it in their canvas, or the
     /// Island's ink. On the panel the page can fill the window instead, as before.
     private func cards(_ palette: Palette) -> some View {
-        let inset = model.pageStyle == .inset
+        // Aligned: no page inset in the window's material (Aside's chrome); the content is the
+        // window's own opaque color, as the HIG has content, and the toolbar's glass over it.
+        let inset = model.pageStyle == .inset && model.look == .current
         // Settings in the Mac's way: its sidebar on the window's material at the left, the page
         // beside it (`SettingsSidebar.swift`).
         let sidebar = model.page == .settings && model.settingsLayout.hasSidebar
@@ -218,6 +222,7 @@ struct Toolbar: ToolbarContent {
     /// Toolbar items don't inherit the window's environment: each gets the scheme's palette
     /// here, the dark one over the Notch scheme's ink band.
     private var palette: Palette {
+        _ = model.look // drawn again when the look changes
         let base = Palette.make(dark: scheme == .dark, surface: model.surface, accent: model.accent.color)
         return base.bandIsDark && !base.isDark ? Palette.make(dark: true, surface: model.surface, accent: model.accent.color) : base
     }
@@ -489,18 +494,21 @@ private struct SearchSurface: ViewModifier {
     let hover: Bool
     let focused: Bool
 
+    /// Aligned: the keyboard in it shows in the accent, as the notch's and the first run's fields do.
+    private var focusEdge: Color { WindowLook.isAligned ? palette.accent : palette.ink(T.Shade.focus) }
+
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *) {
             content
                 .glassEffect(.regular.interactive(), in: Capsule())
-                .overlay { if focused { Capsule().strokeBorder(palette.ink(T.Shade.focus), lineWidth: 1) } }
+                .overlay { if focused { Capsule().strokeBorder(focusEdge, lineWidth: 1) } }
         } else {
             content
                 .background(Capsule().fill(palette.ink(expanded ? (hover || focused ? T.Shade.fillHover : T.Shade.fill)
                                                                 : (hover ? T.Shade.fill : 0))))
                 .overlay {
                     if expanded {
-                        Capsule().strokeBorder(palette.ink(focused ? T.Shade.focus : T.Shade.line), lineWidth: focused ? 1 : 0.5)
+                        Capsule().strokeBorder(focused ? focusEdge : palette.ink(T.Shade.line), lineWidth: focused ? 1 : 0.5)
                     }
                 }
         }
@@ -549,12 +557,14 @@ struct SectionTitle: View {
     @Environment(CapturesModel.self) private var model
     let palette: Palette
     var body: some View {
-        Text(model.settingsCategory.title)
+        // Aligned (Oct 24): the pane is titled on its page, as the first run titles one.
+        Text(WindowLook.isAligned ? "" : model.settingsCategory.title)
             .font(.system(size: 15, weight: .semibold))
             .foregroundStyle(palette.text)
             .contentTransition(.opacity)
             .padding(.leading, 6)
             .toolbarScheme(palette)
+            .accessibilityHidden(WindowLook.isAligned)
     }
 }
 
@@ -899,6 +909,18 @@ struct CaptureGrid: View {
     }
 }
 
+extension View {
+    /// Aligned (Oct 24): a display title as the first run sets its pages' titles, New York (the
+    /// system face in Chinese), semibold, tracked tighter as it grows. The window's root sets the
+    /// font design for everything under it (`TitleDesign`), which overrides a font's own design,
+    /// so the title takes its design here, closer in.
+    func alignedDisplay(_ size: CGFloat) -> some View {
+        font(T.Aligned.display(size))
+            .fontDesign(T.Aligned.displayDesign)
+            .tracking(T.Aligned.displayTracking(size))
+    }
+}
+
 /// A day's name as a small tracked label with its count in mono ("TODAY  10"), the way Fovea
 /// labels its sections.
 struct DayTitle: View {
@@ -907,12 +929,24 @@ struct DayTitle: View {
     var count: Int?
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(title.uppercased())
-                .font(.system(size: 11, weight: .semibold))
-                .tracking(0.9)
-                .foregroundStyle(palette.secondary)
-            if let count {
-                Text("\(count)").font(.system(size: 11, design: .monospaced)).foregroundStyle(palette.tertiary)
+            if WindowLook.isAligned {
+                // Aligned (Oct 24): the day named as the first run titles its pages, in New York
+                // and in sentence case; its count beside it in the system face's even digits.
+                let A = T.Aligned.self
+                Text(title)
+                    .alignedDisplay(A.dayTitle)
+                    .foregroundStyle(palette.text)
+                if let count {
+                    Text("\(count)").font(.system(size: A.countSize)).monospacedDigit().foregroundStyle(palette.tertiary)
+                }
+            } else {
+                Text(title.uppercased())
+                    .font(.system(size: 11, weight: .semibold))
+                    .tracking(0.9)
+                    .foregroundStyle(palette.secondary)
+                if let count {
+                    Text("\(count)").font(.system(size: 11, design: .monospaced)).foregroundStyle(palette.tertiary)
+                }
             }
         }
         .accessibilityElement(children: .combine)
@@ -926,7 +960,12 @@ struct EmptyState: View {
     var body: some View {
         VStack(spacing: 6) {
             if model.homeEmpty {
-                Text("No Captures Yet").font(.system(size: 17, weight: .semibold)).foregroundStyle(palette.secondary)
+                if WindowLook.isAligned {
+                    // Aligned: titled as the first run's pages are, in sentence case.
+                    Text("No captures yet").alignedDisplay(T.Aligned.emptyTitle).foregroundStyle(palette.text)
+                } else {
+                    Text("No Captures Yet").font(.system(size: 17, weight: .semibold)).foregroundStyle(palette.secondary)
+                }
                 Text("What you say and take shows up here.")
                     .font(.system(size: 13)).foregroundStyle(palette.tertiary)
                 // Oct 15 review, MW-05.1: both daily keys, as the person has them, not only fn.
@@ -936,7 +975,11 @@ struct EmptyState: View {
                     .font(.system(size: 12)).foregroundStyle(palette.tertiary)
                     .padding(.top, 10)
             } else {
-                Text("No Results").font(.system(size: 17, weight: .semibold)).foregroundStyle(palette.secondary)
+                if WindowLook.isAligned {
+                    Text("No results").alignedDisplay(T.Aligned.emptyTitle).foregroundStyle(palette.text)
+                } else {
+                    Text("No Results").font(.system(size: 17, weight: .semibold)).foregroundStyle(palette.secondary)
+                }
                 Text("Fovea searches your words and the text in what you took.")
                     .font(.system(size: 13))
                     .foregroundStyle(palette.tertiary)
@@ -961,10 +1004,35 @@ struct KeyCap: View {
     }
 }
 
+/// The toast's capsule: the Island's black, or (Aligned, Oct 24) the toolbar's glass in the
+/// window's scheme, its words in the label color, as the notch's and the first run's notices are
+/// (no black surface but the notch).
+private struct ToastSurface: ViewModifier {
+    @Environment(\.palette) private var palette
+    func body(content: Content) -> some View {
+        if WindowLook.isAligned {
+            content
+                .foregroundStyle(palette.text)
+                .padding(.horizontal, 16)
+                .frame(height: T.Aligned.toastHeight)
+                .glass(Capsule())
+        } else {
+            content
+                .foregroundStyle(Color.white.opacity(0.9))
+                .padding(.horizontal, 16)
+                .frame(height: 34)
+                .background(Capsule().fill(Color.black.opacity(0.78)))
+                .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
+                .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+        }
+    }
+}
+
 /// A short notice at the window's foot, with Undo after a delete. Oct 21, Ryan ("simpler is
 /// better"): it fades in and out where it is (it rose out of a blur).
 struct Toast: View {
     @Environment(CapturesModel.self) private var model
+    @Environment(\.palette) private var palette
     var body: some View {
         ZStack {
             if let message = model.toast, !model.sheetUp {
@@ -974,7 +1042,7 @@ struct Toast: View {
                         Button("Undo") { model.undoDelete() }
                             .buttonStyle(.plain)
                             .font(.system(size: 12.5, weight: .semibold))
-                            .foregroundStyle(Color.white)
+                            .foregroundStyle(WindowLook.isAligned ? palette.accent : Color.white)
                             .keyboardShortcut("z", modifiers: .command)
                             .help("Undo (⌘Z)")
                     } else if let action = model.toastAction {
@@ -982,15 +1050,10 @@ struct Toast: View {
                         Button(action.title) { model.runToastAction() }
                             .buttonStyle(.plain)
                             .font(.system(size: 12.5, weight: .semibold))
-                            .foregroundStyle(Color.white)
+                            .foregroundStyle(WindowLook.isAligned ? palette.accent : Color.white)
                     }
                 }
-                .foregroundStyle(Color.white.opacity(0.9))
-                .padding(.horizontal, 16)
-                .frame(height: 34)
-                .background(Capsule().fill(Color.black.opacity(0.78)))
-                .overlay(Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 0.5))
-                .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+                .modifier(ToastSurface())
                 .transition(.opacity)
             }
         }

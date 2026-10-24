@@ -218,9 +218,43 @@ public final class DictionaryStore {
     @ObservationIgnored private let file: FileStore<[DictionaryWord]>?
     @ObservationIgnored private let saver = Debouncer()
 
+    /// Settings › Dictionary's On/Off and other spellings, by word (`dictionary-extras.json`, the
+    /// window's to write). Oct 23: read here, so they reach speech recognition.
+    @ObservationIgnored private let extrasURL: URL?
+    @ObservationIgnored private var extrasRead: (date: Date, value: [String: WordSpellings])?
+
     public init(location: DataLocation?) {
         file = location.map { FileStore(url: $0.file("dictionary.json")) }
+        extrasURL = location.map { $0.file("dictionary-extras.json") }
         words = file?.load() ?? []
+    }
+
+    /// The extras as the window last wrote them (read again when the file has changed).
+    private var extras: [String: WordSpellings] {
+        guard let url = extrasURL,
+              let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate else { return [:] }
+        if let read = extrasRead, read.date == date { return read.value }
+        let value = (try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode([String: WordSpellings].self, from: $0) } ?? [:]
+        extrasRead = (date, value)
+        return value
+    }
+
+    /// Oct 23, Ryan: a correction the person made to what Fovea heard (a request edited in the
+    /// notch) teaches the words put right, as Learned, with what was heard as "Also heard as".
+    /// A word already in the dictionary isn't added again. Returns how many were learned.
+    @discardableResult
+    public func learn(heard: String, corrected: String, in place: String? = nil, date: Date = Date()) -> Int {
+        var known = Set(words.map { $0.word.lowercased() })
+        var learned: [DictionaryWord] = []
+        for item in DictionaryRules.learned(heard: heard, corrected: corrected) where !known.contains(item.word.lowercased()) {
+            known.insert(item.word.lowercased())
+            learned.append(DictionaryWord(id: "w-\(UUID().uuidString.prefix(8))", word: item.word, heardAs: item.heardAs,
+                                          source: .learned, date: date, learnedIn: place))
+        }
+        guard !learned.isEmpty else { return 0 }
+        words = learned + words
+        persist()
+        return learned.count
     }
 
     /// Adds words not already there (by spelling, case aside). Returns how many were new.
@@ -245,13 +279,15 @@ public final class DictionaryStore {
         persist()
     }
 
-    /// The words speech recognition should listen for.
-    public var contextualStrings: [String] { words.map(\.word) }
+    /// The words speech recognition should listen for: the ones that are on (Oct 23).
+    public var contextualStrings: [String] { DictionaryRules.contextual(words, extras: extras) }
 
-    /// "heard as" → the word, for the words Fovea mishears.
-    public var replacements: [(heard: String, word: String)] {
-        words.compactMap { w in w.heardAs.map { ($0, w.word) } }
-    }
+    /// "heard as" → the word, for the words Fovea mishears: every spelling of the words that are
+    /// on (Oct 23: the extra spellings and Off, from Settings › Dictionary).
+    public var replacements: [(heard: String, word: String)] { DictionaryRules.replacements(words, extras: extras) }
+
+    /// The words as the dictionary writes them (whole words, case aside; Chinese anywhere).
+    public func written(_ text: String) -> String { DictionaryRules.apply(text, replacements) }
 
     public func flush() { saver.flush { write() } }
     private func persist() { saver.schedule { [weak self] in self?.write() } }

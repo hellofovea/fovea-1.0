@@ -22,6 +22,19 @@ extension HomeWindowController {
         }
         show()
         await settle(1.6)
+        // Oct 24: `--fixture` pictures the sample year (the fixture's captures, moved up to today)
+        // in place of what the data dir holds, so no picture shows anyone's own captures. Only into
+        // a `--data-dir` of its own: the samples are written to its store.
+        if CommandLine.arguments.contains("--fixture"), CommandLine.arguments.contains(where: { $0.hasPrefix("--data-dir=") }) {
+            let shift = Date().timeIntervalSince(Fixtures.now)
+            model.library.captures = Fixtures.library(.typical).captures.map { c in
+                var c = c
+                c.time = c.time.addingTimeInterval(shift)
+                return c
+            }
+            model.calendarYear = Lines.calendar.component(.year, from: Date())
+            await settle(0.8)
+        }
         // Oct 21, Ryan: `--smoke-detail` checks the expanded card's Copy, Save and Delete by doing
         // them (DetailSmoke.swift); it needs a `--data-dir` of its own.
         if CommandLine.arguments.contains("--smoke-detail") {
@@ -68,7 +81,8 @@ extension HomeWindowController {
         }
         NSApp.appearance = NSAppearance(named: .aqua)
         window.appearance = NSAppearance(named: .aqua)
-        await reviewShots(dir)
+        // Oct 24: `--no-review` stops at Home and the panes (the review's states take minutes).
+        if !CommandLine.arguments.contains("--no-review") { await reviewShots(dir) }
     }
 
     /// Oct 15 review: each state the review added, as its stage shows it.

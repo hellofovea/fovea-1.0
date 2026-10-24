@@ -147,6 +147,24 @@ public enum Copy {
                 caption: L("That's everything."),
                 title: L("You're all set"),
                 button: L("Done"))
+        // More to try (Oct 23, Ryan): what the first run doesn't cover, from Getting Started.
+        case .takeFew:
+            return StepCopy(
+                caption: "",
+                title: L("Take a few things, then look them over."),
+                script: L("Compare these two."),
+                help: keysHelp)
+        case .whileWorking:
+            return StepCopy(
+                caption: "",
+                title: L("Ask while it works, answer again, and stop it."),
+                script: L("Plan a route for Saturday from this trail report."),
+                help: keysHelp)
+        case .nowhereToType:
+            return StepCopy(
+                caption: "",
+                title: L("Nowhere to type? The notch holds your words."),
+                help: keysHelp)
         }
     }
 
@@ -208,15 +226,22 @@ public enum Copy {
     /// What to do now, typed out on the board as the step goes (Oct 9: letter by letter, as if
     /// Fovea were talking). `armed`: ⌘ is already pressed, so what's left is a drag.
     /// `tab`: the browser tab showing, for a part to take from a tab.
+    /// `answered`: the agent's answer is back (the hover step's tab shows a check). `count`: how
+    /// many parts are taken already (More to try's two).
     public static func instruction(_ beat: Beat?, step: Step, armed: Bool = false, tab: PracticeTab? = nil,
-                                   keys: KeyMap = .current, agent: String? = nil) -> String? {
+                                   keys: KeyMap = .current, agent: String? = nil, answered: Bool = false,
+                                   count: Int = 0) -> String? {
         let request = keys.spoken(.request)
         let shot = keys.spoken(.screenshot)
         let dictation = keys.spoken(.dictation)
         guard let beat else {
             switch step {
             case .dictation: return L("Read it over. Your feedback goes only when you click Send.")
-            case .weeklyUpdate, .packList, .followUp, .hover: return L("Done.")
+            // Oct 23, Ryan: the whole session, and the way back from it.
+            case .followUp: return L("\(keys.spoken(.cancel).capitalized) steps back.")
+            case .whileWorking: return L("Stopped. Only Stop stops an agent; closing it never does.")
+            case .nowhereToType: return L("Whenever there's nowhere to type, your words wait at the notch.")
+            case .weeklyUpdate, .packList, .hover, .takeFew: return L("Done.")
             default: return nil
             }
         }
@@ -242,12 +267,33 @@ public enum Copy {
             return L("Say the line, then press \(request).")
         case (_, .review):
             return L("Writing it up.")
+        // Oct 23, Ryan: two chats to choose from, the one picked first.
+        case (.packList, .send):
+            return L("Fovea picked the chat. \(keys.spoken(.expand)) shows all your chats; return sends it here.")
         case (_, .send):
             return L("Press return to send it to \(agent ?? L("your agent")).")
         case (.hover, .hoverNotch):
             return L("Move your pointer to the notch.")
+        // Oct 23, Ryan: the update pulled out of the notch, tucked at the side, brought back.
+        case (.hover, .openedSession):
+            return L("Click the update to open it.")
+        case (.hover, .pulledOut):
+            return L("Drag it down, out of the notch.")
+        case (.hover, .tucked):
+            return L("Drop it at the side of your screen. It waits there as a tab.")
+        case (.hover, .broughtBack):
+            return answered ? L("Click the tab to bring the update back.") : L("When the tab shows a check, click it to bring the update back.")
+        case (.hover, .answer):
+            return L("Still writing. The update comes into the window.")
+        case (.whileWorking, .answer):
+            return L("Your message waits until this answer is done.")
         case (_, .answer):
-            return step == .hover ? L("Still writing. It opens when it's done.") : L("Your agent is on it.")
+            return L("Your agent is on it.")
+        // Oct 23, Ryan: the agent asks before it edits the list.
+        case (_, .approved):
+            return L("\(agent ?? L("Your agent")) asks before it edits your list. Move to the notch and Allow it. The icon in your menu bar shows it too.")
+        case (_, .expanded):
+            return L("Press \(keys.spoken(.expand)) to see the whole session.")
         case (_, .followKey):
             return L("Open the packing list from the notch, then press \(dictation) to ask more.")
         case (_, .followAnswer):
@@ -262,8 +308,35 @@ public enum Copy {
             return L("Press \(dictation) when you're done. What you took lands after your words.")
         case (_, .replyKey):
             return L("Now point at Messages and press \(dictation).")
+        // Oct 23, Ryan: esc throws the words away; ⌘Z brings them back.
+        case (_, .replyCancelled):
+            return L("Say something, then press \(keys.spoken(.cancel)) to throw it away.")
+        case (_, .replyRestored):
+            return L("Changed your mind? Press \(keys.spoken(.undo)) to bring it back.")
         case (_, .replyLanded):
             return L("Answer Lin, then press \(dictation).")
+        // More to try (Oct 23, Ryan).
+        case (_, .twoTaken):
+            return count == 0 ? L("Hold \(shot) and drag over one part of the page, then another.")
+                : L("Keep holding \(shot) and drag over another part.")
+        case (_, .stackOpened):
+            return L("Click the pictures at the notch to open them.")
+        case (_, .referentInspected):
+            return L("Click one to look at it closely.")
+        case (_, .referentRemoved):
+            return L("Go back, then point at one and click its ✕ to take it out.")
+        case (_, .queued):
+            return L("While it works, open it from the notch and type one more thing in its box. Press return: it waits its turn.")
+        case (_, .queuedAnswered):
+            return L("Now your message goes.")
+        case (_, .answeredAgain):
+            return L("Click Answer again, or its arrow to pick another model.")
+        case (_, .stopped):
+            return L("It's working again. Click Stop to stop it.")
+        case (_, .heldShown):
+            return L("Point at the desktop, away from the windows. Press \(dictation), say anything, and press \(dictation) again.")
+        case (_, .heldTaken):
+            return L("Nowhere to type, so the notch holds your words. Click Copy, or click into the feedback window and then Paste.")
         default:
             return nil
         }
@@ -356,6 +429,10 @@ public enum Copy {
 
     /// The end (Oct 9, round two): two things, spread out.
     public static var homeNotch: String { L("Next time, start from the notch.") }
+    /// Oct 23, Ryan: the menu bar's icon, with it.
+    public static var homeMenuBar: String { L("The icon in your menu bar shows when Fovea listens, works or needs you.") }
+    /// Oct 23, Ryan: the hover step's way past once the update is open: each beat done for you.
+    public static var doItForMe: String { L("Do it for me") }
     public static var eyeTrackingTitle: String { L("Eye tracking is in beta.") }
     public static var eyeTrackingAsk: String { L("Request access") }
     public static var eyeTrackingAsked: String { L("Requested. We'll let you know.") }

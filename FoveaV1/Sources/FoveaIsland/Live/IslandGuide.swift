@@ -108,6 +108,8 @@ extension WorkbenchModel {
         v2FinishedAt[id] = Date()
         v2Runs[id] = nil
         live?.director?.islandDidEmit(.sessionAnswered)
+        // Oct 23, Ryan: a message that waited its turn goes now, as after the script's answers.
+        if !failed, takeNextQueued(id) { return }
         // A quick answer opens by itself, as the Workbench's do (and as Settings › Notch asks).
         if notchState == .silent, showAnswers, v2Quick(id) { showV2Chat(id, popped: true) }
     }
@@ -146,11 +148,51 @@ extension IslandController {
     /// Opens a session's chat at the notch.
     package func openSession(_ id: String) { model.openV2(id) }
 
-    /// The chats Choose chat offers (the first run's practice chat); nil, the request's own.
+    /// The chats Choose chat offers (the first run's practice chat); nil, the request's own. Oct 23,
+    /// Ryan: a chat named "" is a new one (the packing list's, beside the weekly update's chat).
     package func setChats(_ chats: [IslandChat]?) {
         model.directorSuggestions = chats?.map {
-            V2Suggestion(agent: $0.agent, chat: $0.chat, project: $0.project, reason: L("Your first run"))
+            V2Suggestion(agent: $0.agent, chat: $0.chat.isEmpty ? nil : $0.chat, project: $0.project, reason: L("Your first run"))
         }
+    }
+
+    // MARK: Oct 23, Ryan: what the first run teaches with a session
+
+    /// The session's name on the board.
+    package func sessionTitle(_ id: String) -> String? { model.v2Task(id)?.session }
+
+    /// The director's agent asks to edit a file: the session needs you, with Deny and Allow and the
+    /// file it would change (the island's own approval), until it's answered.
+    package func askToEdit(_ id: String, file: String, question: String) {
+        guard let i = model.agentTasks.firstIndex(where: { $0.id == id }) else { return }
+        model.cases.approvalFiles[id] = [FileChange(path: file, added: 4, removed: 0)]
+        withAnimation(WorkbenchTokens.Panel.change) {
+            model.apply(AgentBeat(activity: question, work: .thinking, object: file, state: .needsYou, ask: .approval("Edit \(file)")), to: i)
+        }
+    }
+
+    /// Allowed for the person ("Do it for me").
+    package func allowEdit(_ id: String) { model.allowTask(id) }
+
+    /// A session's chat pulled out of the notch, below it; tucked at the right side; brought back
+    /// out of its tab ("Do it for me", and the smoke).
+    package func pullOut(_ id: String) {
+        if model.notchState != .v2Chat || model.v2Focus != id { model.openV2(id) }
+        let area = model.detachedArea
+        model.endDragOutV2(id, at: CGPoint(x: area.width / 2, y: area.height * 0.38))
+    }
+
+    package func tuck(_ id: String) {
+        let area = model.detachedArea
+        model.endMoveDetachedV2(id, pointer: CGPoint(x: area.width - 2, y: area.height * 0.4))
+    }
+
+    package func bringBack(_ id: String) { model.undockV2(id) }
+
+    /// Where a pulled-out chat is: out, tucked at a side, or nil when it's in the notch.
+    package func detachedState(_ id: String) -> String? {
+        guard let item = model.v2Detached.first(where: { $0.id == id }) else { return nil }
+        return item.docked == nil ? "out" : "tucked"
     }
 
     /// A request put together for the person ("Do it for me"): the Dispatch bar's request on

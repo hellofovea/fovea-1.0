@@ -482,6 +482,17 @@ extension WorkbenchModel {
 
     /// It goes there with what was taken; the board shows it a moment, then the island rests.
     func send(_ pick: V2Suggestion, label: V2RoutingLabel) {
+        // Oct 23, Ryan: in the first run, a chat that's one of its sessions already (the weekly
+        // update's, offered beside a new chat for the packing list) takes the request as the next
+        // one there, as a chat would.
+        if let director = live?.director, let chat = pick.chat,
+           let existing = directorSessions.first(where: { v2Task($0)?.session == chat && v2Task($0)?.agent == pick.agent }) {
+            v2Labels.append(label)
+            live?.logDispatch(text: v2Spoken, referents: liveReferents, agent: ChatAgent.named(pick.agent).name, chat: pick.title)
+            director.islandDidEmit(.sent)
+            askMoreV2(existing, text: v2Spoken)
+            return
+        }
         v2Labels.append(label)
         // Fovea: Home keeps the request, with what was taken and where it went.
         live?.logDispatch(text: v2Spoken, referents: liveReferents, agent: ChatAgent.named(pick.agent).name, chat: pick.title)
@@ -754,6 +765,7 @@ extension WorkbenchModel {
         let fromBoard = notchState == .v2Board
         if fromBoard { v2BoardPinned = panelPinned }
         showV2Chat(id, popped: false, fromBoard: fromBoard, expanded: expanded)
+        live?.director?.islandDidEmit(.sessionOpened)
     }
 
     /// The expand button, left ⌃ and the panel's toggle: expanded (the whole session), and back.
@@ -775,6 +787,7 @@ extension WorkbenchModel {
             v2HistoryEpoch += 1
             if size != .expanded { v2OutlineShown = false }
         }
+        if size == .expanded { live?.director?.islandDidEmit(.sessionExpanded) }
     }
 
     /// Copy Answer (Oct 15 review, DSP-18): a draft as it is, else the answer as plain text.
@@ -809,6 +822,7 @@ extension WorkbenchModel {
         v2Detached.removeAll { $0.id == id }
         v2Detached.append(V2Detached(id: id, origin: origin, docked: nil, dockY: origin.y))
         v2Checked.insert(id)
+        live?.director?.islandDidEmit(.chatPulledOut)
         // The board a moment (another can be pulled out), then, with the pointer away, the island
         // rests, as after Send; a pinned board stays pinned.
         showAgentPanel(pinned: v2BoardPinned, sent: v2BoardPinned ? nil : id)
@@ -865,6 +879,7 @@ extension WorkbenchModel {
                 v2Detached[i].dockY = min(max(metrics.menuBarHeight + 8, ahead.y - V.tabSize.height / 2),
                                           detachedArea.height - V.tabSize.height - 8)
             }
+            live?.director?.islandDidEmit(.chatTucked)
             return
         }
         let item = v2Detached[i]
@@ -886,6 +901,7 @@ extension WorkbenchModel {
         let x = side == .left ? 24 : detachedArea.width - size.width - 24
         v2Detached[i].origin = clampedV2(CGPoint(x: x, y: v2Detached[i].dockY - 20), size: size)
         v2Detached[i].docked = nil
+        live?.director?.islandDidEmit(.chatBroughtBack)
     }
 
     /// A sample session's earlier exchanges (V2History.swift): its own request and answer first,

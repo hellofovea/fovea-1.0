@@ -3,15 +3,17 @@ import XCTest
 
 final class OnboardingCoreTests: XCTestCase {
     func testStagesRunInOrderWithDictationNearTheEnd() {
-        let stages = Step.allCases.map(\.stage)
+        let stages = Step.run.map(\.stage)
         XCTAssertEqual(stages, stages.sorted { $0.rawValue < $1.rawValue }, "steps are grouped by stage, in order")
-        let first = { (stage: Stage) in Step.allCases.firstIndex { $0.stage == stage }! }
+        let first = { (stage: Stage) in Step.run.firstIndex { $0.stage == stage }! }
         XCTAssertLessThan(first(.turnOn), first(.agents))
         XCTAssertLessThan(first(.agents), first(.pointAndSay))
         XCTAssertLessThan(first(.pointAndSay), first(.dictation))
-        XCTAssertEqual(Step.allCases.first, .name, "Fovea 1.0 (Oct 9): the run opens on the name, then the email, then hello")
-        XCTAssertEqual(Array(Step.allCases.prefix(3)), [.name, .signIn, .hello])
-        XCTAssertEqual(Step.allCases.last, .home)
+        XCTAssertEqual(Step.run.first, .name, "Fovea 1.0 (Oct 9): the run opens on the name, then the email, then hello")
+        XCTAssertEqual(Array(Step.run.prefix(3)), [.name, .signIn, .hello])
+        XCTAssertEqual(Step.run.last, .home)
+        XCTAssertEqual(Step.run.count, 16, "Oct 23, Ryan: the run keeps its steps; More to try is outside it")
+        XCTAssertTrue(Step.allCases.filter(\.isMoreToTry).allSatisfy { $0.next == nil && $0.previous == nil && !Step.run.contains($0) })
     }
 
     func testHelloThenMakeItYoursComeFirst() {
@@ -189,19 +191,73 @@ final class OnboardingCoreTests: XCTestCase {
         XCTAssertFalse(flow.record(.finish))
         XCTAssertEqual(flow.missedBeat, .finish)
         flow.retry()
-        for beat in [Beat.requestKey, .file, .passage, .finish, .review, .send, .answer] {
+        for beat in [Beat.requestKey, .file, .passage, .finish, .review, .send, .approved, .answer] {
             XCTAssertTrue(flow.record(beat), "\(beat)")
         }
         XCTAssertTrue(flow.isComplete)
         XCTAssertEqual(flow.advance(), .followUp)
     }
 
-    func testTheHoverWaitsForTheNotchAndTheAnswerInEitherOrder() {
-        for order in [[Beat.hoverNotch, .answer], [.answer, .hoverNotch]] {
+    /// Oct 23, Ryan: watching the update, it's opened, pulled out of the notch, tucked at a side
+    /// and brought back; the answer may come at any point.
+    func testTheHoverPullsTheUpdateOutTucksItAndBringsItBack() {
+        let moves: [Beat] = [.hoverNotch, .openedSession, .pulledOut, .tucked, .broughtBack]
+        for at in 0...moves.count {
             var flow = Flow(start: .hover)
-            for beat in order { XCTAssertTrue(flow.record(beat), "\(order): \(beat)") }
-            XCTAssertTrue(flow.isComplete, "\(order)")
+            var order = moves
+            order.insert(.answer, at: at)
+            for beat in order { XCTAssertTrue(flow.record(beat), "answer at \(at): \(beat)") }
+            XCTAssertTrue(flow.isComplete, "answer at \(at)")
         }
+        var early = Flow(start: .hover)
+        early.record(.hoverNotch)
+        XCTAssertFalse(early.record(.tucked), "tucked before it's out isn't counted")
+        XCTAssertEqual(Copy.instruction(.broughtBack, step: .hover, answered: false), "When the tab shows a check, click it to bring the update back.")
+        XCTAssertEqual(Copy.instruction(.broughtBack, step: .hover, answered: true), "Click the tab to bring the update back.")
+    }
+
+    /// Oct 23, Ryan: the packing list's agent asks first; the whole session after the follow-up;
+    /// esc and ⌘Z in Messages.
+    func testTheRunTeachesTheApprovalTheWholeSessionAndUndo() {
+        XCTAssertEqual(Step.packList.beats.suffix(3), [[.send], [.approved], [.answer]])
+        XCTAssertTrue(Copy.instruction(.approved, step: .packList, agent: "Claude Code")!.hasPrefix("Claude Code asks before it edits your list."))
+        XCTAssertEqual(Step.followUp.beats.last, [.expanded])
+        XCTAssertEqual(KeyMap.current.keys(for: .expanded), ["⌃"])
+        XCTAssertEqual(Copy.instruction(nil, step: .followUp), "Esc steps back.")
+        XCTAssertEqual(Copy.instruction(.send, step: .packList), "Fovea picked the chat. ⌃ shows all your chats; return sends it here.")
+        let messages = Step.dictation.beats.suffix(4).map { $0.first! }
+        XCTAssertEqual(messages, [.replyKey, .replyCancelled, .replyRestored, .replyLanded])
+        XCTAssertEqual(KeyMap.current.keys(for: .replyCancelled), ["esc"])
+        XCTAssertEqual(KeyMap.current.keys(for: .replyRestored), ["⌘", "Z"])
+        XCTAssertEqual(KeyMap.current.spoken(.undo), "⌘Z")
+        XCTAssertEqual(Copy.instruction(.replyRestored, step: .dictation), "Changed your mind? Press ⌘Z to bring it back.")
+        var flow = Flow(start: .dictation)
+        for beat in [Beat.feedbackKey, .feedbackTaken, .feedbackLanded, .replyKey, .replyCancelled] { flow.record(beat) }
+        flow.forget([.replyKey, .replyCancelled])
+        XCTAssertEqual(flow.waitingFor, [.replyKey], "the undo let go by: Messages' try again, the feedback kept")
+    }
+
+    /// Oct 23, Ryan: More to try, from Getting Started.
+    func testMoreToTryIsThreePracticesOutsideTheRun() {
+        XCTAssertEqual(PracticeAgain.moreToTry.map(\.steps), [[.takeFew], [.whileWorking], [.nowhereToType]])
+        XCTAssertEqual(PracticeAgain.moreToTry.map(\.title), ["Take a few things", "While it works", "Nowhere to type"])
+        var few = Flow(start: .takeFew, only: PracticeAgain.takeFew.steps)
+        few.jump(to: .takeFew)
+        XCTAssertFalse(few.canGoBack)
+        for beat in [Beat.requestKey, .twoTaken, .stackOpened, .referentInspected, .referentRemoved, .finish, .review, .send, .answer] {
+            XCTAssertTrue(few.record(beat), "\(beat)")
+        }
+        XCTAssertNil(few.advance(), "past its one step: Home again")
+        XCTAssertTrue(few.finished)
+        var working = Flow(start: .whileWorking, only: PracticeAgain.whileWorking.steps)
+        for beat in [Beat.requestKey, .finish, .review, .send, .queued, .answer, .queuedAnswered, .answeredAgain, .stopped] {
+            XCTAssertTrue(working.record(beat), "\(beat)")
+        }
+        XCTAssertTrue(working.isComplete)
+        var nowhere = Flow(start: .nowhereToType, only: PracticeAgain.nowhereToType.steps)
+        XCTAssertTrue(nowhere.record(.heldShown) && nowhere.record(.heldTaken))
+        XCTAssertNil(nowhere.advance())
+        XCTAssertEqual(Copy.instruction(.twoTaken, step: .takeFew, count: 1), "Keep holding ⌘ and drag over another part.")
     }
 
     /// Oct 17, Ryan: the intro lists what works while talking; in the feedback, something is taken
@@ -238,7 +294,7 @@ final class OnboardingCoreTests: XCTestCase {
         var flow = Flow(start: .dictation)
         for beat in [Beat.feedbackKey, .feedbackTaken, .feedbackLanded] { XCTAssertTrue(flow.record(beat)) }
         XCTAssertFalse(flow.isComplete, "the feedback alone isn't both windows")
-        for beat in [Beat.replyKey, .replyLanded] { XCTAssertTrue(flow.record(beat)) }
+        for beat in [Beat.replyKey, .replyCancelled, .replyRestored, .replyLanded] { XCTAssertTrue(flow.record(beat)) }
         XCTAssertTrue(flow.isComplete)
         XCTAssertEqual(flow.advance(), .dictionary)
         XCTAssertEqual(flow.advance(), .memory, "what Fovea remembers, before the end (Oct 15 review, OB-01.6)")
@@ -251,8 +307,10 @@ final class OnboardingCoreTests: XCTestCase {
         let alwaysOpen: Set<Step> = [.signIn, .name, .hello, .makeItYours, .memory, .home]
         for step in Step.allCases where !alwaysOpen.contains(step) {
             XCTAssertTrue(step.skip.allowed, "\(step) needs a backup")
-            var flow = Flow(start: step)
-            XCTAssertNotNil(flow.skip(), "\(step)")
+            var flow = Flow(start: step, only: step.isMoreToTry ? [step] : nil)
+            let next = flow.skip()
+            // Oct 23, Ryan: a More to try practice is one step; skipped, it's over, and Home again.
+            XCTAssertTrue(step.isMoreToTry ? next == nil && flow.finished : next != nil, "\(step)")
         }
         XCTAssertEqual(Step.weeklyUpdate.skip, .after(15), "a task waits before offering Skip")
     }
@@ -360,7 +418,7 @@ final class OnboardingCoreTests: XCTestCase {
         for beat in Beat.allCases {
             XCTAssertFalse(Copy.instruction(beat, step: .dictation)?.contains("⌥ twice") ?? false, "no ⌥ twice: \(beat)")
         }
-        XCTAssertEqual(Copy.instruction(.send, step: .packList, agent: "Claude Code"), "Press return to send it to Claude Code.")
+        XCTAssertEqual(Copy.instruction(.send, step: .weeklyUpdate, agent: "Claude Code"), "Press return to send it to Claude Code.")
         XCTAssertNil(Copy.instruction(.allowedAccessibility, step: .permissions), "the lists say enough by their names")
         XCTAssertNil(Copy.instruction(.heard, step: .microphone), "the line says enough")
         let swapped = KeyMap(screenshot: ["right ⌘"])
@@ -472,10 +530,11 @@ final class OnboardingCoreTests: XCTestCase {
 
         var later = Flow()
         later.jump(to: .packList)
-        for beat in [Beat.requestKey, .passage, .file, .finish, .review, .send, .answer] { later.record(beat) }
+        for beat in [Beat.requestKey, .passage, .file, .finish, .review, .send, .approved, .answer] { later.record(beat) }
         XCTAssertEqual(later.advance(), .followUp)
         later.record(.followKey)
         later.record(.followAnswer)
+        later.record(.expanded)
         XCTAssertEqual(later.advance(), .dictationIntro)
         XCTAssertEqual(later.back(), .packList, "asking more needs its session: the packing list starts over")
         XCTAssertEqual(later.done, [])
@@ -484,7 +543,7 @@ final class OnboardingCoreTests: XCTestCase {
     func testDictationGoneBackToStartsOver() {
         var flow = Flow()
         flow.jump(to: .dictation)
-        for beat in [Beat.feedbackKey, .feedbackTaken, .feedbackLanded, .replyKey, .replyLanded] { flow.record(beat) }
+        for beat in [Beat.feedbackKey, .feedbackTaken, .feedbackLanded, .replyKey, .replyCancelled, .replyRestored, .replyLanded] { flow.record(beat) }
         XCTAssertEqual(flow.advance(), .dictionary)
         XCTAssertEqual(flow.back(), .dictation)
         XCTAssertEqual(flow.done, [], "both windows again")
@@ -513,7 +572,7 @@ final class OnboardingCoreTests: XCTestCase {
     // MARK: What Fovea remembers (Oct 15 review, OB-01.6)
 
     func testWhatFoveaRemembersComesBeforeTheEnd() {
-        XCTAssertEqual(Array(Step.allCases.suffix(3)), [.dictionary, .memory, .home])
+        XCTAssertEqual(Array(Step.run.suffix(3)), [.dictionary, .memory, .home])
         XCTAssertTrue(Step.memory.isReading)
         XCTAssertEqual(Step.memory.beats, [])
         XCTAssertEqual(Step.memory.skip, .never)
@@ -532,7 +591,8 @@ final class OnboardingCoreTests: XCTestCase {
     // MARK: Practice again (Oct 15 review, OB-03.1)
 
     func testAPracticeAgainWalksOnlyItsSteps() {
-        XCTAssertEqual(PracticeAgain.allCases.map(\.rawValue), ["weeklyUpdate", "packingList", "followUp", "dictation"])
+        XCTAssertEqual(PracticeAgain.tour.map(\.rawValue), ["weeklyUpdate", "packingList", "followUp", "dictation"])
+        XCTAssertEqual(PracticeAgain.allCases, PracticeAgain.tour + PracticeAgain.moreToTry)
         XCTAssertEqual(PracticeAgain.followUp.steps.first, .packList, "asking more needs a session to ask in")
 
         var weekly = Flow(start: .weeklyUpdate, only: PracticeAgain.weeklyUpdate.steps)
@@ -542,8 +602,7 @@ final class OnboardingCoreTests: XCTestCase {
         XCTAssertEqual(weekly.advance(), .hover)
         XCTAssertEqual(weekly.fraction, 0.5, accuracy: 0.001, "its own steps only")
         XCTAssertEqual(weekly.backTarget, .weeklyUpdate, "Back within the practice (Oct 17, Ryan)")
-        weekly.record(.hoverNotch)
-        weekly.record(.answer)
+        for beat in [Beat.hoverNotch, .openedSession, .pulledOut, .tucked, .broughtBack, .answer] { weekly.record(beat) }
         XCTAssertNil(weekly.advance(), "past its last step")
         XCTAssertTrue(weekly.finished, "Home again")
 
@@ -556,7 +615,7 @@ final class OnboardingCoreTests: XCTestCase {
 
         var packing = Flow(start: .packList, only: PracticeAgain.packingList.steps)
         packing.jump(to: .packList)
-        for beat in [Beat.requestKey, .passage, .file, .finish, .review, .send, .answer] { packing.record(beat) }
+        for beat in [Beat.requestKey, .passage, .file, .finish, .review, .send, .approved, .answer] { packing.record(beat) }
         XCTAssertNil(packing.advance())
         XCTAssertTrue(packing.finished)
     }

@@ -862,13 +862,21 @@ final class CapturesModel {
     var archiveStyle: ArchiveStyle = .page
     var layout: LayoutStyle = .cards
     var pageStyle: PageStyle = .inset
+    /// Oct 24, Ryan: the window as it is, or Aligned with the notch and the first run
+    /// (`WindowLook`); View › Window Design. Kept for the next launch.
+    var look: WindowLook = WindowLook.shown {
+        didSet {
+            WindowLook.shown = look
+            UserDefaults.standard.set(look.rawValue, forKey: WindowLook.storeKey)
+        }
+    }
     var windowMaterial: WindowMaterialStyle = .vibrant
     var liquidGlass = true
     var pageIsland: PageIslandStyle = .glass
     /// ⌥⌘F shows and hides the window from any app (Aside's ⌥⌘A). Off unless turned on: while
     /// it's on, other apps don't get ⌥⌘F.
     var summon = false
-    var appearance: Appearance = .light
+    var appearance: Appearance = .light { didSet { if appearance != oldValue { onPrefsEdited?() } } }
     /// The accent the person chose in Settings › Appearance (Multicolor: the theme's own).
     var accent: AccentChoice = .multicolor { didSet { if accent != oldValue { onPrefsEdited?() } } }
     var speed: Double = 1

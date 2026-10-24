@@ -173,8 +173,11 @@ struct FeedbackWindow: View {
     /// text.
     var picture = false
 
-    /// Oct 18, Ryan: the words go to the window under the pointer when they land.
-    private var targeted: Bool { model.dictationLanding == .feedback }
+    /// Oct 18, Ryan: the words go to the window under the pointer when they land. Oct 23, Ryan:
+    /// in Nowhere to type, to the one clicked into, for the held words' Paste.
+    private var targeted: Bool {
+        model.step == .nowhereToType ? model.typingInto == .feedback : model.dictationLanding == .feedback
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -231,6 +234,7 @@ struct FeedbackWindow: View {
                     .padding(14)
                 }
                 .frame(maxHeight: .infinity)
+                .simultaneousGesture(TapGesture().onEnded { if model.step == .nowhereToType { model.typingInto = .feedback } })
                 HStack {
                     Text(model.feedbackSent ? Copy.feedbackSent : Copy.feedbackNote)
                         .font(.system(size: 12)).foregroundStyle(OT.Colors.ink(0.5))

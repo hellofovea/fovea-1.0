@@ -490,10 +490,10 @@ private struct MainKey: View {
                 .padding(.horizontal, 4)
             if model.panes.recording != shortcut.id && model.panes.pending?.id != shortcut.id {
                 HStack(spacing: 6) {
-                    Button("Clear") { model.save(KeyChord(modifiers: []), for: shortcut.id) }
+                    PaneButton("Clear") { model.save(KeyChord(modifiers: []), for: shortcut.id) }
                         .disabled(Chords.isEmpty(model.chord(shortcut.id)))
                     if !model.isDefaultChord(shortcut.id) {
-                        Button("Reset to Default") { model.resetShortcut(shortcut.id) }
+                        PaneButton("Reset to Default") { model.resetShortcut(shortcut.id) }
                     }
                 }
                 .controlSize(.small)
@@ -523,7 +523,7 @@ private struct ShortcutRow: View {
             SettingsRow(shortcut.title, detail: detail) {
                 HStack(spacing: 6) {
                     if !model.isDefaultChord(shortcut.id) {
-                        Button("Reset to Default") { model.resetShortcut(shortcut.id) }
+                        PaneButton("Reset to Default") { model.resetShortcut(shortcut.id) }
                             .controlSize(.small)
                     }
                     ChordRecorder(id: shortcut.id)

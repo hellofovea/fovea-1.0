@@ -228,6 +228,7 @@ package final class HomeWindowController: NSObject {
         model.library = Library(now: Date(), captures: stores.captures.captures, dictionary: stores.dictionary.words,
                                 memories: simulated.memories, usage: usage, areas: simulated.areas)
         model.media = stores.captures.media
+        Art.media = stores.captures.media
         model.calendarYear = Lines.calendar.component(.year, from: Date())
         pullPrefs()
     }
@@ -269,6 +270,9 @@ package final class HomeWindowController: NSObject {
         if model.shortcutKeys != keys { model.shortcutKeys = keys }
         let accent = AccentChoice(rawValue: p.accent.rawValue) ?? .multicolor
         if model.accent != accent { model.accent = accent }
+        // Oct 23, Ryan: Light, Dark or Auto, as it was left.
+        let appearance = Appearance(rawValue: p.windowAppearance.rawValue) ?? .light
+        if model.appearance != appearance { model.appearance = appearance }
         if model.profileName != p.accountName { model.profileName = p.accountName }
         // Google, in 1.0, is a sign-up without an account server: no email to show.
         let email = p.accountEmail.isEmpty && p.accountProvider == .google ? L("Signed in with Google") : p.accountEmail
@@ -302,6 +306,7 @@ package final class HomeWindowController: NSObject {
         p.shortcutChords = m.shortcutChords
         p.requestedLanguages = m.requestedLanguages
         p.accent = FoveaAccent(rawValue: model.accent.rawValue) ?? .multicolor
+        p.windowAppearance = WindowAppearance(rawValue: model.appearance.rawValue) ?? .light
         p.accountName = model.profileName
         if p != stores.prefs.prefs { stores.prefs.prefs = p }
     }
@@ -447,6 +452,13 @@ package final class HomeWindowController: NSObject {
         if model.page != .captures { model.back() }
         model.setKind(sender.tag == 0 ? nil : CaptureKind.allCases[sender.tag - 1])
     }
+    /// View › Current Design / Aligned Design (Oct 24).
+    @objc func chooseLook(_ sender: NSMenuItem) {
+        model.look = sender.tag == 1 ? .aligned : .current
+        for item in sender.menu?.items ?? [] where item.action == #selector(chooseLook(_:)) {
+            item.state = item.tag == sender.tag ? .on : .off
+        }
+    }
     @objc func showHome(_ sender: Any?) {
         show()
         if model.page != .captures { model.show(.captures) }
@@ -498,11 +510,18 @@ package final class HomeWindowController: NSObject {
             .separator(),
             item(L("Find"), #selector(find(_:)), "f", target: self),
         ])
-        _ = add(L("View"), [
+        let view = add(L("View"), [
             item(L("All"), #selector(showKind(_:)), "1", tag: 0, target: self),
             item(L("Dictation"), #selector(showKind(_:)), "2", tag: 1, target: self),
             item(L("Dispatch"), #selector(showKind(_:)), "3", tag: 2, target: self),
+            // Oct 24, Ryan: the two designs side by side, switched at once (docs/window/ALIGNED.md).
+            .separator(),
+            item(L("Current Design"), #selector(chooseLook(_:)), "", tag: 0, target: self),
+            item(L("Aligned Design"), #selector(chooseLook(_:)), "", tag: 1, target: self),
         ])
+        for i in view.items where i.action == #selector(chooseLook(_:)) {
+            i.state = (i.tag == 1) == (model.look == .aligned) ? .on : .off
+        }
         // ⇧⌘ and a letter, as Finder's Go menu has them, clear of View's ⌘1–3.
         _ = add(L("Go"), [
             item(L("Home"), #selector(showHome(_:)), "0", target: self),

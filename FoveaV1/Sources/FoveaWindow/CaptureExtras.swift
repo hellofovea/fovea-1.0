@@ -218,7 +218,8 @@ struct TagChip: View {
         }
         .padding(.horizontal, 10)
         .frame(height: 24)
-        .background(Capsule().fill(palette.fill))
+        // Aligned: the notch's chips, a fill at the buttons' 7 %.
+        .background(Capsule().fill(WindowLook.isAligned ? palette.ink(T.Aligned.secondaryFill) : palette.fill))
         .onHover { hover = $0 }
     }
 }

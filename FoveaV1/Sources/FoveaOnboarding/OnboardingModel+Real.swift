@@ -150,8 +150,11 @@ extension OnboardingModel {
     func dispatch(_ request: PracticeRequest, session id: UUID, turn: Int) {
         agentNote = nil
         agentActivity = L("Starting")
-        if sendsToRealAgent, let executable = agentExecutable {
-            let text = turn == 0 ? prompt(for: request)
+        // Oct 23, Ryan: More to try is the practice agent's (its timing is part of the lesson).
+        if sendsToRealAgent, !request.step.isMoreToTry, let executable = agentExecutable {
+            // A request in full the first time, and the packing list sent into the weekly update's
+            // session (Oct 23); asking more, the words alone.
+            let text = request.step != .followUp ? prompt(for: request)
                 : "\(request.words) Keep the same layout, with a heading for each group. Reply in a sentence or two."
                     + (Self.answerLanguage.map { " Write it in \($0)." } ?? "")
             runner.run(executable: executable, prompt: text, folder: practice.folder,
@@ -187,11 +190,22 @@ extension OnboardingModel {
     /// The practice agent: the same files, the same edits, made here.
     func practiceAgent(session id: UUID, turn: Int, task: Step) {
         let steps: [String]
+        let rerun = sessions.first { $0.id == id }.map { $0.turns.indices.contains(turn) && $0.turns[turn].rerun } ?? false
         switch task {
         case .weeklyUpdate:
             // Oct 18, Ryan: the agent's lines in the primary language.
             steps = [L("Looking at \("part-1.png")"), L("Looking at \("part-2.png")"), L("Writing \(PracticeFiles.update)")]
         case .followUp:
+            steps = [L("Looking at \(PracticeFiles.list)"), L("Editing \(PracticeFiles.list)")]
+        // Oct 23, Ryan: More to try.
+        case .takeFew:
+            steps = [L("Looking at \("part-1.png")"), L("Looking at \("part-2.png")")]
+        case .whileWorking where turn == 0 || rerun:
+            steps = [L("Reading the trail report"), L("Looking at the route"), L("Writing the plan")]
+        case .whileWorking:
+            steps = [L("Reading your message")]
+        case .packList where turn > 0 || awaitingApproval == nil:
+            // Allowed: the list read, then edited (Oct 23, Ryan: it asked first).
             steps = [L("Looking at \(PracticeFiles.list)"), L("Editing \(PracticeFiles.list)")]
         default:
             steps = [L("Reading your words"), L("Looking at \(PracticeFiles.list)"), L("Editing \(PracticeFiles.list)")]
@@ -203,6 +217,12 @@ extension OnboardingModel {
                 if let islandID = self?.sessions.first(where: { $0.id == id })?.islandID { self?.host?.sessionActivity(islandID, line) }
             }
         }
+        // Oct 23, Ryan: While it works waits, so there's time: its first answer until the message
+        // typed while it works is waiting (or a while); answered again, until it's stopped.
+        if task == .whileWorking, turn == 0 || rerun {
+            holdAnswer(session: id, turn: turn, rerun: rerun, since: Date())
+            return
+        }
         after(OT.Send.practiceBeat * Double(steps.count), "\(wait):done") { [weak self] in
             guard let self else { return }
             switch task {
@@ -212,9 +232,32 @@ extension OnboardingModel {
             case .followUp:
                 self.practice.write(PracticeFiles.list, OT.Send.practiceSorted)
                 self.answered(session: id, turn: turn, task: task, reply: OT.Send.practiceSortedReply)
+            case .takeFew:
+                self.answered(session: id, turn: turn, task: task, reply: OT.Send.practiceCompareReply)
+            case .whileWorking:
+                self.answered(session: id, turn: turn, task: task, reply: OT.Send.practiceRouteMoreReply)
             default:
                 self.practice.write(PracticeFiles.list, PracticeFiles.listStart + OT.Send.practiceAdded)
                 self.answered(session: id, turn: turn, task: task, reply: OT.Send.practiceReply)
+            }
+        }
+    }
+
+    /// While it works (Oct 23, Ryan): the answer held. The first, until the message typed while
+    /// it works is waiting (then a beat more), or `OT.Send.holdLongest`; answered again, until
+    /// it's stopped (Stop cancels this wait), or as long.
+    private func holdAnswer(session id: UUID, turn: Int, rerun: Bool, since: Date) {
+        let wait = Self.agentWait + id.uuidString
+        after(OT.Send.holdCheck, "\(wait):hold") { [weak self] in
+            guard let self else { return }
+            let queued = self.flow.done.contains(.queued)
+            let waited = Date().timeIntervalSince(since) >= OT.Send.holdLongest * self.pace
+            guard (!rerun && queued) || waited else {
+                self.holdAnswer(session: id, turn: turn, rerun: rerun, since: since)
+                return
+            }
+            self.after(OT.Send.practiceBeat * 2, "\(wait):done") { [weak self] in
+                self?.answered(session: id, turn: turn, task: .whileWorking, reply: OT.Send.practiceRouteReply)
             }
         }
     }
@@ -225,7 +268,8 @@ extension OnboardingModel {
         guard let index = sessions.lastIndex(where: { $0.running }) else { return }
         agentNote = L("The practice agent answered this one.")
         let session = sessions[index]
-        let task = session.turns.count > 1 ? Step.followUp : session.task
+        // Oct 23, Ryan: the turn's own task (the packing list may be the weekly update's second).
+        let task = session.turns.last?.task ?? (session.turns.count > 1 ? Step.followUp : session.task)
         practiceAgent(session: session.id, turn: session.turns.count - 1, task: task)
     }
 
@@ -234,7 +278,8 @@ extension OnboardingModel {
         guard let index = sessions.firstIndex(where: { $0.id == id }), sessions[index].turns.indices.contains(turn) else { return }
         sessions[index].turns[turn].answer = reply
         agentActivity = ""
-        let changed = task == .weeklyUpdate ? [PracticeFiles.update] : [PracticeFiles.list]
+        // Oct 23, Ryan: More to try's answers change no file.
+        let changed = task == .weeklyUpdate ? [PracticeFiles.update] : task.isMoreToTry ? [] : [PracticeFiles.list]
         if let islandID = sessions[index].islandID {
             host?.sessionAnswered(islandID, reply, files: changed.filter { practice.exists($0) })
         }
@@ -246,7 +291,9 @@ extension OnboardingModel {
             animate(OT.Motion.morph) { updateWritten = practice.exists(PracticeFiles.update) || updateWritten }
             if practice.exists(PracticeFiles.update) {
                 editedFiles.insert(PracticeFiles.update)
-                showPreview(PracticeFiles.update)
+                // Oct 23, Ryan: while it's being pulled out and tucked, the preview waits until the
+                // update is brought back (it would cover the tab).
+                if step == .hover, !flow.isComplete { heldPreview = PracticeFiles.update } else { showPreview(PracticeFiles.update) }
             }
             // As in real use (Oct 9, evening): a slow answer waits on the board, Done; a quick one
             // opens by itself. Nothing is opened for the person.
@@ -259,6 +306,12 @@ extension OnboardingModel {
             editedFiles.insert(PracticeFiles.list)
             showPreview(PracticeFiles.list)
             if step == .followUp { beat(.followAnswer) }
+        // More to try (Oct 23, Ryan).
+        case .takeFew:
+            if step == .takeFew { softBeat(.answer) }
+        case .whileWorking:
+            guard step == .whileWorking, !sessions[index].turns[turn].rerun else { return }
+            softBeat(turn == 0 ? .answer : .queuedAnswered)
         default:
             editedFiles.insert(PracticeFiles.list)
             showPreview(PracticeFiles.list)
@@ -339,6 +392,13 @@ extension OnboardingModel {
             beat(.feedbackLanded)
         }
         if target == .messages, owed?.contains(.replyLanded) == true { beat(.replyLanded) }
+        // Oct 23, Ryan: in Messages, landed before esc: that window's try again (the words stay).
+        if target == .messages, owed?.contains(.replyCancelled) == true {
+            flow.forget([.replyKey])
+            hint(L("Landed. This time, press \(keys.spoken(.cancel)) before you finish, then \(keys.spoken(.undo))."))
+        }
+        // More to try's Nowhere to type: pasted from the notch.
+        if step == .nowhereToType { softBeat(.heldTaken) }
     }
 
     /// Something taken while dictating (Oct 17, Ryan): a picture of it, drawn from Fovea's own

@@ -195,6 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         observeMemoryNotice()
         Review.stage("Reset", "Notch: back to rest", area: .notch) { [weak self] in self?.island.backToRest() }
         island.observeActivity { [weak status] in status?.show($0) }
+        status.describe = { [weak self] in self?.island.activityLine }
         observeDock()
         if let main = NSApp.mainMenu { reviewMenu.install(in: main) }
         OnboardingCoordinator.registerReviewStages { [weak self] kind in self?.startRun(kind) }

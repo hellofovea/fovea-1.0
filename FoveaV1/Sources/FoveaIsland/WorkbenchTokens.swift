@@ -420,13 +420,15 @@ enum WorkbenchTokens {
         /// The style, Wide (chosen 2026-09-30): the package's chat-input tuning (~350 pt host)
         /// fitted to the band at scale 0.57. The glow spans the bar and the colors flow sideways
         /// with the voice (Oct 21, Ryan, "simpler is better": without the package's chromatic
-        /// ridge or the distortion under it).
+        /// ridge or the distortion under it). Oct 23, Ryan ("see the notch in that color"): the
+        /// inner light and its bloom stronger (0.47 and 0.89), so the bar reads in its palette
+        /// without the ridge.
         static let wide = VoiceGlowGeometry(
             scale: 0.57, reach: 1.2, spread: 1.05, flow: 48, bend: 60,
             glowWidth: 0.65, glowHeight: 1.25, lobeSpacing: 0.85, rangeWidth: 0.75,
             rangeHeight: 1, softness: 1.07, coreSize: 1, strokeScale: 1, innerScale: 1, innerHeight: 1,
             bloomScale: 1, bloomHeight: 1, glowSize: 1,
-            strokeOpacity: 1.16, innerOpacity: 0.47, bloomOpacity: 0.89, brightness: 1.15, saturation: 1.2)
+            strokeOpacity: 1.16, innerOpacity: 0.8, bloomOpacity: 1.1, brightness: 1.15, saturation: 1.2)
         /// The driver's shape and follow: gate, attack, release; the resting glow (held still).
         static let threshold = 0.015
         static let attack = 0.325

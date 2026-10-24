@@ -80,8 +80,9 @@ struct CalendarSection<Content: View>: View {
                     DayTitle(title: String(year), count: nil)
                 }
                 Spacer()
+                // Aligned: the system face's even digits, as the notch's times (no SF Mono).
                 Text(Self.yearTotal(total, String(year), matches: model.filtering))
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(WindowLook.isAligned ? .system(size: 11.5).monospacedDigit() : .system(size: 11, design: .monospaced))
                     .foregroundStyle(palette.tertiary)
             }
             // Oct 21, Ryan ("simpler is better"): another year shows at once (it faded out and in,
@@ -581,9 +582,15 @@ struct DayHeader: View {
         let captures = model.matches(on: day).map(\.capture)
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(Lines.longDay(day, now: model.now))
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(palette.text)
+                // Aligned: the day titled as the first run titles a page, in New York.
+                Group {
+                    if WindowLook.isAligned {
+                        Text(Lines.longDay(day, now: model.now)).alignedDisplay(T.Aligned.dayPageTitle)
+                    } else {
+                        Text(Lines.longDay(day, now: model.now)).font(.system(size: 22, weight: .semibold))
+                    }
+                }
+                .foregroundStyle(palette.text)
                 if captures.isEmpty {
                     Text("Nothing on this day.").font(.system(size: 13)).foregroundStyle(palette.secondary)
                 } else {

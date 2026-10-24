@@ -120,6 +120,11 @@ public enum FoveaLanguage: String, CaseIterable, Identifiable, Codable, Sendable
     }
 }
 
+/// The window's look (Settings › Appearance): the Mac's, or always light or dark.
+public enum WindowAppearance: String, Codable, Sendable, CaseIterable {
+    case system, light, dark
+}
+
 /// Everything the person chose, in one value.
 public struct FoveaPrefs: Codable, Equatable, Sendable {
     // Make it yours.
@@ -179,6 +184,9 @@ public struct FoveaPrefs: Codable, Equatable, Sendable {
     /// Settings › Memory's "Tell me when a memory updates" (NH-03): the notch says "Remembered"
     /// after a request. Off by default: the notch stays quiet unless asked.
     public var memoryNotice = false
+    /// Settings › Appearance's Light, Dark or Auto for the window (Oct 23, Ryan: it applied but
+    /// wasn't kept, so every launch came back light).
+    public var windowAppearance: WindowAppearance = .light
 
     public init() {}
 
@@ -236,5 +244,6 @@ public struct FoveaPrefs: Codable, Equatable, Sendable {
         showInDock = (try? c.decode(Bool.self, forKey: .showInDock)) ?? d.showInDock
         signedOut = (try? c.decode(Bool.self, forKey: .signedOut)) ?? d.signedOut
         memoryNotice = (try? c.decode(Bool.self, forKey: .memoryNotice)) ?? d.memoryNotice
+        windowAppearance = (try? c.decode(WindowAppearance.self, forKey: .windowAppearance)) ?? d.windowAppearance
     }
 }

@@ -86,7 +86,7 @@ struct KeyboardView: View {
         .frame(width: unit * key.width, height: height)
     }
 
-    /// The first key of each label (the left ⌘ of two): where its badge goes.
+    /// The first key of each label: where its badge goes.
     private static let firstOf: [String: UUID] = {
         var first: [String: UUID] = [:]
         for key in rows.joined() { if let match = key.match, first[match] == nil { first[match] = key.id } }
@@ -104,7 +104,10 @@ struct KeyboardView: View {
         var match: String?
     }
 
-    private static func letters(_ s: String) -> [Key] { s.map { Key(label: String($0).uppercased()) } }
+    /// Oct 23, Ryan: Z lights for ⌘Z (cancelled words brought back).
+    private static func letters(_ s: String) -> [Key] {
+        s.map { let label = String($0).uppercased(); return Key(label: label, match: label == "Z" ? "Z" : nil) }
+    }
 
     static let rows: [[Key]] = [
         [Key(label: "esc", width: 1.5, match: "esc")]
@@ -118,7 +121,8 @@ struct KeyboardView: View {
          Key(label: "⌥", word: "option", match: "⌥"),
          Key(label: "⌘", word: "command", width: 1.25, match: "⌘"),
          Key(label: "", width: 5.5, match: "space"),
-         Key(label: "⌘", word: "command", width: 1.25, match: "⌘"),
+         // Oct 23, Ryan: only the left ⌘ lights, as only the left ⌥ does.
+         Key(label: "⌘", word: "command", width: 1.25),
          Key(label: "⌥", word: "option"),
          Key(label: "◀"), Key(label: "▲▼"), Key(label: "▶")],
     ]

@@ -207,12 +207,11 @@ struct GlassBar: View {
 /// accent shows here as it's picked, the notch staying up), with no numbers.
 struct TourProgress: View {
     let model: OnboardingModel
-    @Environment(\.boardInk) private var ink
 
     var body: some View {
         let B = OT.Board.self
         Capsule()
-            .fill(ink.hairline)
+            .fill(B.progressTrack)
             .frame(width: B.progressWidth, height: B.progressHeight)
             .overlay(alignment: .leading) {
                 Capsule()

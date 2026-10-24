@@ -393,6 +393,8 @@ extension WorkbenchModel {
     /// fits them, then it leaves the list. Removing the last one folds the stack away.
     func removeReferent(_ id: UUID) {
         guard referents.contains(where: { $0.id == id }), !removing.contains(id) else { return }
+        // Oct 23, Ryan: the first run keeps its own list of what was taken in step with the stack.
+        if let index = liveReferents.firstIndex(where: { $0.id == id }) { live?.director?.islandDidEmit(.referentRemoved(index: index)) }
         islandAnimation = reduceMotion ? WorkbenchTokens.Spring.fade : WorkbenchTokens.Referents.shrink
         cardChange = .remove
         if hoveredReferent == id { hoveredReferent = nil }
@@ -420,6 +422,7 @@ extension WorkbenchModel {
         inspectTransitionId = id ?? inspectedId
         hoveredReferent = nil
         inspectedId = id
+        if id != nil { live?.director?.islandDidEmit(.referentInspected) }
     }
 
     // MARK: The stack
@@ -436,6 +439,7 @@ extension WorkbenchModel {
         // Oct 15 review, VF04: the row opens at its first referent.
         stackScroll = 0
         stackExpanded = open
+        if open { live?.director?.islandDidEmit(.stackOpened) }
     }
 
     /// Oct 15 review, VF04: the opened row, scrolled sideways by `delta` points (a swipe right

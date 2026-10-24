@@ -38,14 +38,24 @@ public enum Step: String, CaseIterable, Sendable, Codable {
     case dictationIntro, dictation
     /// Oct 15 review, OB-01.6: what Fovea remembers, read before the closing page.
     case dictionary, memory, home
+    /// Oct 23, Ryan ("include all"): More to try, from Settings › Getting Started only, never in the
+    /// first run's order (`Step.run`): several things taken and looked over, a session worked while
+    /// it works, and words with nowhere to type.
+    case takeFew, whileWorking, nowhereToType
+
+    /// The first run's steps, in order: every step but the practices only Getting Started opens.
+    public static var run: [Step] { allCases.filter { !$0.isMoreToTry } }
+
+    /// A practice from Getting Started's More to try, outside the first run.
+    public var isMoreToTry: Bool { [.takeFew, .whileWorking, .nowhereToType].contains(self) }
 
     public var stage: Stage {
         switch self {
         case .name, .signIn, .hello, .makeItYours: .arrive
         case .permissions, .microphone: .turnOn
         case .agents: .agents
-        case .weeklyUpdate, .hover, .packList, .followUp: .pointAndSay
-        case .dictationIntro, .dictation: .dictation
+        case .weeklyUpdate, .hover, .packList, .followUp, .takeFew, .whileWorking: .pointAndSay
+        case .dictationIntro, .dictation, .nowhereToType: .dictation
         case .dictionary, .memory, .home: .home
         }
     }
@@ -66,14 +76,27 @@ public enum Step: String, CaseIterable, Sendable, Codable {
         // another, then the words, then return (Oct 19, Ryan: ⌘ once each). Oct 17, round 2:
         // so no whole screen. Oct 18, Ryan: "only have two screenshot tasks": the tickets went.
         case .weeklyUpdate: [[.requestKey], [.numbers], [.prs], [.finish], [.review], [.send]]
-        // While the agent works: the notch, and its answer, in either order.
-        case .hover: [[.hoverNotch], [.answer]]
-        // The everyday task: the line about the snow and the packing list.
-        case .packList: [[.requestKey], [.passage], [.file], [.finish], [.review], [.send], [.answer]]
-        case .followUp: [[.followKey], [.followAnswer]]
+        // While the agent works: the notch, and its answer, in either order. Oct 23, Ryan: the
+        // update opened from the board, pulled out of the notch, tucked at a side of the screen as
+        // a tab, and brought back.
+        case .hover: [[.hoverNotch], [.openedSession], [.pulledOut], [.tucked], [.broughtBack], [.answer]]
+        // The everyday task: the line about the snow and the packing list. Oct 23, Ryan: the agent
+        // asks before it edits the list, and the person allows it from the notch.
+        case .packList: [[.requestKey], [.passage], [.file], [.finish], [.review], [.send], [.approved], [.answer]]
+        // Oct 23, Ryan: then the whole session, expanded.
+        case .followUp: [[.followKey], [.followAnswer], [.expanded]]
         // Two windows: the feedback first, then Messages (Oct 9). Oct 17, Ryan: in the feedback,
-        // something taken while talking (⌘ and a drag, Oct 19), which lands after the words.
-        case .dictation: [[.feedbackKey], [.feedbackTaken], [.feedbackLanded], [.replyKey], [.replyLanded]]
+        // something taken while talking (⌘ and a drag, Oct 19), which lands after the words. Oct
+        // 23, Ryan: in Messages, the words thrown away with esc and brought back with ⌘Z first.
+        case .dictation: [[.feedbackKey], [.feedbackTaken], [.feedbackLanded], [.replyKey], [.replyCancelled], [.replyRestored], [.replyLanded]]
+        // More to try (Oct 23, Ryan): two parts with ⌘ held, the stack opened, one looked at and one
+        // taken out, then sent.
+        case .takeFew: [[.requestKey], [.twoTaken], [.stackOpened], [.referentInspected], [.referentRemoved], [.finish], [.review], [.send], [.answer]]
+        // A message typed while the agent works waits its turn and goes after the answer; then the
+        // answer again with another model, stopped part way.
+        case .whileWorking: [[.requestKey], [.finish], [.review], [.send], [.queued], [.answer], [.queuedAnswered], [.answeredAgain], [.stopped]]
+        // Words with nowhere to type wait at the notch, to copy or paste.
+        case .nowhereToType: [[.heldShown], [.heldTaken]]
         }
     }
 
@@ -97,9 +120,9 @@ public enum Step: String, CaseIterable, Sendable, Codable {
         case .signIn, .name, .hello, .makeItYours, .memory, .home: .never
         case .dictationIntro, .dictation, .dictionary: .now
         case .permissions, .agents: .after(8)
-        case .microphone, .hover: .after(10)
+        case .microphone, .hover, .nowhereToType: .after(10)
         case .followUp: .after(12)
-        case .weeklyUpdate, .packList: .after(15)
+        case .weeklyUpdate, .packList, .takeFew, .whileWorking: .after(15)
         }
     }
 
@@ -109,9 +132,15 @@ public enum Step: String, CaseIterable, Sendable, Codable {
         case .weeklyUpdate: [.request, .screenshot, .send]
         // Oct 17, Ryan: words and files need no key; dictation takes pictures too, with ⌘ (Oct 19).
         case .packList: [.request, .send]
-        case .followUp: [.dictation]
+        // Oct 23, Ryan: ⌃ for the whole session.
+        case .followUp: [.dictation, .expand]
         // Oct 18, Ryan: and ⌘ twice for the whole screen.
-        case .dictationIntro, .dictation: [.dictation, .screenshot, .wholeScreen]
+        case .dictationIntro: [.dictation, .screenshot, .wholeScreen]
+        // Oct 23, Ryan: esc throws a dictation away, ⌘Z brings it back.
+        case .dictation: [.dictation, .screenshot, .wholeScreen, .cancel, .undo]
+        case .takeFew: [.request, .screenshot, .send]
+        case .whileWorking: [.request, .send]
+        case .nowhereToType: [.dictation]
         default: []
         }
     }
@@ -150,16 +179,17 @@ public enum Step: String, CaseIterable, Sendable, Codable {
     public var restartsOnBack: Bool { stage == .pointAndSay || self == .dictation }
 
     /// The step before this one in order: Back's way in a run picked up part way (after Exit tour,
-    /// or Screen Recording's Quit & Reopen), with no page seen before it in this run.
+    /// or Screen Recording's Quit & Reopen), with no page seen before it in this run. A practice from
+    /// More to try has none.
     public var previous: Step? {
-        let all = Step.allCases
+        let all = Step.run
         guard let i = all.firstIndex(of: self), i > 0 else { return nil }
         return all[i - 1]
     }
 
-    /// The step after this one, before any skipping.
+    /// The step after this one, before any skipping (none after a More to try practice).
     public var next: Step? {
-        let all = Step.allCases
+        let all = Step.run
         guard let i = all.firstIndex(of: self), i + 1 < all.count else { return nil }
         return all[i + 1]
     }
@@ -204,6 +234,22 @@ public enum Beat: String, CaseIterable, Sendable, Codable {
     case hoverNotch
     case followKey
     case followAnswer
+    /// Oct 23, Ryan: the update's session opened from the board, pulled down out of the notch,
+    /// tucked at a side of the screen as a tab, and the tab clicked to bring it back.
+    case openedSession, pulledOut, tucked, broughtBack
+    /// The edit the agent asked for, allowed from the notch.
+    case approved
+    /// The whole session, expanded (⌃ or the expand button).
+    case expanded
+    /// In Messages: the words thrown away with esc, then brought back with ⌘Z.
+    case replyCancelled, replyRestored
+    /// More to try: two parts taken with ⌘ held; the stack opened; one looked at; one taken out.
+    case twoTaken, stackOpened, referentInspected, referentRemoved
+    /// More to try: a message typed while the agent works waits its turn; its answer; the answer
+    /// asked again; the run stopped.
+    case queued, queuedAnswered, answeredAgain, stopped
+    /// More to try: words with nowhere to type held at the notch, then copied or pasted.
+    case heldShown, heldTaken
     /// Dictation into the feedback window, then into Messages: fn, then the words landing. Oct 17,
     /// Ryan: between them, something taken while talking into the feedback (`feedbackTaken`).
     case feedbackKey, feedbackTaken, feedbackLanded
@@ -253,7 +299,7 @@ public enum PracticeTab: String, CaseIterable, Sendable, Codable {
     /// The tabs open for a step: the work tabs, then the trip's added beside them.
     public static func open(for step: Step) -> [PracticeTab] {
         switch step {
-        case .packList, .followUp: [.analytics, .github, .trail]
+        case .packList, .followUp, .whileWorking: [.analytics, .github, .trail]
         default: [.analytics, .github]
         }
     }
@@ -264,8 +310,9 @@ public enum PracticeTab: String, CaseIterable, Sendable, Codable {
 /// Oct 17, Ryan: the highlighter key is gone. While Fovea listens, words you select and a file you
 /// click are taken, with no key.
 public enum KeyName: String, CaseIterable, Sendable, Codable {
-    /// Oct 18, Ryan: ⌘ twice takes the whole screen again (fixed: it isn't recorded).
-    case request, screenshot, wholeScreen, send, dictation
+    /// Oct 18, Ryan: ⌘ twice takes the whole screen again (fixed: it isn't recorded). Oct 23, Ryan:
+    /// esc, ⌘Z and ⌃, the island's own fixed keys, for what the first run teaches with them.
+    case request, screenshot, wholeScreen, send, dictation, cancel, undo, expand
 
     /// Said for a shortcut cleared in Settings › Shortcuts (Oct 15 review, ST-03.1).
     public var unset: String {
@@ -275,6 +322,9 @@ public enum KeyName: String, CaseIterable, Sendable, Codable {
         case .wholeScreen: "⌘"
         case .send: "return"
         case .dictation: L("your Voice Flow shortcut")
+        case .cancel: "esc"
+        case .undo: "⌘Z"
+        case .expand: "⌃"
         }
     }
 }
@@ -290,6 +340,11 @@ public struct KeyMap: Equatable, Sendable {
     public var wholeScreen: [String]
     public var send: [String]
     public var dictation: [String]
+    /// Oct 23, Ryan: the island's fixed keys: esc steps out (and cancels a voice bar), ⌘Z brings a
+    /// cancelled one back, ⌃ expands a session.
+    public var cancel: [String] = ["esc"]
+    public var undo: [String] = ["⌘", "Z"]
+    public var expand: [String] = ["⌃"]
 
     public init(request: [String] = ["fn", "⌃"], screenshot: [String] = ["⌘"], wholeScreen: [String] = FoveaKeys.wholeScreen.keys,
                 send: [String] = ["return"], dictation: [String] = ["fn"]) {
@@ -321,14 +376,18 @@ public struct KeyMap: Equatable, Sendable {
         case .wholeScreen: wholeScreen
         case .send: send
         case .dictation: dictation
+        case .cancel: cancel
+        case .undo: undo
+        case .expand: expand
         }
     }
 
-    /// The key's name in a sentence: "fn ⌃", "⌘". A shortcut cleared in Settings is named
+    /// The key's name in a sentence: "fn ⌃", "⌘", "⌘Z". A shortcut cleared in Settings is named
     /// ("your Dispatch shortcut"), never left blank (Oct 15 review, ST-03.1).
     public func spoken(_ key: KeyName) -> String {
         let caps = caps(key)
-        return caps.isEmpty ? key.unset : caps.joined(separator: " ")
+        if caps.isEmpty { return key.unset }
+        return key == .undo ? caps.joined() : caps.joined(separator: " ")
     }
 
     /// The keys to press for what a step waits on now, as the keyboard labels them: only these
@@ -342,7 +401,12 @@ public struct KeyMap: Equatable, Sendable {
         case .numbers, .prs: screenshot
         case .feedbackTaken: screenshot + wholeScreen.filter { !screenshot.contains($0) }
         case .send: send
-        case .followKey, .followAnswer, .feedbackKey, .feedbackLanded, .replyKey, .replyLanded: dictation
+        case .followKey, .followAnswer, .feedbackKey, .feedbackLanded, .replyKey, .replyLanded, .heldShown: dictation
+        // Oct 23, Ryan: esc, then ⌘Z, in Messages; ⌃ for the whole session; ⌘ held for two parts.
+        case .replyCancelled: cancel
+        case .replyRestored: undo
+        case .expanded: expand
+        case .twoTaken: screenshot
         default: []
         }
     }
@@ -401,6 +465,8 @@ public enum Permission: String, CaseIterable, Sendable, Codable {
 /// run left as it is; Home again at its end.
 public enum PracticeAgain: String, CaseIterable, Sendable, Codable {
     case weeklyUpdate, packingList, followUp, dictation
+    /// Oct 23, Ryan: More to try, what the first run doesn't cover (Step.isMoreToTry).
+    case takeFew, whileWorking, nowhereToType
 
     public var title: String {
         switch self {
@@ -408,6 +474,9 @@ public enum PracticeAgain: String, CaseIterable, Sendable, Codable {
         case .packingList: L("The packing list")
         case .followUp: L("Asking more")
         case .dictation: L("Dictation")
+        case .takeFew: L("Take a few things")
+        case .whileWorking: L("While it works")
+        case .nowhereToType: L("Nowhere to type")
         }
     }
 
@@ -418,8 +487,15 @@ public enum PracticeAgain: String, CaseIterable, Sendable, Codable {
         case .packingList: [.packList]
         case .followUp: [.packList, .followUp]
         case .dictation: [.dictationIntro, .dictation]
+        case .takeFew: [.takeFew]
+        case .whileWorking: [.whileWorking]
+        case .nowhereToType: [.nowhereToType]
         }
     }
+
+    /// The first run's own tasks again, and More to try.
+    public static var tour: [PracticeAgain] { [.weeklyUpdate, .packingList, .followUp, .dictation] }
+    public static var moreToTry: [PracticeAgain] { [.takeFew, .whileWorking, .nowhereToType] }
 }
 
 /// The language Fovea listens in. Oct 9: English and Chinese only; any other is typed under More…

@@ -2,7 +2,6 @@ import AppKit
 import SwiftUI
 import CapturesCore
 import FoveaKit
-import FoveaKit
 
 /// Fovea's controls, built the way Aside builds its own (heyaside.com's CSS, which rebuilds the
 /// app's views at its point sizes, and the app on macOS 27):
@@ -74,10 +73,11 @@ struct SlidingSegments<Value: Hashable>: View {
         .padding(inset)
         .modifier(SegmentTrack(track: track))
         .onAppear { if shown == nil { shown = selection } }
-        // Chosen elsewhere (⌘1–4): the pill slides there too.
+        // Chosen elsewhere (⌘1–4): the pill slides there too. Aligned: it jumps (Emil Kowalski:
+        // a keyboard action is never animated; it's done many times a day).
         .onChange(of: selection) { _, value in
             guard shown != value else { return }
-            withAnimation(pillAnimation) { shown = value }
+            if WindowLook.isAligned { shown = value } else { withAnimation(pillAnimation) { shown = value } }
         }
         .accessibilityElement(children: .contain)
     }
@@ -87,9 +87,11 @@ struct SlidingSegments<Value: Hashable>: View {
     private func segment(_ i: Int) -> some View {
         let s = segments[i]
         let on = s.value == (shown ?? selection)
-        let ink: Color = on ? (pill == .island ? palette.onPill : palette.text) : (hovered == i ? palette.text : palette.secondary)
+        let solid = pill == .island || WindowLook.isAligned
+        let ink: Color = on ? (solid ? palette.onPill : palette.text) : (hovered == i ? palette.text : palette.secondary)
         return HStack(spacing: 5) {
-                if let kind = s.kind { KindMark(kind: kind, size: 8) }
+                // Aligned: the words alone (Oct 24, Ryan: no mark before Dictation and Dispatch).
+                if let kind = s.kind, !WindowLook.isAligned { KindMark(kind: kind, size: 8) }
                 if let symbol = s.symbol { Image(systemName: symbol).font(.system(size: fontSize - 1, weight: .medium)) }
                 Text(L(key: s.title)).font(.system(size: fontSize, weight: on ? .semibold : .medium))
         }
@@ -132,6 +134,15 @@ struct SlidingSegments<Value: Hashable>: View {
 
     @ViewBuilder private var chosen: some View {
         let (contact, _) = T.Shade.layers(.control, dark: palette.isDark)
+        if WindowLook.isAligned {
+            // The first run's (NotchChoiceRow): solid ink, white in dark; no edge, no shadow.
+            Capsule().fill(palette.pill)
+        } else {
+            raisedOrIsland(contact)
+        }
+    }
+
+    @ViewBuilder private func raisedOrIsland(_ contact: T.Shade.Layer) -> some View {
         switch pill {
         case .raised:
             Capsule()
@@ -156,7 +167,9 @@ private struct SegmentTrack: ViewModifier {
 
     func body(content: Content) -> some View {
         switch track {
-        case .fill: content.background(Capsule().fill(palette.ink(T.Shade.track)))
+        case .fill:
+            let A = T.Aligned.self
+            content.background(Capsule().fill(palette.ink(WindowLook.isAligned ? (palette.isDark ? A.trackDark : A.trackLight) : T.Shade.track)))
         case .glass: content.glass(Capsule())
         }
     }
@@ -217,8 +230,8 @@ struct PillButton: View {
                 Text(L(key: title)).font(.system(size: large ? 13.5 : 12.5, weight: kind == .prominent ? .semibold : .medium))
                     .lineLimit(1).fixedSize()
             }
-            .padding(.horizontal, large ? 16 : 11)
-            .frame(height: large ? 34 : 26)
+            .padding(.horizontal, WindowLook.isAligned ? (large ? 16 : 12) : (large ? 16 : 11))
+            .frame(height: WindowLook.isAligned ? (large ? T.Aligned.buttonHeightLarge : T.Aligned.buttonHeight) : (large ? 34 : 26))
             .contentShape(Capsule())
         }
         .buttonStyle(PillStyle(kind: kind))
@@ -242,13 +255,34 @@ private struct PillBody: View {
 
     var body: some View {
         let pressed = configuration.isPressed
+        let aligned = WindowLook.isAligned
         configuration.label
             .foregroundStyle(label)
-            .background { plate(pressed: pressed) }
-            .opacity(enabled ? 1 : 0.45)
+            .background { if aligned { alignedPlate(pressed: pressed) } else { plate(pressed: pressed) } }
+            .opacity(enabled ? 1 : (aligned ? 0.5 : 0.45))
+            // Aligned: the button gives to the press, as the notch's and the first run's do.
+            .scaleEffect(aligned && pressed && !motion.reduce ? T.Aligned.pressScale : 1)
+            .animation(aligned ? motion.animation(.press) : nil, value: pressed)
             .onHover { hover = $0 }
             // Hover eases in; a press shows at once, as AppKit's buttons do.
             .animation(pressed ? nil : motion.animation(.hover), value: hover)
+    }
+
+    /// Aligned: the notch's buttons. The accent lighter under the pointer and lighter again
+    /// pressed; the rest a fill with no edge.
+    @ViewBuilder private func alignedPlate(pressed: Bool) -> some View {
+        let A = T.Aligned.self
+        let lit = hover && enabled
+        switch kind {
+        case .prominent:
+            Capsule().fill(palette.accent.opacity(pressed ? A.primaryPressed : (lit ? A.primaryHover : 1)))
+        case .secondary:
+            Capsule().fill(palette.ink(pressed ? A.secondaryPressed : (lit ? A.secondaryHover : A.secondaryFill)))
+        case .plain:
+            Capsule().fill(palette.ink(pressed ? A.secondaryHover : (lit ? A.secondaryFill : 0)))
+        case .destructive:
+            Capsule().fill(lit || pressed ? palette.dangerWash : palette.ink(A.secondaryFill))
+        }
     }
 
     private var label: Color {
@@ -334,9 +368,16 @@ private struct IconButtonBody: View {
     let destructive: Bool
     @State private var hover = false
 
+    @Environment(\.iconPlates) private var plates
+
     var body: some View {
         let lit = hover && enabled
         let pressed = configuration.isPressed
+        let aligned = WindowLook.isAligned
+        // Aligned: the notch's round buttons, a plate at rest (none inside a glass capsule, which
+        // is the plate there), deeper under the pointer.
+        let rest = aligned && plates ? T.Aligned.iconPlate : 0
+        let hovered = aligned ? (plates ? T.Aligned.iconPlateHover : T.Shade.chosen) : T.Shade.chosen
         configuration.label
             .foregroundStyle(!enabled ? palette.tertiary
                              : confirmed ? palette.accent
@@ -344,8 +385,10 @@ private struct IconButtonBody: View {
                              : (lit ? palette.text : palette.secondary))
             .background(
                 Circle().fill(destructive && (lit || pressed) ? palette.dangerWash
-                              : palette.ink(pressed ? T.Shade.pressed : (lit ? T.Shade.chosen : 0)))
+                              : palette.ink(pressed ? T.Shade.pressed : (lit ? hovered : rest)))
             )
+            .scaleEffect(aligned && pressed && !motion.reduce ? T.Aligned.pressScale : 1)
+            .animation(aligned ? motion.animation(.press) : nil, value: pressed)
             .onHover { hover = $0 }
             .animation(pressed ? nil : motion.animation(.hover), value: hover)
     }
@@ -357,8 +400,18 @@ struct GlassBar<Content: View>: View {
     @ViewBuilder let content: () -> Content
     var body: some View {
         HStack(spacing: 0) { content() }
+            .environment(\.iconPlates, false)
             .padding(4)
             .glass(Capsule())
+    }
+}
+
+private struct IconPlatesKey: EnvironmentKey { static let defaultValue = true }
+extension EnvironmentValues {
+    /// Aligned: round icon buttons show their plate at rest, except inside a glass capsule.
+    var iconPlates: Bool {
+        get { self[IconPlatesKey.self] }
+        set { self[IconPlatesKey.self] = newValue }
     }
 }
 

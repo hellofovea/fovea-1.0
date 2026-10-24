@@ -226,6 +226,13 @@ public struct Flow: Equatable, Sendable {
         missedBeat = nil
     }
 
+    /// Oct 23, Ryan: part of a step's try taken back, the rest kept (Messages' words landed before
+    /// esc, or the undo let go by: that window's try again, not the feedback's).
+    public mutating func forget(_ beats: Set<Beat>) {
+        done.removeAll { beats.contains($0) }
+        missedBeat = nil
+    }
+
     public mutating func allow(_ permission: Permission) {
         allowed.insert(permission)
         switch permission {
@@ -345,7 +352,7 @@ public struct Flow: Equatable, Sendable {
             guard let i = only.firstIndex(of: step) else { return 0 }
             return min(1, (Double(i) + within) / Double(only.count))
         }
-        let all = Step.allCases
+        let all = Step.run
         guard let i = all.firstIndex(of: step), all.count > 1 else { return 0 }
         return min(1, (Double(i) + within) / Double(all.count - 1))
     }
@@ -353,7 +360,7 @@ public struct Flow: Equatable, Sendable {
     /// The control panel's jump: any step, its beats cleared. Earlier steps' permissions count as
     /// allowed (and the agents connected), so a jump past them doesn't ask again.
     public mutating func jump(to target: Step) {
-        let order = Step.allCases
+        let order = Step.run
         if let i = order.firstIndex(of: target) {
             for earlier in order[..<i] {
                 switch earlier {

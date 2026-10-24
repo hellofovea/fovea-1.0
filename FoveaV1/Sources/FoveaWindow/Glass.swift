@@ -106,9 +106,17 @@ struct Shading<S: InsettableShape>: ViewModifier {
     func body(content: Content) -> some View {
         let (contact, wide) = T.Shade.layers(level, dark: palette.isDark)
         let shadow = wide.opacity > 0 ? wide : contact
-        content
-            .background(shape.fill(fill ?? palette.card).shadow(color: .black.opacity(shadow.opacity), radius: shadow.radius, y: shadow.y))
-            .overlay(shape.strokeBorder(palette.edge, lineWidth: 0.5))
+        // Aligned: what sits on the page is a fill, as the first run's cards and the notch's rows
+        // are (no edge, no shadow); only what floats over the page (the expanded card, a popover)
+        // keeps its shadow, and an edge so it holds against what's under it.
+        let floats = level == .raised || level == .floating
+        if WindowLook.isAligned && !floats {
+            content.background(shape.fill(fill ?? palette.card))
+        } else {
+            content
+                .background(shape.fill(fill ?? palette.card).shadow(color: .black.opacity(shadow.opacity), radius: shadow.radius, y: shadow.y))
+                .overlay(shape.strokeBorder(palette.edge, lineWidth: 0.5))
+        }
     }
 }
 

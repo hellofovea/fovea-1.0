@@ -18,6 +18,8 @@ final class StatusItem: NSObject, NSMenuDelegate {
     var openSettings: (String?) -> Void = { _ in }
     var checkForUpdates: () -> Void = {}
     var quit: () -> Void = {}
+    /// Oct 23, Ryan: what the notch is doing, in words, read as the menu opens (the island's).
+    var describe: () -> String? = { nil }
     /// Whether Fovea's servers answer. 1.0 has none, so it says it can (simulated); a review stage
     /// shows the other.
     var reachable = true { didSet { item.menu?.update() } }
@@ -101,10 +103,10 @@ final class StatusItem: NSObject, NSMenuDelegate {
         let status: String
         switch (reachable, activity) {
         case (false, _): status = L("Can't reach Fovea. Check your connection.")
-        case (_, .listening): status = L("Listening")
-        case (_, .needsYou): status = L("An agent needs you")
-        case (_, .working): status = L("An agent is working")
-        case (_, .idle): status = L("Fovea is ready")
+        case (_, .listening): status = describe() ?? L("Listening")
+        case (_, .needsYou): status = describe() ?? L("An agent needs you")
+        case (_, .working): status = describe() ?? L("An agent is working")
+        case (_, .idle): status = describe() ?? L("Fovea is ready")
         }
         menu.addItem(disabled(status))
         menu.addItem(.separator())

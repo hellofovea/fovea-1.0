@@ -186,7 +186,7 @@ struct BoardExtras: View {
             MicTestView(model: model)
         case .agents:
             AgentsView(model: model)
-        case .hover, .packList, .followUp:
+        case .hover, .packList, .followUp, .takeFew, .whileWorking:
             AgentNote(model: model)
         case .dictationIntro:
             VStack(spacing: OT.Board.readingGap + 6) {
@@ -1368,6 +1368,17 @@ struct Closing: View {
     var body: some View {
         VStack(spacing: 0) {
             part(Copy.homeNotch)
+            // Oct 23, Ryan: the menu bar's icon, as it shows there.
+            HStack(spacing: 8) {
+                if let icon = Self.menuBarIcon {
+                    Image(nsImage: icon).renderingMode(.template).resizable().frame(width: 16, height: 16)
+                        .foregroundStyle(ink.primary)
+                        .accessibilityHidden(true)
+                }
+                Text(Copy.homeMenuBar).font(.system(size: 12.5)).foregroundStyle(ink.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.top, 10)
             VStack(spacing: 10) {
                 part(Copy.eyeTrackingTitle)
                 Button(action: { model.askEyeTracking() }) {
@@ -1395,6 +1406,12 @@ struct Closing: View {
             .padding(.top, OT.Board.closingGap)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// Fovea's mark as the menu bar draws it (a template, tinted by the ink).
+    static let menuBarIcon: NSImage? = FoveaFiles.url("Brand/fovea-menubar-36.png").flatMap(NSImage.init(contentsOf:)).map {
+        $0.isTemplate = true
+        return $0
     }
 
     /// Oct 21, Ryan ("simpler is better"): the words alone (each had an accent symbol).
@@ -1506,7 +1523,7 @@ struct BoardActions: View {
             }
             if !centered { Spacer(minLength: 0) }
             if model.step.skip.allowed, model.skipShown {
-                Button(copy.skipLabel) { model.skipTapped() }
+                Button(model.skipLabel) { model.skipTapped() }
                     .buttonStyle(.press)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(ink.secondary)

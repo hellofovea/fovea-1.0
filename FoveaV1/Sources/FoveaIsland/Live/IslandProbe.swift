@@ -6,7 +6,8 @@ import AppKit
 // and what the island shows. For `--smoke-first-run` only.
 
 extension IslandController {
-    package enum ProbeKey { case fn, fnControl, escape, enter }
+    /// Oct 23, Ryan: ⌘Z and left ⌃ too (cancelled words back; the whole session).
+    package enum ProbeKey { case fn, fnControl, escape, enter, undo, control }
 
     package func probe(_ key: ProbeKey) {
         switch key {
@@ -14,8 +15,46 @@ extension IslandController {
         case .fnControl: LiveSmoke.fnControl(model)
         case .escape: _ = model.escape()
         case .enter: _ = model.v2Key(.enter)
+        case .undo: _ = model.undoCancel()
+        case .control: model.toggleV2Expanded()
         }
     }
+
+    // Oct 23, Ryan: what the first run now teaches, done as the person would.
+
+    /// A picture put on the stack, as ⌘ and a drag would.
+    package func probeTake(_ image: NSImage) {
+        let from = CGRect(x: model.display.frame.midX - 40, y: 200, width: 80, height: 60)
+        model.add(image: image, from: from, animated: false, kind: .screenshot, source: "Smoke")
+    }
+    package var probeStackCount: Int { model.liveReferents.count }
+    package func probeOpenStack() { model.setExpanded(true) }
+    package func probeInspect(_ index: Int) {
+        guard model.liveReferents.indices.contains(index) else { return }
+        model.inspect(model.liveReferents[index].id)
+    }
+    package func probeRemove(_ index: Int) {
+        guard model.liveReferents.indices.contains(index) else { return }
+        model.inspect(nil)
+        model.removeReferent(model.liveReferents[index].id)
+    }
+    package func probeAllow(_ id: String) { model.allowTask(id) }
+    package func probeDeny(_ id: String) { model.denyTask(id) }
+    package func probeStop(_ id: String) { model.stopTask(id) }
+    package func probeAnswerAgain(_ id: String, model name: String? = nil) { model.reanswerV2(id, model: name) }
+    /// Words typed in the session's box, and Return.
+    package func probeType(_ id: String, _ text: String) { model.askMoreV2(id, text: text) }
+    package var probeQueued: Int { model.v2Queue.values.reduce(0) { $0 + $1.count } }
+    /// Words held at the notch, as when there's nowhere to paste them; Copy.
+    package func probeHold(_ words: String) {
+        model.transcript = words
+        model.showPasteNotFound()
+    }
+    package func probeCopyHeld() { model.copyTranscript() }
+    package var probeExpanded: Bool { model.v2Size == .expanded }
+    /// Choose chat's suggestions, by name; ↓ to the next.
+    package var probeSuggestions: [String] { model.v2Suggestions.map(\.title) }
+    package func probePickNext() { model.stepV2Pick(1) }
 
     /// The words the next listening hears.
     package func probeWords(_ words: [String]) { live.smoke?.words = words }

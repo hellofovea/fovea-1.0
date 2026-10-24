@@ -7,8 +7,9 @@ import OnboardingCore
 // (OnboardingModel+Island.swift).
 
 extension OnboardingModel {
-    /// The two tasks (Oct 9): the weekly update, and the packing list.
-    var isPracticeTry: Bool { [.weeklyUpdate, .packList].contains(step) }
+    /// The two tasks (Oct 9): the weekly update, and the packing list. Oct 23, Ryan: and More to
+    /// try's two that send.
+    var isPracticeTry: Bool { [.weeklyUpdate, .packList, .takeFew, .whileWorking].contains(step) }
 
     var barOpen: Bool {
         if case .voice = island { return true }
@@ -50,7 +51,7 @@ extension OnboardingModel {
     /// The pointer on the practice screen: in dictation, the window under it is where the words
     /// will go. (The board at the notch is the real island's hover.)
     func pointerMoved(_ point: CGPoint) {
-        guard step == .dictation else { return }
+        guard step == .dictation || step == .nowhereToType else { return }
         let over: DictationWindow? = OT.Layout.feedbackFrame.contains(point) ? .feedback
             : OT.Layout.messagesFrame.contains(point) ? .messages : nil
         if over != pointerOver { animate(OT.Motion.hover) { pointerOver = over } }
@@ -97,7 +98,7 @@ extension OnboardingModel {
         case .weeklyUpdate: false
         // Heard (Oct 17, Ryan, round 2: it waits for Continue), or come back to with Back.
         case .microphone: (micPhase == .waiting && alert == nil) || micPhase == .heard
-        case .packList, .hover, .followUp, .dictation: flow.isComplete
+        case .packList, .hover, .followUp, .dictation, .takeFew, .whileWorking, .nowhereToType: flow.isComplete
         default: true
         }
     }

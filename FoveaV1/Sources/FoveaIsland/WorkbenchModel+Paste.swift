@@ -41,6 +41,7 @@ extension WorkbenchModel {
         pasteCopied = false
         notchState = .pasteNotFound
         startPasteClock()
+        live?.director?.islandDidEmit(.heldWords)
     }
 
     /// The panel's Paste not found: the last transcript, or the sample, from whatever is showing.
@@ -64,6 +65,7 @@ extension WorkbenchModel {
         pasteboard.clearContents()
         pasteboard.setString(transcript, forType: .string)
         pasteCopied = true
+        live?.director?.islandDidEmit(.heldCopied)
         // The line stops where it was; the island rests once the button has said so.
         pasteTask?.cancel()
         if pasteStart != nil, pastePausedAt == nil { pastePausedAt = Date() }

@@ -213,7 +213,8 @@ struct SettingsSection<Content: View, Accessory: View>: View {
             if title != nil || Accessory.self != EmptyView.self {
                 HStack(alignment: .firstTextBaseline) {
                     if let title {
-                        Text(L(key: title)).font(.system(size: 13, weight: native ? .bold : .semibold)).foregroundStyle(palette.text)
+                        Text(L(key: title)).font(WindowLook.isAligned ? T.Aligned.sectionHeader : .system(size: 13, weight: native ? .bold : .semibold))
+                            .foregroundStyle(palette.text)
                             .accessibilityAddTraits(.isHeader)
                     }
                     Spacer(minLength: 8)
@@ -222,7 +223,8 @@ struct SettingsSection<Content: View, Accessory: View>: View {
                 .padding(.horizontal, inset)
             }
             if let note {
-                Text(L(key: note)).font(.system(size: native ? 11 : 12)).foregroundStyle(palette.secondary)
+                Text(L(key: note)).font(.system(size: WindowLook.isAligned ? T.Aligned.rowDetail : (native ? 11 : 12)))
+                    .foregroundStyle(palette.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, inset)
                     .padding(.bottom, native ? 2 : 4)
@@ -257,8 +259,10 @@ struct SettingsCard<Content: View, Footer: View>: View {
 
     var body: some View {
         if native {
-            // The Mac's grouped box: a step off the page, no edge, no shadow.
-            let shape = RoundedRectangle(cornerRadius: T.Native.groupRadius, style: .continuous)
+            // The Mac's grouped box: a step off the page, no edge, no shadow. Aligned: the first
+            // run's card, a fill at 14 pt (`T.Aligned`).
+            let aligned = WindowLook.isAligned
+            let shape = RoundedRectangle(cornerRadius: aligned ? T.Aligned.cardRadius : T.Native.groupRadius, style: .continuous)
             VStack(spacing: 0) {
                 VStack(spacing: 0) { content() }
                 if Footer.self != EmptyView.self {
@@ -271,7 +275,7 @@ struct SettingsCard<Content: View, Footer: View>: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .background(palette.nativeGroup)
+            .background(aligned ? palette.card : palette.nativeGroup)
             .clipShape(shape)
         } else {
             let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
@@ -333,7 +337,7 @@ struct SettingsRow<Control: View>: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim ? title : L(key: title)).font(.system(size: 13, weight: native ? .regular : .medium)).foregroundStyle(palette.text)
                 if let detail {
-                    Text(L(key: detail)).font(.system(size: native ? 11 : 11.5)).foregroundStyle(palette.secondary)
+                    Text(L(key: detail)).font(.system(size: native && !WindowLook.isAligned ? 11 : T.Aligned.rowDetail)).foregroundStyle(palette.secondary)
                         .frame(maxWidth: 360, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -362,7 +366,8 @@ struct RowDivider: View {
     var body: some View {
         if native {
             // The Mac's: 1 pt, in 10 pt from both ends of the box (past an icon when rows carry one).
-            Rectangle().fill(palette.nativeSeparator).frame(height: 1)
+            // Aligned: the notch's hairline, 0.5 pt.
+            Rectangle().fill(WindowLook.isAligned ? palette.hairline : palette.nativeSeparator).frame(height: WindowLook.isAligned ? 0.5 : 1)
                 .padding(.leading, inset - 16 + T.Native.rowInset)
                 .padding(.trailing, T.Native.rowInset)
         } else {
@@ -409,7 +414,8 @@ struct InlinePicker<Value: Hashable>: View {
     @Environment(\.settingsNative) private var native
 
     var body: some View {
-        if native {
+        // Aligned: the value in a pill, as the notch's model menu shows it, not the system pop-up.
+        if native && !WindowLook.isAligned {
             // The system's pop-up menu.
             Picker(selection: $selection) {
                 ForEach(options, id: \.self) { option in
@@ -459,10 +465,11 @@ struct InlinePicker<Value: Hashable>: View {
         .fixedSize()
         // Aside's style menu: the value in a pill (the ink at 7 %, a 12 % edge), a step darker
         // under the pointer.
-        .padding(.horizontal, 10)
-        .frame(height: 26)
-        .background(Capsule().fill(palette.ink(hover ? T.Shade.fillHover : T.Shade.fill)))
-        .overlay(Capsule().strokeBorder(palette.ink(T.Shade.line), lineWidth: 0.5))
+        .padding(.horizontal, WindowLook.isAligned ? 12 : 10)
+        .frame(height: WindowLook.isAligned ? T.Aligned.buttonHeight : 26)
+        .background(Capsule().fill(palette.ink(WindowLook.isAligned ? (hover ? T.Aligned.secondaryHover : T.Aligned.secondaryFill)
+                                                                    : (hover ? T.Shade.fillHover : T.Shade.fill))))
+        .overlay(Capsule().strokeBorder(palette.ink(WindowLook.isAligned ? 0 : T.Shade.line), lineWidth: 0.5))
         .contentShape(Capsule())
         .onHover { hover = $0 }
         .animation(motion.animation(.hover), value: hover)
@@ -484,13 +491,63 @@ struct TextButton: View {
     @Environment(\.settingsNative) private var native
 
     var body: some View {
-        if native {
+        if WindowLook.isAligned {
+            // Aligned: the notch's buttons, a capsule with no edge, its words in sentence case as
+            // the notch and the first run write theirs.
+            PillButton(AlignedCopy.sentence(title), kind: role == .destructive ? .destructive : .secondary, action: action)
+        } else if native {
             // The system's push button.
             Button(L(key: title), role: role, action: action)
         } else {
             PillButton(title, kind: role == .destructive ? .destructive : .secondary, action: action)
         }
     }
+}
+
+/// A pane's own button: the system's push button (the prominent one bordered and filled), or in
+/// Aligned the notch's capsule, in sentence case (Oct 24). Alerts and sheets keep the system's.
+struct PaneButton: View {
+    let title: String
+    var prominent = false
+    var role: ButtonRole?
+    let action: () -> Void
+
+    init(_ title: String, prominent: Bool = false, role: ButtonRole? = nil, action: @escaping () -> Void) {
+        self.title = title; self.prominent = prominent; self.role = role; self.action = action
+    }
+
+    var body: some View {
+        if WindowLook.isAligned {
+            PillButton(AlignedCopy.sentence(title), kind: prominent ? .prominent : (role == .destructive ? .destructive : .secondary),
+                       action: action)
+        } else if prominent {
+            Button(LocalizedStringKey(title), role: role, action: action).buttonStyle(.borderedProminent)
+        } else {
+            Button(LocalizedStringKey(title), role: role, action: action)
+        }
+    }
+}
+
+/// Oct 24, Aligned: a button's words in sentence case, as the notch ("Answer again", "Send now")
+/// and the first run ("Looks good", "Try it") write theirs. Each has its own key (and its Chinese,
+/// the same as the Title Case one's, in window.strings); anything not listed is shown as written.
+enum AlignedCopy {
+    static func sentence(_ title: String) -> String {
+        guard WindowLook.isAligned else { return title }
+        return table[title] ?? title
+    }
+
+    private static let table: [String: String] = [
+        "Replay the Tour": "Replay the tour", "Try It": "Try it", "Open Shortcuts": "Open shortcuts",
+        "Restore Defaults": "Restore defaults", "Sign In…": "Sign in…", "Sign Out": "Sign out",
+        "Check Again": "Check again", "Access Log…": "Access log…", "Add Word…": "Add word…",
+        "Watch Recording": "Watch recording", "Delete It": "Delete it", "Collect Again": "Collect again",
+        "Try Again": "Try again", "Delete Originals…": "Delete originals…", "Send Session": "Send session",
+        "Report a Problem…": "Report a problem…", "Check for Updates": "Check for updates",
+        "Install and Relaunch": "Install and relaunch", "Bring In": "Bring in", "Open Settings": "Open settings",
+        "Reset All…": "Reset all…", "Choose a Plan…": "Choose a plan…",
+        "Update Payment ↗": "Update payment ↗", "Reset to Default": "Reset to default",
+    ]
 }
 
 /// A status as a word: quiet when all is well; a warning dot, the word in ink and the fix right
@@ -504,7 +561,13 @@ struct StatusLabel: View {
     var body: some View {
         HStack(spacing: 6) {
             if ok {
-                Image(systemName: "checkmark").font(.system(size: 9.5, weight: .bold))
+                // Aligned: the notch's Complete, a filled check in the system green.
+                if WindowLook.isAligned {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: T.Aligned.stateGlyph))
+                        .foregroundStyle(palette.done)
+                } else {
+                    Image(systemName: "checkmark").font(.system(size: 9.5, weight: .bold))
+                }
                 Text(L(key: word))
             } else {
                 Circle().fill(palette.warning).frame(width: 6, height: 6)
@@ -517,6 +580,37 @@ struct StatusLabel: View {
         .font(.system(size: 12.5))
         .foregroundStyle(palette.secondary)
     }
+}
+
+// MARK: - Fields
+
+/// A text field on a pane: the system's bordered field, or in Aligned a fill with no edge, ringed
+/// in the accent while it has the keyboard, as the first run's and the notch's fields are.
+private struct PaneField: ViewModifier {
+    @Environment(\.palette) private var palette
+    @Environment(\.motion) private var motion
+    @FocusState private var focused: Bool
+
+    func body(content: Content) -> some View {
+        if WindowLook.isAligned {
+            let shape = RoundedRectangle(cornerRadius: T.Aligned.fieldRadius, style: .continuous)
+            content
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+                .focused($focused)
+                .padding(.horizontal, 9)
+                .frame(height: T.Aligned.buttonHeight)
+                .background(shape.fill(palette.ink(T.Aligned.secondaryFill)))
+                .overlay(shape.strokeBorder(focused ? palette.accent : .clear, lineWidth: 1))
+                .animation(motion.animation(.hover), value: focused)
+        } else {
+            content.textFieldStyle(.roundedBorder)
+        }
+    }
+}
+
+extension View {
+    func paneField() -> some View { modifier(PaneField()) }
 }
 
 // MARK: - Keys
@@ -571,8 +665,9 @@ struct ChipWell<Item: Identifiable>: View {
                     .onExitCommand { adding = false; draft = "" }
                     .padding(.horizontal, 10)
                     .frame(width: 180, height: 24)
-                    .background(Capsule().fill(palette.card))
-                    .overlay(Capsule().strokeBorder(palette.text, lineWidth: 1))
+                    .background(Capsule().fill(WindowLook.isAligned ? palette.ink(T.Aligned.secondaryFill) : palette.card))
+                    // Aligned: a field with the keyboard is ringed in the accent, as the notch's are.
+                    .overlay(Capsule().strokeBorder(WindowLook.isAligned ? palette.accent : palette.text, lineWidth: 1))
                     .onAppear { fieldFocused = true }
             } else {
                 Button {
@@ -633,8 +728,10 @@ private struct Capsule_: View {
         .padding(.leading, icon == nil ? 10 : 5)
         .padding(.trailing, 5)
         .frame(height: 24)
-        .background(Capsule().fill(palette.ink(hover ? T.Shade.fillHover : T.Shade.fill)))
-        .overlay(Capsule().strokeBorder(palette.ink(T.Shade.line), lineWidth: 0.5))
+        .background(Capsule().fill(palette.ink(WindowLook.isAligned ? (hover ? T.Aligned.secondaryHover : T.Aligned.secondaryFill)
+                                                                    : (hover ? T.Shade.fillHover : T.Shade.fill))))
+        // Aligned: a fill, no edge, as the notch's chips.
+        .overlay(Capsule().strokeBorder(palette.ink(WindowLook.isAligned ? 0 : T.Shade.line), lineWidth: 0.5))
         .contentShape(Capsule())
         .onHover { h in withAnimation(motion.animation(.hover)) { hover = h } }
         .onTapGesture { onTap?() }
@@ -657,7 +754,11 @@ struct DangerCard: View {
         if native {
             SettingsCard {
                 SettingsRow(title, detail: consequence) {
-                    Button(L(key: button), role: .destructive, action: action)
+                    if WindowLook.isAligned {
+                        PillButton(AlignedCopy.sentence(button), kind: .destructive, action: action)
+                    } else {
+                        Button(L(key: button), role: .destructive, action: action)
+                    }
                 }
             }
         } else {
@@ -714,7 +815,7 @@ private struct SettingsSurface<S: InsettableShape>: ViewModifier {
     let level: T.Shade.Level
     func body(content: Content) -> some View {
         if native {
-            content.background(palette.nativeGroup, in: shape)
+            content.background(WindowLook.isAligned ? palette.card : palette.nativeGroup, in: shape)
         } else {
             content.shading(shape, level)
         }
@@ -738,7 +839,14 @@ struct SettingsSegments<Value: Hashable>: View {
     let choose: (Value) -> Void
 
     var body: some View {
-        if native {
+        if WindowLook.isAligned {
+            // Aligned: the first run's choice row (Make it yours' Glass, Panels, Size): the chosen
+            // one solid ink on a quiet track, as wide as its words.
+            let A = T.Aligned.self
+            SlidingSegments(segments: segments.map { .init(value: $0.value, title: $0.title) },
+                            selection: selection, pill: .island, track: .fill, height: A.segmentHeight, fontSize: A.segmentFont,
+                            padding: A.segmentPadding, inset: A.segmentInset, equalWidths: false, choose: choose)
+        } else if native {
             Picker(selection: Binding(get: { selection }, set: { choose($0) })) {
                 ForEach(segments, id: \.value) { Text(L(key: $0.title)).tag($0.value) }
             } label: {

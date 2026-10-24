@@ -329,7 +329,9 @@ enum OT {
         /// its new height as a section opens; rows and chips making room.
         static let morph = easeInOut(0.3)
         /// A choice taken: a segment's pill sliding over, a switch, a swatch, a palette, a tick.
-        static let select = easeInOut(0.2)
+        /// Oct 23, Ryan ("the buttons feel a little slow"): quick and out at once, on the strong
+        /// ease-out; on the ease-in-out's slow start (0.2 s) the button lagged the notch.
+        static let select = easeOut(0.12)
 
         // A hover, a colour: ease
 
@@ -337,6 +339,9 @@ enum OT {
         static let hover = ease(0.12)
         /// The board going light or dark, the accent on the line, the line to say brightening.
         static let recolor = ease(0.25)
+        /// Make it yours: how long the board shows at the notch for a look just chosen, before the
+        /// light picked comes back (Oct 23, Ryan).
+        static let lookShown: Double = 3
 
         // Ambient and rare
 
@@ -507,6 +512,19 @@ enum OT {
         static var practiceSortedReply: String {
             L("Sorted the list into Clothes and Gear, each item kept as it was. The jacket, gloves and sunglasses are under Clothes; the tent, stove and microspikes under Gear.")
         }
+        // More to try (Oct 23, Ryan): the practice agent's answers.
+        static var practiceCompareReply: String {
+            L("The two parts show this week's signups and the pull requests merged. Signups are up on last week; six pull requests went in.")
+        }
+        static var practiceRouteReply: String {
+            L("For Saturday: the lower loop to the lake and back, about nine miles. The pass above it has fresh snow, so it stays off the plan.")
+        }
+        static var practiceRouteMoreReply: String {
+            L("Noted. Start by eight to be back before the light goes at four.")
+        }
+        /// While it works: how often the held answer looks again, and the longest it's held.
+        static let holdCheck: Double = 0.5
+        static let holdLongest: Double = 90
     }
 
     // MARK: The board (Oct 9: Stage only)
@@ -554,6 +572,9 @@ enum OT {
         static let progressWidth: CGFloat = 160
         static let progressHeight: CGFloat = 3
         static let progressBottom: CGFloat = 34
+        /// Oct 23, Ryan: the part still to go, a gray that reads on any wallpaper, light or dark
+        /// (the board's hairline went unseen on a bright one), so how far along shows.
+        static let progressTrack = Color(white: 0.5).opacity(0.5)
         /// Oct 15 review, OB-01.7: Back, this far to the left of the progress line, and its height.
         static let backGap: CGFloat = 14
         static let backHeight: CGFloat = 24

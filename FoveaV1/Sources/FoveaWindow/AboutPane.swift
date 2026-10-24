@@ -76,7 +76,7 @@ struct AboutPane: View {
                 }
                 RowDivider()
                 SettingsRow("Something not working?", detail: "Tell us what went wrong. Diagnostics can go with it, if you agree.") {
-                    Button("Report a Problem…") { model.reporting = true }
+                    PaneButton("Report a Problem…") { model.reporting = true }
                 }
                 RowDivider()
                 // Feedback goes to the website (Oct 13).
@@ -165,12 +165,11 @@ struct AboutUpdateRow: View {
 
     @ViewBuilder private var control: some View {
         switch model.update {
-        case .upToDate: Button("Check for Updates") { model.checkForUpdates() }
+        case .upToDate: PaneButton("Check for Updates") { model.checkForUpdates() }
         case .checking: ProgressView().controlSize(.small)
-        case .failed: Button("Try Again") { model.checkForUpdates() }
+        case .failed: PaneButton("Try Again") { model.checkForUpdates() }
         case .available(let version):
-            Button("Install and Relaunch") { model.installUpdate(version) }
-                .buttonStyle(.borderedProminent)
+            PaneButton("Install and Relaunch", prominent: true) { model.installUpdate(version) }
         case .installing(_, let p):
             ProgressView(value: p).frame(width: 120)
         }

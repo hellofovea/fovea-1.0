@@ -130,18 +130,15 @@ struct PlanStatusSection: View {
     @ViewBuilder private func action(_ alert: PlanAlert) -> some View {
         switch alert {
         case .trial:
-            Button("Choose a Plan…") { model.scrollTarget = "plans" }
+            PaneButton("Choose a Plan…") { model.scrollTarget = "plans" }
         case .trialEnded:
-            Button("Upgrade…") { model.scrollTarget = "plans" }
-                .buttonStyle(.borderedProminent)
+            PaneButton("Upgrade…", prominent: true) { model.scrollTarget = "plans" }
         case .subscriptionEnding, .expired:
-            Button("Renew ↗") { model.openBilling() }
-                .buttonStyle(.borderedProminent)
+            PaneButton("Renew ↗", prominent: true) { model.openBilling() }
         case .paymentFailed:
-            Button("Update Payment ↗") { model.openBilling() }
-                .buttonStyle(.borderedProminent)
+            PaneButton("Update Payment ↗", prominent: true) { model.openBilling() }
         case .billingUnavailable:
-            Button("Try Again") { model.openBilling() }
+            PaneButton("Try Again") { model.openBilling() }
         case .almostOut, .usedUp, .paymentProcessing:
             EmptyView()
         }

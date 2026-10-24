@@ -99,6 +99,24 @@ The things to take come in any order. A drag that misses the pull requests or th
 - **The keys, in turn:** fn ⌃ → ⌘ ×2 → (click a tab) → ⌘ → (drag) → … → fn ⌃ → return; ⌥ for words and files; fn for dictation and follow-ups.
 - **Typed out:** about 45 letters a second, a beat after a sentence, never more than about 2 s a line; laid out whole first, so nothing moves; a click shows it all; Reduce Motion and VoiceOver get it whole.
 - **In Fovea 1.0 (Oct 21, Ryan, "simpler is better"):** lines show whole, and a hint stays for its reading time (`OT.Reading`); a page fades in whole (0.25 s) and the bar fades in (0.2 s), with no rise, blur or stagger; the keys and the tab to press are ringed in the accent, still; a held key has no glow; windows, files and sent messages fade (no scale or slide); the frost comes in in 0.3 s and still lifts slowly (1.6 s); the end fades in 0.3 s. What Fovea remembers and You're set are words alone, and Clear my screen's card keeps the accent on its button only. This prototype still types and pulses.
+- **In Fovea 1.0 (Oct 23, Ryan, "include all"): the first run teaches what you do with a session, in the steps it has (still 16).**
+  - **Watching the update:** open it from the board ("Click the update to open it."), drag it down out of the notch, drop it at a side of the screen, where it waits as a tab, and click the tab to bring it back ("When the tab shows a check…"). The answer may come at any point. The update's Quick Look waits until it's back, so it doesn't cover the tab. Past the opening, the way past is "Do it for me": each beat done for you.
+  - **The packing list:**
+    - Choose chat offers a new chat (picked) and the weekly update's ("Fovea picked the chat. ⌃ shows all your chats; return sends it here."). Picked, the weekly update's chat takes the request into that session, and asking more happens there.
+    - The agent reads, then asks to edit Packing list.txt: the session needs you (the island's own Deny / Allow with the file), and the menu bar's icon says so. The bar: "… asks before it edits your list. Move to the notch and Allow it. The icon in your menu bar shows it too." Deny: "In practice, Allow it so the list gets made.", and it asks again. Sent, the way past allows it for you.
+  - **Asking more:** once the sorted list is back, "Press ⌃ to see the whole session." (the expand button counts too), then "Esc steps back." with Continue.
+  - **Dictation, Messages:** fn, say something, esc throws it away, ⌘Z brings it back, then fn lands the answer to Lin. esc and ⌘ Z light in turn. Words landed before esc: "Landed. This time…", and Messages' try starts again (the feedback stays done). The undo let go by: "Too late to bring it back…".
+  - **You're all set:** one more line, with Fovea's menu bar mark: "The icon in your menu bar shows when Fovea listens, works or needs you."
+  - **More to try** (Settings › Getting Started, outside the first run's order, Home again after each), with the practice agent:
+    - *Take a few things:* fn ⌃, hold ⌘ and drag over two parts, open the stack, look at one, take one out with its ✕, fn ⌃, return.
+    - *While it works:* send a route request; while it works, type one more thing in the session's box (it waits its turn and goes after the answer); Answer again, with another model from its menu; Stop it ("Only Stop stops an agent; closing it never does.").
+    - *Nowhere to type:* fn with the pointer on the desktop, talk, fn: the words wait at the notch; Copy them, or click into the feedback window and Paste.
+- **In Fovea 1.0 (Oct 23, Ryan, late): Make it yours shows each choice at the notch, the moment it's made.**
+  - **A light:** the notch pulls down as Dispatch's listening bar, glowing in that palette, and stays while the page is up. The light was faint once its chromatic ridge went (Oct 21), so the inner light and its bloom are stronger (`VoiceGlow.wide`: 0.8 and 1.1, from 0.47 and 0.89), for the bar to read in its palette.
+  - **A look, or the accent:** the board pulls down in that look (glass, panels, size; the accent on its buttons and marks) for 3 s (`OT.Motion.lookShown`), then goes straight over to the light picked, or up if none was. It used to leave the notch empty for good: the board opening told the run the notch was the board, so the light was forgotten, and every light touched after that showed nothing.
+  - **The buttons answer at once:** a choice moves on a quick ease-out (`OT.Motion.select`, 0.12 s); on the 0.2 s ease-in-out the button lagged the notch.
+  - **The keyboard lights only the left ⌘**, as it does only the left ⌥.
+  - **The progress line's part still to go is gray** (`OT.Board.progressTrack`), so how far along it is shows on any wallpaper; the board's hairline went unseen on a bright one.
 
 ## The real sends
 

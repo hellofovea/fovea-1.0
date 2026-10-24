@@ -117,7 +117,7 @@ From left to right: the window's traffic lights, then:
 | Control | What it is | What it does |
 |---|---|---|
 | Four squares | A glass circle with a grid icon. There's no label; you find out what it does by opening it. | A menu that filters the cards. **App:** All Apps, then every app with its own icon, most used first. It filters by where the words went: the app for a dictation or a capture, the agent for a dispatch. **Tag:** the most used tags, then More Tags. **Show:** Last 3 days (the default) or Today. The squares fill in while a filter is on, and a line above the cards says which ("Filtered by Slack · Today  ✕ Clear"). |
-| Type tabs | All · Dictation · Capture · Dispatch, centered. A sliding pill in a glass track; every tab is the same width. | Shows one type. The pill moves the moment you press (0.12 s); the cards change once it lands. ⌘1–⌘4 do the same. |
+| Type tabs | All · Dictation · Dispatch, centered. A sliding pill in a glass track; every tab is the same width. | Shows one type. The cards change at once and the pill slides over (0.2 s, Oct 21). ⌘1–⌘3 do the same. |
 | Search | A glass circle with a magnifier. ⌘F opens it. | It opens leftward into a field. It searches your words, the text in what you took (read off regions, passages, file names), the app, and where a dispatch went. Every word you type must match somewhere. Matches are highlighted in the system's find yellow. Esc, or leaving it empty, folds it back. |
 | You | Your initial in a glass circle, ringed by an arc of the credits used this month. | Hover shows your plan and credits. A click opens Settings on Account; a second click comes back. |
 
@@ -452,7 +452,7 @@ When one rounded thing sits inside another, its radius is the outer radius minus
 | Key | Does |
 |---|---|
 | ⌘F | Search |
-| ⌘1 … ⌘4 | All, Dictation, Capture, Dispatch |
+| ⌘1 … ⌘3 | All, Dictation, Dispatch |
 | ← → ↑ ↓ | Move the selection between cards; ← → step the expanded card |
 | Space, Return | Open the selected card |
 | Esc | Close the expanded card; clear the selection; close search |

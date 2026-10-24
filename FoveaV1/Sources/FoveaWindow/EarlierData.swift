@@ -173,8 +173,7 @@ private struct EarlierDataRow: View {
         case .pending:
             HStack(spacing: 8) {
                 TextButton("Delete…", role: .destructive) { confirmDelete = true }
-                Button("Bring In") { model.bringIn(data.id) }
-                    .buttonStyle(.borderedProminent)
+                PaneButton("Bring In", prominent: true) { model.bringIn(data.id) }
             }
         case .bringingIn(let p):
             ProgressView(value: p).frame(width: 120)
@@ -185,7 +184,7 @@ private struct EarlierDataRow: View {
         case .failed:
             HStack(spacing: 8) {
                 TextButton("Delete…", role: .destructive) { confirmDelete = true }
-                Button("Try Again") { model.bringIn(data.id) }
+                PaneButton("Try Again") { model.bringIn(data.id) }
             }
         }
     }

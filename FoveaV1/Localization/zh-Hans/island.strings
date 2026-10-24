@@ -593,3 +593,17 @@
 "island.age.hours" = "%lld 小时前";
 /* %lldd: Choose chat: a chat's age */
 "island.age.days" = "%lld 天前";
+
+/* Oct 23: where a word was learned (Settings › Dictionary: "Learned today in the notch, …"). */
+"the notch" = "灵动岛";
+
+/* Oct 23: the menu bar's menu, saying what the notch is doing. */
+"Writing down your words" = "正在把你的话转成文字";
+"%@ needs you" = "%@ 需要你";
+"%lld agents need you" = "%lld 个 Agent 需要你";
+"%@ is working" = "%@ 正在工作";
+"%lld agents are working" = "%lld 个 Agent 正在工作";
+
+/* Oct 23: Open in <agent>, when it can't. */
+"%@ isn't on this Mac." = "这台 Mac 上没有 %@。";
+"Couldn't open %@." = "无法打开 %@。";

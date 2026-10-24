@@ -552,10 +552,17 @@ private struct AreaCard: View {
         SettingsCard {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
-                    Image(systemName: area.symbol)
-                        .font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
-                        .frame(width: 22, height: 22)
-                        .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(palette.accent))
+                    if WindowLook.isAligned {
+                        // Aligned: the symbol alone, in ink, as the sidebar draws its own.
+                        Image(systemName: area.symbol)
+                            .font(.system(size: T.Aligned.sidebarSymbol)).foregroundStyle(palette.secondary)
+                            .frame(width: 22, height: 22)
+                    } else {
+                        Image(systemName: area.symbol)
+                            .font(.system(size: 11, weight: .semibold)).foregroundStyle(.white)
+                            .frame(width: 22, height: 22)
+                            .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(palette.accent))
+                    }
                     // Oct 18, Ryan: the sample areas in the primary language (a summary the person
                     // rewrote isn't a key, and shows as written).
                     Text(L(key: area.title)).font(.system(size: 13, weight: .semibold)).foregroundStyle(palette.text)
