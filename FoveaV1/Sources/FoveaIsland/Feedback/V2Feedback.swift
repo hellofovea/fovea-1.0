@@ -444,6 +444,8 @@ extension WorkbenchModel {
             // Oct 15 review, QA20: in the first run's folder (`cases.fileRoots`), to show and copy.
             return (directorFiles[task.id] ?? []).map { V2Artifact(title: ($0 as NSString).lastPathComponent, symbol: "doc.text", path: $0) }
         }
+        // A chat opened from the search, nothing asked from Fovea yet: none of a request's own.
+        if openedChats.contains(task.id) { return [] }
         let request = v2Requests[task.id] ?? v2Request
         return request.artifacts(followUp: v2FollowUps.contains(task.id), changes: task.changes)
     }

@@ -65,6 +65,8 @@ extension WorkbenchModel {
         panelDwell?.cancel()
         panelExit?.cancel()
         panelSentGrace?.cancel()
+        chatPickerOpen = false
+        chatPickerQuery = ""
         notchState = .silent
     }
 
@@ -173,7 +175,8 @@ extension WorkbenchModel {
     /// panel's radio pinned it, or Send is showing its new session), and a session opened from it
     /// (unless it is being pulled out of the notch).
     var hoverHolds: Bool {
-        if panelOpen { return !panelPinned && panelSentTask == nil }
+        // Oct 24: the search open, it stays while the pointer is away.
+        if panelOpen { return !panelPinned && panelSentTask == nil && !chatPickerOpen }
         return notchState == .v2Chat && v2ChatFromBoard && !v2BoardPinned && v2DragOut == nil
     }
 

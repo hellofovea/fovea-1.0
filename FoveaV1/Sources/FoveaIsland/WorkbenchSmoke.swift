@@ -677,11 +677,13 @@ enum WorkbenchSmoke {
             model.v2StepsOpen.remove(V2Work.key(id, turn: 0))
             check("Expanded session: an earlier exchange's work opens on its own", after > before,
                   String(format: "%.0f → %.0f pt", before, after))
-            let band = V2PromptBlock.height(turns[0].question, width: long.column)
-            let words = V2Geometry.measure(turns[0].question, size: V.promptSize, weight: .medium,
-                                           width: long.column - 2 * V.promptPaddingH - V.promptGlyphWidth, spacing: V.promptSpacing)
-            check("Expanded session: a request sits on its band, the column's width, its words inside it",
-                  band == words + 2 * V.promptPaddingV, String(format: "%.0f pt for %.0f of words", band, words))
+            let bubble = V2RequestBubble.height(turns[0].question, width: long.column)
+            let words = V2Geometry.measure(turns[0].question, size: V.bubbleSize,
+                                           width: V2RequestBubble.widest(long.column) - 2 * V.bubblePaddingH, spacing: V.bubbleSpacing)
+            check("Expanded session: a request sits in its bubble at the right, at most its share of the column",
+                  bubble == words + 2 * V.bubblePaddingV
+                  && V2RequestBubble.bubbleWidth(turns[0].question, width: long.column) <= V2RequestBubble.widest(long.column),
+                  String(format: "%.0f pt for %.0f of words", bubble, words))
             _ = model.escape(); _ = model.escape(); await settle(window, 0.3)
             check("Expanded session: Esc, the usual size; again, closed", model.notchState != .v2Chat && !model.v2Expanded)
         }

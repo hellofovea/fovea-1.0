@@ -607,3 +607,14 @@
 /* Oct 23: Open in <agent>, when it can't. */
 "%@ isn't on this Mac." = "这台 Mac 上没有 %@。";
 "Couldn't open %@." = "无法打开 %@。";
+
+/* Oct 24: Open any chat from the notch (docs/island/OPEN_ANY_CHAT.md). */
+"Chats" = "聊天";
+"Pinned" = "已置顶";
+"Unpin" = "取消置顶";
+"Pin to the notch" = "置顶到刘海";
+"Open any chat" = "打开任意聊天";
+"Close the search" = "关闭搜索";
+"Last active %@ ago in %@." = "%2$@ 中上次活动于 %1$@ 前。";
+"Ask below: it goes into this chat." = "在下方提问：会发到这个聊天。";
+"Ask in this chat" = "在这个聊天中提问";

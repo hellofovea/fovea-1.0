@@ -125,6 +125,11 @@ package enum IslandDesignShots {
         }
         list += ["v2Send", "v2Board", "v2Chat", "whole"].map { Shot(name: "compact-light-\(file($0))", stage: $0, compact: true) }
         list.append(Shot(name: "dark-pulled-tucked", stage: "pulled:tucked", dark: true))
+        // Oct 24, Ryan: open any chat, floating too (his look), and in Dark.
+        let chats = IslandController.openChatStageNames
+        list += chats.map { Shot(name: "floating-light-\(file($0))", stage: $0, floating: true) }
+        list += chats.filter { $0.hasSuffix(":board") || $0.hasSuffix(":open") || $0.hasSuffix(":opened") }
+            .map { Shot(name: "dark-\(file($0))", stage: $0, dark: true) }
         return list
     }
 }

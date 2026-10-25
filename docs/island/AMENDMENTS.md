@@ -262,6 +262,18 @@ pet; nothing behind a hover.
   plan reported, at the start of a dotted track.
 - **Wings** (round one): the pets in the notch's wings, the one under the pointer on a stage.
 
+## Your words and the agent's, again (2026-10-24)
+
+Ryan: "implement the change that the user will be able to easily identify the request sent by
+them and the agent's response."
+- **The person's request** is a bubble at the column's right, hugging its words up to 82 % of the
+  column. **The agent's answer** sits open at the left.
+- This holds at the usual size, expanded and in a pulled-out window.
+- It replaces the band below ("never a bubble or off to one side").
+- **The outline of the requests** (Notion's) shows at the usual size too, in a 30 pt gutter at the
+  words' right.
+- **Every sample session** carries the requests asked before its last (`WHOLE_SESSION.md`).
+
 ## Your words and the agent's (2026-10-08)
 
 In the expanded session, the person's request sits on a quiet band after a prompt chevron, the

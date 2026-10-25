@@ -289,7 +289,8 @@ extension WorkbenchModel {
             if v2Expanded { setV2Size(.usual) } else { closeV2Chat() }
             return true
         case .v2Board:
-            closeAgentPanel()
+            // Oct 24: the search first, then the board.
+            if chatPickerOpen { closeChatPicker() } else { closeAgentPanel() }
             return true
         case .silent: return false
         }

@@ -85,6 +85,8 @@ extension V2BoardLayout {
                 layout.notice = WorkbenchTokens.Cases.memoryRow
                 layout.outline.size.height += layout.notice
             }
+            // Oct 24, Ryan: open any chat, pinned chats and the search on the board (OpenChat.swift).
+            if model.boardSearchShown { return .openChat(model: model, metrics: metrics, base: layout) }
             return layout
         }
     }

@@ -94,11 +94,16 @@ scrolls.
 **Each exchange** is the request, what the agent did (folded), and the answer as the agent wrote it.
 The current exchange also has its Open buttons for the files its answer links.
 
-**Your words and the agent's** (Oct 8, `CREATURES.md`):
-- **The request** sits on a quiet band (white 0.075, radius 12, the column's width) after a prompt
-  chevron ›, as Claude Code and Codex print what you typed. It is never a bubble or off to one
-  side.
-- **The answer** stays open on the black, the agent's pet in the margin where it starts.
+**Your words and the agent's** (Oct 24; Ryan: "the user will be able to easily identify the
+request sent by them and the agent's response"):
+- **The request** is a bubble at the column's right, as Messages, ChatGPT and Claude set what you
+  sent: the ink at 0.11, a 16 pt radius (15 in Compact, so a line's bubble is a capsule), hugging
+  its words up to 82 % of the column (`V2RequestBubble`). The last one's Edit sits beside it, to
+  its left.
+- **The answer** stays open at the left, the column's full width.
+- The same in the usual size, the expanded session and a pulled-out window.
+- Oct 8 had the request on a quiet band across the column after a prompt chevron ›, as the agents'
+  command lines print it, "never a bubble". Ryan found the two hard to tell apart.
 
 | | Compact | Spacious |
 |---|---|---|
@@ -180,6 +185,12 @@ Here the entries are the person's requests, never the headings in the agent's an
 - **Read to the end,** the last request that shows counts, because the last ones never reach the
   line.
 - **When it shows:** from two requests up. A one-exchange session has none.
+- **At the usual size too** (Oct 24, Ryan: "remember how we implemented the bookmarks on the
+  right, like the Notion style? Make sure to bring that back"). There's no margin there, so the
+  words leave it a 30 pt gutter at the right (`V2.outlineGutter`); the bar and the box keep the
+  full width. A pulled-out window has its own (`V2TurnRail`).
+- **Every sample session has two or three requests before its last** (`V2SampleHistory.swift`),
+  so the outline is there whenever one opens.
 
 **Hovered**, it opens to a card listing every request; the one in view is semibold.
 - **The card:** 280 pt wide, white 0.12 on the black, a 0.5 pt border, a soft shadow. It is
@@ -214,8 +225,8 @@ Here the entries are the person's requests, never the headings in the agent's an
 
 ## Not done
 
-- **The pulled-out window:** its current exchange has the new fold (it draws the same answer), but
-  its earlier exchanges show only their answers.
+- ~~**The pulled-out window:** its earlier exchanges show only their answers.~~ Oct 24: each has its
+  fold too.
 - **The shipping app** (`Sources/Fovea`) is unchanged. This is the Workbench's prototype.
 
 ## Oct 21 (Ryan: "simpler is better")

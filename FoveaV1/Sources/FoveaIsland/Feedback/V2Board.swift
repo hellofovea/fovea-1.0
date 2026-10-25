@@ -29,27 +29,37 @@ struct V2BoardLayout: Equatable {
     var hoverSize: CGSize? = nil
     /// Oct 15 review, NH-03: a "Remembered" row over the list, while there is one.
     var notice: CGFloat = 0
+    /// Oct 24, Ryan: an Open any chat design's blocks, top to bottom (Feedback/OpenChat.swift).
+    var openChat: [OpenChatPart] = []
 
     static func make(sections: [Int], style: BoardStyle, metrics: ScreenMetrics) -> V2BoardLayout {
         let B = WorkbenchTokens.Board.self
         let spec = WorkbenchTokens.Island.spec
-        var full: CGFloat = 0, visible: CGFloat = 0, rows = 0
-        for (i, count) in sections.enumerated() {
-            let lead = lead(style: style, first: i == 0)
-            full += lead
-            if rows < B.rowsVisible { visible += lead }
-            for _ in 0..<count {
-                full += B.row
-                if rows < B.rowsVisible { visible += B.row }
-                rows += 1
-            }
-        }
+        var (visible, full) = heights(sections: sections, style: style, rows: B.rowsVisible)
         // Nothing running: the greeting's room.
-        if rows == 0 { visible = B.helloHeight }
+        if sections.reduce(0, +) == 0 { visible = B.helloHeight }
         let height = V2Geometry.top(metrics) + visible + B.paddingBottom
         return V2BoardLayout(outline: StackLayout.Outline(size: CGSize(width: B.width, height: height),
                                                           topRadius: spec.expandedTopRadius, bottomRadius: B.bottomRadius),
                              listHeight: visible, scrolls: full > visible + 0.5)
+    }
+
+    /// The list down to its `rows`th row (what comes before each section included), and the
+    /// whole list.
+    static func heights(sections: [Int], style: BoardStyle, rows limit: Int) -> (visible: CGFloat, full: CGFloat) {
+        let B = WorkbenchTokens.Board.self
+        var full: CGFloat = 0, visible: CGFloat = 0, rows = 0
+        for (i, count) in sections.enumerated() {
+            let lead = lead(style: style, first: i == 0)
+            full += lead
+            if rows < limit { visible += lead }
+            for _ in 0..<count {
+                full += B.row
+                if rows < limit { visible += B.row }
+                rows += 1
+            }
+        }
+        return (visible, full)
     }
 
     /// What comes before a section: its header; in Badges, the seam (none before the first).
@@ -87,6 +97,9 @@ struct V2ChatLayout: Equatable {
     var columnX: CGFloat = V2Geometry.contentX
     /// The usual size drawing the session's exchanges (it was asked more than once).
     var history = false
+    /// The bar and the box: the column's width, or with the exchanges at the usual size the
+    /// content's (the outline's gutter is the words' only).
+    var barWidth: CGFloat { history ? contentWidth : column }
 
     @MainActor
     static func make(model: WorkbenchModel, task: AgentTaskItem?, followed: String? = nil, metrics: ScreenMetrics) -> V2ChatLayout {
@@ -115,8 +128,11 @@ struct V2ChatLayout: Equatable {
         }
         // Usual, a session asked more than once shows its exchanges (the last answer stays in view
         // while the next one works: Oct 9, evening), as tall as the usual body, at the latest.
+        // Oct 24, Ryan: the outline at its right too (Notion's), in a gutter the words leave it.
         if let task, !(model.v2History[task.id] ?? []).isEmpty {
             let fixed = V.chatHeader + V.headerRule + queue + B.actionRow + B.inputGap + V.inputHeight + V.gap
+            let column = width - V.outlineGutter
+            let columnX = V2Geometry.contentX
             let full = V2SessionHistory.height(model: model, task: task, width: column)
             let room = F.chatBodyMax + V.chatHeader
             let history = min(full, room)
@@ -126,10 +142,12 @@ struct V2ChatLayout: Equatable {
                                 columnX: columnX, history: true)
         }
         let lines = 2
-        let question = V2Geometry.measure(followed ?? task?.request ?? "", size: V.questionSize, weight: .semibold,
-                                          width: column, spacing: V.questionMeasureSpacing, lines: lines)
+        // Oct 24, Ryan: a chat opened from the search, nothing sent from Fovea yet: no request, a
+        // line in the answer's place (OpenChat.swift).
+        let opened = task.map { model.isBlankChat($0.id) } ?? false
+        let question = opened ? 0 : V2RequestBubble.height(followed ?? task?.request ?? "", width: column, lines: lines)
         var full: CGFloat = B.workingLine
-        if let task {
+        if let task, !opened {
             // Oct 15 review: reopening, gone, not sure it arrived, what was decided; what it asks.
             if let kind = model.v2CaseBody(task) {
                 full = V2CaseBodyView.height(model: model, task: task, kind: kind, width: column)
@@ -143,7 +161,7 @@ struct V2ChatLayout: Equatable {
         }
         // The header and its rule; the question; (Compact: a rule;) the body; what waits; the bar; the box.
         let parting = V.blockRules ? V.gap + 1 : 0
-        let fixed = V.chatHeader + V.headerRule + V.gap + question + parting + V.gap + V.gap + queue
+        let fixed = V.chatHeader + V.headerRule + (opened ? 0 : V.gap + question + parting) + V.gap + V.gap + queue
             + B.actionRow + B.inputGap + V.inputHeight + V.gap
         let body = min(full, F.chatBodyMax)
         return V2ChatLayout(outline: V2Geometry.outline(content: fixed + body, bottom: V.grabArea, width: panelWidth, metrics: metrics),
@@ -163,7 +181,8 @@ struct V2BoardContent: View {
 
     var body: some View {
         switch model.boardStyle {
-        case .sections, .badges, .petList: V2BoardList(model: model, layout: layout)
+        case .sections, .badges, .petList:
+            if model.boardSearchShown { OpenChatBoard(model: model, layout: layout) } else { V2BoardList(model: model, layout: layout) }
         case .petDesk: V2PetDesk(model: model, layout: layout).panelScheme()
         case .petLanes: V2PetLanes(model: model, layout: layout).panelScheme()
         case .focus: V2FocusBoard(model: model, layout: layout).panelScheme()
@@ -538,21 +557,26 @@ struct V2ChatContent: View {
                         Rectangle().fill(V.headerRuleColor).frame(width: layout.contentWidth, height: V.headerRule)
                             .padding(.bottom, V.gap)
                     } else {
+                        let opened = model.isBlankChat(task.id)
                         // Oct 15 review, QA07: the request, editable in place once it's answered.
-                        V2EditableQuestion(model: model, task: task, lines: layout.questionLines) {
-                            Text(model.v2Followed[task.id] ?? task.request)
-                                .font(.system(size: V.questionSize, weight: .semibold))
-                                .lineSpacing(V.questionLineSpacing)
-                                .foregroundStyle(V.titleColor)
-                                .lineLimit(layout.questionLines)
+                        if !opened {
+                            // Oct 24, Ryan: the request in its bubble at the right, the answer open
+                            // under it at the left.
+                            let asked = model.v2Followed[task.id] ?? task.request
+                            V2EditableQuestion(model: model, task: task, lines: layout.questionLines,
+                                               beside: V2RequestBubble.bubbleWidth(asked, width: layout.column)) {
+                                V2RequestBubble(text: asked, width: layout.column, lines: layout.questionLines)
+                            }
+                            .frame(width: layout.column, height: layout.question, alignment: .topTrailing)
+                            .padding(.top, V.gap)
+                            .padding(.bottom, V.blockRules ? V.gap : 0)
+                            .padding(.leading, lead)
+                            if V.blockRules { rule.padding(.leading, lead) }
                         }
-                        .frame(width: layout.column, height: layout.question, alignment: .topLeading)
-                        .padding(.top, V.gap)
-                        .padding(.bottom, V.blockRules ? V.gap : 0)
-                        .padding(.leading, lead)
-                        if V.blockRules { rule.padding(.leading, lead) }
                         Group {
-                            if let kind = model.v2CaseBody(task) {
+                            if opened {
+                                OpenedChatBody(task: task)
+                            } else if let kind = model.v2CaseBody(task) {
                                 V2CaseBodyView(model: model, task: task, kind: kind, width: layout.textWidth)
                             } else {
                             switch task.state {
@@ -581,7 +605,7 @@ struct V2ChatContent: View {
                             .padding(.leading, lead)
                     }
                     V2SessionBar(model: model, task: task)
-                        .frame(width: layout.column, height: B.actionRow)
+                        .frame(width: layout.barWidth, height: B.actionRow)
                         .padding(.leading, lead)
                     // Oct 15 review, QA25: read only, or gone: a line where the box was.
                     Group {
@@ -591,7 +615,7 @@ struct V2ChatContent: View {
                             V2FollowUpField(model: model, id: task.id)
                         }
                     }
-                    .frame(width: layout.column)
+                    .frame(width: layout.barWidth)
                     .padding(.top, B.inputGap)
                     .padding(.leading, lead)
                 }
@@ -650,8 +674,10 @@ struct V2ChatContent: View {
                 V2Badge(text: quick ? L("Quick answer") : task.project)
             }
             Spacer()
-            // Expand (the shipping app's expand key, left ⌃): the whole session; and back.
-            if task.state == .complete || task.state == .failed || layout.size == .expanded || !(model.v2History[task.id] ?? []).isEmpty {
+            // Expand (the shipping app's expand key, left ⌃): the whole session; and back. A chat
+            // opened from the search with nothing sent yet has nothing to expand.
+            if !model.isBlankChat(task.id),
+               task.state == .complete || task.state == .failed || layout.size == .expanded || !(model.v2History[task.id] ?? []).isEmpty {
                 switch layout.size {
                 case .usual:
                     NotchIconButton(symbol: "arrow.up.left.and.arrow.down.right", glyph: V.expandGlyph, size: V.closeSize,
@@ -796,8 +822,11 @@ struct V2SessionBar: View {
                     AgentPanelButton(title: L("Retry"), symbol: "arrow.clockwise", primary: false) { model.retryTask(task.id) }
                 }
             case .complete:
-                V2CopyAnswerChip(model: model, task: task, iconOnly: compact)
-                if mine { V2ReanswerMenu(model: model, task: task, iconOnly: compact) }
+                // Opened from the search with nothing in it: no answer to copy or answer again.
+                if !model.isBlankChat(task.id) {
+                    V2CopyAnswerChip(model: model, task: task, iconOnly: compact)
+                    if mine { V2ReanswerMenu(model: model, task: task, iconOnly: compact) }
+                }
             }
         }
     }

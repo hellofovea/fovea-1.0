@@ -998,12 +998,16 @@ enum WorkbenchTokens {
         static var detachedRadius: CGFloat { pick(14, 16) }
         /// How small and how big a pulled-out chat's window can be made, against its usual size (its
         /// corner or a pinch). The window resizes; its words stay their size and reflow (Oct 11).
-        static let detachedResize: ClosedRange<CGFloat> = 0.7...1.6
-        static let scaleGrip: CGFloat = 14
+        /// Oct 24, Ryan: its four sides resize it as a Mac window's, so it may grow well past
+        /// its usual size (the screen sets the last limit).
+        static let detachedResize: ClosedRange<CGFloat> = 0.7...2.4
+        /// The bands along its sides that resize it, half outside the window and half in, and the
+        /// squares at its corners.
+        static let resizeEdge: CGFloat = 8
+        static let resizeCorner: CGFloat = 16
         /// How long the pointer stays on another display before the pulled-out chats follow it there
         /// (a pass across it on the way somewhere doesn't move them).
         static let followDwell: Double = 0.6
-        static var scaleGripColor: Color { ink(0.32) }
         /// The rail beside a chat with follow-ups (after Notion's outline): a short line per
         /// exchange, the one in view bright; on hover, the questions, each a way back to it.
         static let railGutter: CGFloat = 22
@@ -1023,7 +1027,8 @@ enum WorkbenchTokens {
         static let railCardShadowRadius: CGFloat = 8
         /// A turn counts as the one in view once its top is this close to the top of the chat.
         static let railReadLine: CGFloat = 60
-        static let turnGap: CGFloat = 18
+        /// Between a pulled-out chat's exchanges: space, no rules (Oct 24).
+        static let turnGap: CGFloat = 24
         // Oct 18, Ryan: in the primary language.
         static var movedOn: String { L("Moved on to your next question.") }
         static let detachedFill = Color(white: 0.06)
@@ -1146,20 +1151,22 @@ enum WorkbenchTokens {
         /// Every exchange, oldest first, parted by space (no rules).
         static var historyTurnGap: CGFloat { pick(28, 32) }
         static var historyQuestionGap: CGFloat { pick(11, 12) }
-        /// The person's words and the agent's, told apart without bubbles (Oct 8): a request on a
-        /// quiet band after the prompt's chevron, as Claude Code and Codex print what was typed,
-        /// the column's full width; the agent's answer open on the black, its creature in the
-        /// margin where it starts.
-        static var promptSize: CGFloat { pick(13.5, 14.5) }
-        static var promptSpacing: CGFloat { pick(2, 2) }
-        static var promptFill: Color { ink(0.075) }
-        static var promptColor: Color { ink(0.96) }
-        static var promptRadius: CGFloat { pick(9, 10) }
-        static var promptPaddingH: CGFloat { pick(11, 12) }
-        static var promptPaddingV: CGFloat { pick(8, 9) }
-        static var promptGlyph: Font { pick(Font.system(size: 10, weight: .bold), .system(size: 10, weight: .bold)) }
-        static var promptGlyphColor: Color { ink(0.4) }
-        static var promptGlyphWidth: CGFloat { pick(14, 16) }
+        /// The person's words and the agent's (Oct 24, Ryan: "the user will be able to easily
+        /// identify the request sent by them and the agent's response"): each request in a bubble
+        /// at the column's right, as Messages, ChatGPT and Claude set what you sent; the agent's
+        /// answer open at the left, the column's full width. A line's bubble is a capsule. (Oct 8
+        /// had the request on a band across the column, after a prompt's chevron.)
+        static var bubbleSize: CGFloat { pick(13.5, 14.5) }
+        static var bubbleSpacing: CGFloat { pick(2, 2) }
+        static var bubbleFill: Color { ink(0.11) }
+        static var bubbleColor: Color { ink(0.96) }
+        static var bubbleRadius: CGFloat { pick(15, 16) }
+        static var bubblePaddingH: CGFloat { pick(11, 12) }
+        static var bubblePaddingV: CGFloat { pick(7, 7.5) }
+        /// A bubble is at most this share of the column, so the answer's side stays open.
+        static let bubbleShare: CGFloat = 0.82
+        /// The last request's Edit, beside its bubble.
+        static let bubbleEditGap: CGFloat = 6
         /// The outline at the right (after Notion's page outline): a short line per request, the
         /// one in view bright. Shown from two requests.
         static let outlineTick: CGFloat = 2
@@ -1169,6 +1176,8 @@ enum WorkbenchTokens {
         /// The lines' column, and where it sits: inside the right margin, clear of the words.
         static let outlineWidth: CGFloat = 28
         static let outlineInset: CGFloat = 12
+        /// At the usual size there's no margin: the words leave this much at the right for it.
+        static let outlineGutter: CGFloat = 30
         static var outlineOff: Color { ink(0.22) }
         static var outlineOn: Color { ink(0.92) }
         /// Hovered, the outline opens to a card of the requests, each a way there. Concentric: rows

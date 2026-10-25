@@ -209,6 +209,9 @@ struct V2EditableQuestion<Shown: View>: View {
     let model: WorkbenchModel
     let task: AgentTaskItem
     var lines = 2
+    /// The request in its bubble at the right (Oct 24): its width, so Edit sits beside it, to its
+    /// left, rather than over its words.
+    var beside: CGFloat? = nil
     @ViewBuilder var shown: () -> Shown
     @State private var hovering = false
 
@@ -220,10 +223,11 @@ struct V2EditableQuestion<Shown: View>: View {
             }
         } else {
             shown()
-                .overlay(alignment: .topTrailing) {
+                .overlay(alignment: beside == nil ? .topTrailing : .trailing) {
                     if model.canEditV2(task), hovering || model.snapshotMode {
                         V2IconChip(symbol: "pencil", title: L("Edit")) { model.startEditV2(task.id) }
                             .help("Edit your request and send it again")
+                            .padding(.trailing, beside.map { $0 + WorkbenchTokens.V2.bubbleEditGap } ?? 0)
                             .transition(.opacity)
                     }
                 }

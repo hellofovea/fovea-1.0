@@ -42,6 +42,22 @@ struct V2Turn: Identifiable {
     var work: V2Work? = nil
 }
 
+/// A side of a pulled-out chat that resizes it, as a Mac window's: its four edges and its four
+/// corners (Oct 24, Ryan: "by dragging all four sides of that chat. So it behaves like any other
+/// Mac OS apps").
+struct V2WindowEdge: Hashable {
+    /// -1 its left, 1 its right, 0 neither.
+    let x: Int
+    /// -1 its top, 1 its bottom, 0 neither.
+    let y: Int
+
+    static let all: [V2WindowEdge] = [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)]
+        .map { V2WindowEdge(x: $0.0, y: $0.1) }
+    /// The bottom-right corner: the one a pinch (and the old grip) grows from.
+    static let bottomRight = V2WindowEdge(x: 1, y: 1)
+    var corner: Bool { x != 0 && y != 0 }
+}
+
 /// A chat being pulled out of the notch by its grab bar: where the pointer is.
 struct V2DragOut: Equatable {
     let id: String
@@ -357,7 +373,9 @@ extension WorkbenchModel {
             v2FinishedAt[done] = Date()
             // It was asked more once, and answered: the window lists both, the rail beside them.
             if let i = agentTasks.firstIndex(where: { $0.id == done }), let answer = v2Request.followUp.script.last {
-                v2History[done] = [V2Turn(id: 0, question: agentTasks[i].request, result: agentTasks[i].result)]
+                // After what the chat was asked before (V2SampleHistory.swift).
+                let past = v2History[done] ?? []
+                v2History[done] = past + [V2Turn(id: past.count, question: agentTasks[i].request, result: agentTasks[i].result)]
                 v2Followed[done] = v2Request.followUp.spoken
                 apply(answer, to: i)
             }
@@ -522,13 +540,18 @@ extension WorkbenchModel {
             if !inWindow { showBoardAfterSend(id) }
             return
         }
-        // The exchange so far is kept, so the chat can show (and the rail find) every one.
-        let past = v2History[id] ?? []
-        let done = agentTasks[i].state == .complete
-        v2History[id] = past + [V2Turn(id: past.count, question: v2Followed[id] ?? agentTasks[i].request,
-                                       result: done ? agentTasks[i].result : nil,
-                                       answer: done ? agentTasks[i].answer : nil,
-                                       work: done ? v2Work(agentTasks[i]) : nil)]
+        // The exchange so far is kept, so the chat can show (and the rail find) every one. A chat
+        // opened from the search (Oct 24) with nothing in it yet: this is its first, and it joins
+        // the board.
+        let empty = openedChats.remove(id) != nil && agentTasks[i].request.isEmpty
+        if !empty {
+            let past = v2History[id] ?? []
+            let done = agentTasks[i].state == .complete
+            v2History[id] = past + [V2Turn(id: past.count, question: v2Followed[id] ?? agentTasks[i].request,
+                                           result: done ? agentTasks[i].result : nil,
+                                           answer: done ? agentTasks[i].answer : nil,
+                                           work: done ? v2Work(agentTasks[i]) : nil)]
+        }
         let request = v2Requests[id] ?? v2Request
         let more = request.followUp
         v2Scripts[id] = more.script
@@ -604,6 +627,12 @@ extension WorkbenchModel {
             s.state == .working && s.work != .done ? AgentStep(id: i, work: s.work, object: s.object, activity: s.activity) : nil
         }
         agentTasks.append(task)
+        // Oct 24, Ryan: a request sent to a chat joins what was asked there before (the samples').
+        if live == nil || demoSamples, let title = pick.chat,
+           let chat = ChatBook.chats.first(where: { $0.agent == pick.agent && $0.title == title && $0.folder == pick.project }),
+           let past = V2SampleHistory.chat(chat.id) {
+            v2History[id] = V2SampleHistory.turns(past)
+        }
         v2Sessions.insert(id)
         v2Session = id
         v2Scripts[id] = script
@@ -910,8 +939,10 @@ extension WorkbenchModel {
         guard let i = agentTasks.firstIndex(where: { $0.id == id }) else { return }
         v2StagedLong = long
         let request = v2Request
-        var turns = [V2Turn(id: 0, question: agentTasks[i].request, result: agentTasks[i].result,
-                            answer: request.answer(followUp: false), work: request.work(followUp: false))]
+        // After what its chat was asked before (V2SampleHistory.swift), then its own.
+        var turns = v2History[id] ?? []
+        turns.append(V2Turn(id: turns.count, question: agentTasks[i].request, result: agentTasks[i].result,
+                            answer: request.answer(followUp: false), work: request.work(followUp: false)))
         for turn in request.earlierTurns(long: long) {
             turns.append(V2Turn(id: turns.count, question: turn.question, result: nil, answer: turn.answer, work: turn.work))
         }
@@ -948,14 +979,40 @@ extension WorkbenchModel {
         v2Detached[i].origin = clampedV2(v2Detached[i].origin, size: fitted)
     }
 
-    /// The corner (or the pinch) let go: back within its sizes, critically damped.
-    func endResizeDetachedV2(_ id: String) {
+    /// An edge or a corner dragged (Oct 24, Ryan), from the window's frame when the drag began:
+    /// that side follows the pointer, the opposite one stays where it is, as a Mac window's. Its
+    /// sides stay on the screen; past its smallest or largest it gives a little (Oct 21), and on
+    /// release springs back (`endResizeDetachedV2`).
+    func resizeDetachedV2(_ id: String, edge: V2WindowEdge, from start: CGRect, by moved: CGSize) {
+        guard let i = v2Detached.firstIndex(where: { $0.id == id }) else { return }
+        let area = detachedArea, top = metrics.menuBarHeight + 4
+        var minX = start.minX, maxX = start.maxX, minY = start.minY, maxY = start.maxY
+        if edge.x < 0 { minX = max(4, start.minX + moved.width) }
+        if edge.x > 0 { maxX = min(area.width - 4, start.maxX + moved.width) }
+        if edge.y < 0 { minY = max(top, start.minY + moved.height) }
+        if edge.y > 0 { maxY = min(area.height - 4, start.maxY + moved.height) }
+        let wanted = CGSize(width: maxX - minX, height: maxY - minY)
+        let fitted = fittedSizeV2(wanted), S = WorkbenchTokens.Spring.self
+        // Only the sides being dragged change; the others keep the size they had.
+        let size = CGSize(width: edge.x == 0 ? start.width : fitted.width + S.rubberBand(wanted.width - fitted.width, dimension: fitted.width),
+                          height: edge.y == 0 ? start.height : fitted.height + S.rubberBand(wanted.height - fitted.height, dimension: fitted.height))
+        v2Detached[i].size = size
+        v2Detached[i].origin = CGPoint(x: edge.x < 0 ? start.maxX - size.width : start.minX,
+                                       y: edge.y < 0 ? start.maxY - size.height : start.minY)
+    }
+
+    /// The side (or the pinch) let go: back within its sizes, critically damped, the side across
+    /// from the one dragged where it was.
+    func endResizeDetachedV2(_ id: String, edge: V2WindowEdge = .bottomRight) {
         guard let i = v2Detached.firstIndex(where: { $0.id == id }) else { return }
         let fitted = fittedSizeV2(v2Detached[i].size)
         guard fitted != v2Detached[i].size else { return }
+        let frame = CGRect(origin: v2Detached[i].origin, size: v2Detached[i].size)
+        let origin = CGPoint(x: edge.x < 0 ? frame.maxX - fitted.width : frame.minX,
+                             y: edge.y < 0 ? frame.maxY - fitted.height : frame.minY)
         withAnimation(WorkbenchTokens.Spring.reposition) {
             v2Detached[i].size = fitted
-            v2Detached[i].origin = clampedV2(v2Detached[i].origin, size: fitted)
+            v2Detached[i].origin = clampedV2(origin, size: fitted)
         }
     }
 

@@ -146,6 +146,8 @@ public struct FoveaPrefs: Codable, Equatable, Sendable {
     public var showAnswers = true
     /// Choose chat before a Dispatch goes ("Review the words first").
     public var reviewFirst = true
+    /// Oct 24, Ryan: the chats pinned to the notch's board, by id, in the order pinned.
+    public var pinnedChats: [String] = []
     // You: the email you signed in with, and what Fovea calls you (the first run asks).
     public var accountEmail = ""
     public var accountName = ""
@@ -245,5 +247,6 @@ public struct FoveaPrefs: Codable, Equatable, Sendable {
         signedOut = (try? c.decode(Bool.self, forKey: .signedOut)) ?? d.signedOut
         memoryNotice = (try? c.decode(Bool.self, forKey: .memoryNotice)) ?? d.memoryNotice
         windowAppearance = (try? c.decode(WindowAppearance.self, forKey: .windowAppearance)) ?? d.windowAppearance
+        pinnedChats = (try? c.decode([String].self, forKey: .pinnedChats)) ?? d.pinnedChats
     }
 }

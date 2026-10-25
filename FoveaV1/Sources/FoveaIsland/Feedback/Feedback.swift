@@ -417,7 +417,7 @@ extension WorkbenchModel {
         v2Queue = [:]
         v2QueuePaused = []
         v2FollowUps = []
-        v2History = [:]
+        v2History = V2SampleHistory.sessions
         v2Followed = [:]
         v2Titles = [:]
         v2StepsOpen = []

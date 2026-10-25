@@ -49,6 +49,12 @@ enum V2Geometry {
         }
         return height + 2
     }
+
+    /// A line of words' width, set on one line.
+    static func lineWidth(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: size, weight: weight)
+        return ceil(NSAttributedString(string: text, attributes: [.font: font]).size().width) + 1
+    }
 }
 
 /// Choose chat: the request; what was taken, the chat in a pill, the send button; the
@@ -720,7 +726,8 @@ struct V2DetachedLayer: View {
 
 /// A chat as a small window: its header (drag it anywhere; to a side, it tucks in; ✕ closes),
 /// the conversation (the request, the screen, the response, and every follow-up), the box to ask
-/// more, and a corner that resizes it (a pinch does too): the window changes, never its words.
+/// more; its sides and corners resize it, as a Mac window's (a pinch does too): the window changes,
+/// never its words.
 struct V2DetachedWindow: View {
     let model: WorkbenchModel
     let item: V2Detached
@@ -775,11 +782,10 @@ struct V2DetachedWindow: View {
         // and a shadow of 22 pt.
         .surface(shape, original: V.detachedFill)
         .overlay { if !WorkbenchTokens.isNative { shape.strokeBorder(V.detachedBorder, lineWidth: 0.75) } }
-        .overlay(alignment: .bottomTrailing) {
-            if !ghost { V2ScaleGrip(model: model, item: item) }
-        }
         .clipShape(shape)
         .shadow(color: V.detachedShadow, radius: V.detachedShadowRadius, y: V.detachedShadowY)
+        // Its four sides and corners resize it, as a Mac window's (Oct 24).
+        .overlay { if !ghost { V2WindowEdges(model: model, item: item) } }
         .simultaneousGesture(pinch)
         .opacity(ghost ? 0.92 : 1)
         .panelScheme()
@@ -819,54 +825,80 @@ struct V2DetachedWindow: View {
     }
 }
 
-/// The bottom-right corner of a pulled-out chat: dragged out, the window grows; in, it shrinks.
-/// The window resizes, its top-left where it is; its words keep their size and reflow (Oct 11).
-struct V2ScaleGrip: View {
+/// A pulled-out chat's sides, as a Mac window's (Oct 24, Ryan: "by dragging all four sides of that
+/// chat. So it behaves like any other Mac OS apps"): each edge and each corner, dragged, moves that
+/// side and leaves the one across from it where it is; under the pointer, the pointer shows which
+/// way it goes. The bands straddle the window's outline, half outside it, where macOS puts them.
+/// The window changes, never its words (Oct 11).
+struct V2WindowEdges: View {
     let model: WorkbenchModel
     let item: V2Detached
-    @State private var start: CGSize?
 
     var body: some View {
         let V = WorkbenchTokens.V2.self
-        Canvas { context, size in
-            var lines = Path()
-            for inset in [4.0, 8.5] {
-                lines.move(to: CGPoint(x: size.width - 3, y: inset))
-                lines.addLine(to: CGPoint(x: inset, y: size.height - 3))
+        let w = item.size.width, h = item.size.height
+        ZStack(alignment: .topLeading) {
+            ForEach(V2WindowEdge.all, id: \.self) { edge in
+                V2WindowEdgeHandle(model: model, item: item, edge: edge)
+                    .frame(width: edge.x == 0 ? max(0, w - V.resizeCorner) : (edge.corner ? V.resizeCorner : V.resizeEdge),
+                           height: edge.y == 0 ? max(0, h - V.resizeCorner) : (edge.corner ? V.resizeCorner : V.resizeEdge))
+                    .position(x: CGFloat(edge.x + 1) / 2 * w, y: CGFloat(edge.y + 1) / 2 * h)
             }
-            context.stroke(lines, with: .color(V.scaleGripColor), style: StrokeStyle(lineWidth: 1.2, lineCap: .round))
         }
-        .frame(width: V.scaleGrip, height: V.scaleGrip)
-        .padding(2)
-        .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 1, coordinateSpace: .named(ScreenSpace.name))
-                .onChanged { value in
-                    // The corner follows the pointer: the window grows by the pointer's travel.
-                    let from = start ?? item.size
-                    if start == nil { start = item.size }
-                    model.resizeDetachedV2(item.id, to: CGSize(width: from.width + value.translation.width,
-                                                               height: from.height + value.translation.height), elastic: true)
+        .frame(width: w, height: h, alignment: .topLeading)
+    }
+}
+
+/// One side of a pulled-out chat (V2WindowEdges): a band (or a corner's square) that takes the
+/// pointer and the drag.
+private struct V2WindowEdgeHandle: View {
+    let model: WorkbenchModel
+    let item: V2Detached
+    let edge: V2WindowEdge
+    @State private var start: CGRect?
+
+    var body: some View {
+        let handle = Color.clear
+            .contentShape(Rectangle())
+            .onContinuousHover { phase in
+                switch phase {
+                case .active: if model.v2ResizeEdge != edge { model.v2ResizeEdge = edge }
+                case .ended: if start == nil, model.v2ResizeEdge == edge { model.v2ResizeEdge = nil }
                 }
-                .onEnded { _ in
-                    start = nil
-                    model.endResizeDetachedV2(item.id)
+            }
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .named(ScreenSpace.name))
+                    .onChanged { value in
+                        let from = start ?? CGRect(origin: item.origin, size: item.size)
+                        if start == nil { start = from; model.v2ResizeEdge = edge }
+                        model.resizeDetachedV2(item.id, edge: edge, from: from, by: value.translation)
+                    }
+                    .onEnded { _ in
+                        start = nil
+                        model.endResizeDetachedV2(item.id, edge: edge)
+                        model.v2ResizeEdge = nil
+                    }
+            )
+        if edge == .bottomRight {
+            // The window's size for VoiceOver, on one of them: larger or smaller by a step.
+            handle
+                .accessibilityElement()
+                .accessibilityLabel("Size")
+                .accessibilityValue("\(Int(item.size.width)) by \(Int(item.size.height)) points")
+                .accessibilityAdjustableAction { direction in
+                    let step: CGFloat = direction == .increment ? 40 : -40
+                    model.resizeDetachedV2(item.id, to: CGSize(width: item.size.width + step, height: item.size.height + step))
                 }
-        )
-        .help("Drag to make it bigger or smaller (or pinch)")
-        .accessibilityElement()
-        .accessibilityLabel("Size")
-        .accessibilityValue("\(Int(item.size.width)) by \(Int(item.size.height)) points")
-        .accessibilityAdjustableAction { direction in
-            let step: CGFloat = direction == .increment ? 40 : -40
-            model.resizeDetachedV2(item.id, to: CGSize(width: item.size.width + step, height: item.size.height + step))
+        } else {
+            handle.accessibilityHidden(true)
         }
     }
 }
 
-/// A pulled-out chat's conversation: each exchange as a question and what came back, the one now
-/// with the agent's screen. With follow-ups, a rail at the right (after Notion's outline) shows
-/// which exchange is in view and, on hover, lists them all to jump to.
+/// A pulled-out chat's conversation: each exchange as the request in its bubble and what came back
+/// (what the agent did folded over it), the one now with the agent's screen. With follow-ups, a
+/// rail at the right (after Notion's outline) shows which exchange is in view and, on hover, lists
+/// them all to jump to.
 struct V2Conversation: View {
     let model: WorkbenchModel
     let task: AgentTaskItem
@@ -886,19 +918,17 @@ struct V2Conversation: View {
                 VStack(alignment: .leading, spacing: V.turnGap) {
                     ForEach(turns) { turn in
                         VStack(alignment: .leading, spacing: V.turnSpacing) {
-                            if turn.id > 0 { Rectangle().fill(V.rule).frame(width: column, height: 0.5) }
+                            // Oct 24, Ryan: each request in its bubble at the right, the answer
+                            // open at the left; space between the exchanges, no rules.
                             if turn.id == now {
                                 // Oct 15 review, QA07: the last request, editable once answered.
-                                V2EditableQuestion(model: model, task: task, lines: 3) {
-                                    Text(turn.question)
-                                        .font(V.turnQuestion).foregroundStyle(V.bodyColor)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                        .frame(width: column, alignment: .leading)
+                                V2EditableQuestion(model: model, task: task, lines: 3,
+                                                   beside: V2RequestBubble.bubbleWidth(turn.question, width: column)) {
+                                    V2RequestBubble(text: turn.question, width: column)
                                 }
+                                .frame(width: column)
                             } else {
-                                Text(turn.question)
-                                    .font(V.turnQuestion).foregroundStyle(V.bodyColor)
-                                    .fixedSize(horizontal: false, vertical: true)
+                                V2RequestBubble(text: turn.question, width: column)
                             }
                             if turn.id == now {
                                 // At work, one quiet line; done, the answer as written. Oct 15
@@ -913,7 +943,13 @@ struct V2Conversation: View {
                                     V2Answer(model: model, task: task, width: column)
                                 }
                             } else if let answer = turn.answer {
-                                MarkdownView(markdown: answer, width: column)
+                                // What the agent did, folded, as in the notch (WHOLE_SESSION.md).
+                                VStack(alignment: .leading, spacing: WorkbenchTokens.FeedbackV2.answerGap) {
+                                    if let work = turn.work {
+                                        V2WorkFold(model: model, work: work, key: V2Work.key(task.id, turn: turn.id), width: column)
+                                    }
+                                    MarkdownView(markdown: answer, width: column)
+                                }
                             } else if let result = turn.result {
                                 V2Response(model: model, task: answered(result), width: column)
                             } else {
@@ -1035,12 +1071,17 @@ struct V2FollowUpField: View {
     var body: some View {
         let V = WorkbenchTokens.V2.self
         HStack(spacing: V.inputSpacing) {
-            TextField("Ask a follow-up", text: $text)
+            // Oct 24: a chat opened from the search takes its first words here, the box ready.
+            TextField(model.isOpenedChat(id) ? L("Ask in this chat") : L("Ask a follow-up"), text: $text)
                 .textFieldStyle(.plain)
                 .font(V.inputFont)
                 .foregroundStyle(V.titleColor)
                 .focused($focused)
                 .onSubmit(send)
+                .onAppear { if model.isOpenedChat(id), !model.snapshotMode { focused = true } }
+                // Esc with nothing typed steps out, as it does when the box isn't being typed in.
+                .onKeyPress(.escape) { text.isEmpty && model.escape() ? .handled : .ignored }
+                .background { if model.isOpenedChat(id) { KeyWindowMaker() } }
             Button(action: send) {
                 Image(systemName: "arrow.up")
                     .font(V.inputSendGlyph)

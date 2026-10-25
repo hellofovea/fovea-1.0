@@ -179,6 +179,9 @@ stands in the margin beside its answers (below).
 
 ## The expanded session: your words and the agent's
 
+> Oct 24: the request is now a bubble at the right, the answer open at the left
+> (`WHOLE_SESSION.md`, AMENDMENTS.md). What follows is the Oct 8 design it replaced.
+
 **Your request** sits on a quiet band (white 0.075, the column's full width, radius 12), after a
 prompt chevron ›.
 - This is how Claude Code and Codex print what you typed: the coding-agent world, not a chat app.

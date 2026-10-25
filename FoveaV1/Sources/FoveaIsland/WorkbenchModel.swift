@@ -601,7 +601,8 @@ final class WorkbenchModel {
     /// What was asked more in a session, shown as its request; and each session's exchanges
     /// before the one now (a pulled-out chat lists them all, with a rail to find each).
     var v2Followed: [String: String] = [:]
-    var v2History: [String: [V2Turn]] = [:]
+    /// Oct 24: the sample sessions come with the requests asked before (V2SampleHistory.swift).
+    var v2History: [String: [V2Turn]] = V2SampleHistory.sessions
     /// Chats pulled out of the notch, and the one being pulled.
     var v2Detached: [V2Detached] = []
     /// The display the pulled-out chats are on, when it isn't the notch's: they follow the pointer
@@ -609,6 +610,9 @@ final class WorkbenchModel {
     var liveDetachedArea: CGSize?
     /// A pulled-out chat being moved by its header: it doesn't follow the pointer mid-drag.
     var v2DetachedMoving = false
+    /// The side of a pulled-out chat under the pointer, or being dragged: the pointer shows it
+    /// resizes (Oct 24).
+    var v2ResizeEdge: V2WindowEdge?
     var v2DragOut: V2DragOut?
     @ObservationIgnored var v2Pinned = false
     /// The board a session was opened from was pinned (the panel's radio): back on it, it is again.
@@ -758,6 +762,20 @@ final class WorkbenchModel {
     var feedbackStepsStage: StepsStage = .session
     /// The control board's design (#9–10, #17, round three).
     var boardStyle: BoardStyle = .sections
+    /// Oct 24, Ryan: any chat opened from the board, pinned ones kept there, a search always in
+    /// reach, on a bar over the board (Feedback/OpenChat.swift, docs/island/OPEN_ANY_CHAT.md). The
+    /// real Mac's board; the Workbench's is as it was.
+    var boardSearch = false
+    /// The chats pinned to the board, by id, in the order pinned (kept in the prefs).
+    var pinnedChats: [String] = [] { didSet { if pinnedChats != oldValue { onPinsChanged(pinnedChats) } } }
+    @ObservationIgnored var onPinsChanged: ([String]) -> Void = { _ in }
+    /// Chats opened from the search with nothing sent from Fovea yet: the box below goes into them.
+    var openedChats: Set<String> = []
+    /// The search: open, and what it's looking for.
+    var chatPickerOpen = false
+    var chatPickerQuery = ""
+    /// A picture's row under the pointer (the pin it offers).
+    var chatPickerHover: String?
     /// The designs with pets: the pet of the session most in need beside the notch at rest.
     var petAtRest = true
     /// Creatures: the pointer over the board, in the board's points (nil: not over it), for the

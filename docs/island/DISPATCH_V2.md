@@ -126,8 +126,12 @@ Its layout follows the reference the owner gave, not its look:
   **Send whenever:** done or still at work, the session takes the new message at once and
   works on it in the window, live; the notch is left alone. (fn asks more by voice the same
   way.)
-- **Make it bigger or smaller:** drag its bottom-right corner, or pinch on the trackpad. The
-  window and everything in it scale together (70–160 %), its top-left staying put.
+- **Make it bigger or smaller:** drag any of its four edges or four corners, as a Mac window's
+  (Oct 24, Ryan: "by dragging all four sides of that chat. So it behaves like any other Mac OS
+  apps"), or pinch on the trackpad. The side dragged follows the pointer and the side across
+  stays; the pointer is the Mac's resize pointer for that side. The window resizes (70–240 %, the
+  screen the last limit) and its words reflow (Oct 11: they no longer scale). The bottom-right
+  grip is gone.
 - **Every exchange stays in it.** With follow-ups, the window lists each question and what came
   back (one the person moved on from says so), the newest coming into view as it is asked.
   **A rail at its right edge, after Notion's outline,** has a short line per question, the one
@@ -157,7 +161,7 @@ The island stretches sideways, as coucou, boring.notch and Atoll do (open panels
 | Board | Focus 336 (screen 336 × 210), a 20 pt gap, list 234 (rows 50 tall: a 64 pt thumbnail, the name and the state) |
 | Expanded chat | Header 40; request 15 semibold; the response beside a 268 × 167.5 screen, scrolling past 280; status 34; bar 36; grab bar 40 × 5 |
 | Transcribing | The aura, clipped to the progress; 1.4 s |
-| Pulled out | Windows 340 × 468 at 70–160 %, radius 16, the follow-up box 34 tall, the scale corner 14; tabs 34 × 76; a side catches within 12 pt |
+| Pulled out | Windows 340 × 468 at 70–240 %, radius 16, the follow-up box 34 tall, its sides 8 wide and its corners 16 square, half outside it; tabs 34 × 76; a side catches within 12 pt |
 | The rail | A 2 pt line per question, 9–17 pt long by its length, 7 apart, white 0.9 in view and 0.24 else; a 22 pt gutter; hovered, a 220 pt card of 26 pt rows |
 | Motion | Open 0.34 s, resize 0.3, close 0.24, all critically damped; content in 0.2 s ease-out-quint, 80 ms behind the shape |
 

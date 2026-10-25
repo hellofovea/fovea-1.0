@@ -44,6 +44,8 @@ package enum LiveSmoke {
         await selectionMarks()
         await landing(model, live)
         await cases(controller, model)
+        await openAnyChat(controller, model)
+        await askedBefore(controller, model)
         print(failures.isEmpty ? "SMOKE PASS" : "SMOKE FAIL: \(failures.count) check(s)")
         for name in failures { print("  failed: \(name)") }
         return failures.isEmpty
@@ -496,6 +498,34 @@ package enum LiveSmoke {
               && (after.map { $0.origin.y + $0.size.height <= model.detachedArea.height } ?? false),
               "\(after?.size ?? .zero) at \(after?.origin ?? .zero)")
         model.resizeDetachedV2(id, to: base)
+        // Oct 24, Ryan: its four sides and corners resize it, as a Mac window's: the side dragged
+        // moves, the one across from it stays.
+        func frame() -> CGRect { model.v2Detached.first { $0.id == id }.map { CGRect(origin: $0.origin, size: $0.size) } ?? .zero }
+        func drag(_ x: Int, _ y: Int, by moved: CGSize) {
+            let edge = V2WindowEdge(x: x, y: y)
+            model.resizeDetachedV2(id, edge: edge, from: frame(), by: moved)
+            model.endResizeDetachedV2(id, edge: edge)
+        }
+        let start = frame()
+        drag(-1, 0, by: CGSize(width: -60, height: 0))
+        let left = frame()
+        check("its left edge, dragged out, widens it; its right edge stays",
+              abs(left.width - (start.width + 60)) < 0.5 && abs(left.maxX - start.maxX) < 0.5 && left.height == start.height, "\(left)")
+        drag(0, -1, by: CGSize(width: 0, height: -40))
+        let top = frame()
+        check("…its top edge, up, makes it taller; its foot stays",
+              abs(top.height - (left.height + 40)) < 0.5 && abs(top.maxY - left.maxY) < 0.5 && top.width == left.width, "\(top)")
+        drag(-1, -1, by: CGSize(width: 30, height: 30))
+        let corner = frame()
+        check("…its top-left corner, in, makes it smaller both ways; its bottom-right corner stays",
+              abs(corner.width - (top.width - 30)) < 0.5 && abs(corner.height - (top.height - 30)) < 0.5
+              && abs(corner.maxX - top.maxX) < 0.5 && abs(corner.maxY - top.maxY) < 0.5, "\(corner)")
+        drag(1, 0, by: CGSize(width: -2000, height: 0))
+        let least = frame()
+        check("…past its smallest, it springs back to it, its left edge where it was",
+              abs(least.width - base.width * WorkbenchTokens.V2.detachedResize.lowerBound) < 0.5 && abs(least.minX - corner.minX) < 0.5,
+              "\(least)")
+        model.resizeDetachedV2(id, to: base)
 
         // Let go at a side: it tucks into a tab there; a click brings it back out.
         model.moveDetachedV2(id, to: CGPoint(x: model.detachedArea.width - 80, y: 300))
@@ -634,10 +664,126 @@ package enum LiveSmoke {
         controller.onOpenMemory = { opened = $0 }
         model.postMemoryV2(V2MemoryNotice(id: "memory-smoke", title: "Your afternoon meetings"))
         let shown = await until(C.memoryDelay + 1) { model.cases.memoryNotice != nil && model.notchState == .v2Board }
-        check("Remembered: a row on the board, at rest", shown && model.v2BoardLayout.notice > 0, "\(model.notchState)")
+        let drawn = !model.boardSearchShown || model.v2BoardLayout.openChat.contains { $0.kind == .notice }
+        check("Remembered: a row on the board, at rest", shown && model.v2BoardLayout.notice > 0 && drawn,
+              "\(model.notchState) \(model.v2BoardLayout.openChat.map(\.kind))")
         model.openMemoryNotice()
         check("…Open goes to it (the app's hook)", opened == "memory-smoke" && model.cases.memoryNotice == nil)
         controller.onOpenMemory = nil
+        controller.stage("rest")
+        model.demoSamples = false
+        model.notchState = .silent
+    }
+
+    // MARK: Oct 24, Ryan: every session asked more than once; the outline; whose words are whose
+
+    private static func askedBefore(_ controller: IslandController, _ model: WorkbenchModel) async {
+        let V = WorkbenchTokens.V2.self
+        controller.stage("chats:board"); await settle(0.3)
+        let counts = model.v2BoardOrder.map { model.v2Turns($0.id).count }
+        check("Every session on the board was asked more than once", !counts.isEmpty && counts.allSatisfy { $0 >= 2 }, "\(counts)")
+        model.openV2("t-snapshots"); await settle(0.4)
+        let usual = model.v2ChatLayout
+        let turns = model.v2Turns("t-snapshots")
+        check("…opened, its requests at the usual size, the outline at the right in a gutter the words leave it",
+              usual.history && turns.count == 3 && abs(usual.column - (usual.contentWidth - V.outlineGutter)) < 0.5
+              && abs(usual.barWidth - usual.contentWidth) < 0.5, "\(turns.count) requests, column \(usual.column)")
+        check("…each request a bubble at the right, at most its share of the column; the answer open at the left",
+              turns.allSatisfy { V2RequestBubble.bubbleWidth($0.question, width: usual.column) <= V2RequestBubble.widest(usual.column) + 0.5 }
+              && V2RequestBubble.widest(usual.column) < usual.column)
+        await shot("41-asked-before", model)
+        model.setV2Size(.expanded); await settle(0.5)
+        check("…expanded, every request, the outline in the margin",
+              model.v2ChatLayout.size == .expanded && V2Outline.items(model.v2Turns("t-snapshots")).count == 3)
+        await shot("42-asked-before-expanded", model)
+        model.setV2Size(.usual); await settle(0.3)
+        model.closeV2Chat(); await settle(0.3)
+        // A sample chat opened from the search: its exchanges so far, the last one where it is now.
+        if let chat = ChatBook.chat("cx-investors", in: ChatBook.chats) { model.openChat(chat) }
+        let id = model.v2Focus ?? ""
+        check("A sample chat opened from the search opens on its exchanges so far, the last where it is now",
+              model.notchState == .v2Chat && model.v2Turns(id).count == 3 && model.v2FocusTask?.answer != nil
+              && model.v2ChatLayout.history && !model.isBlankChat(id), "\(model.v2Turns(id).count)")
+        model.askMoreV2(id, text: "Shorten it to four paragraphs", inWindow: true)
+        check("…asked there, its last exchange joins the ones before", (model.v2History[id] ?? []).count == 3
+              && model.v2Turns(id).last?.question == "Shorten it to four paragraphs", "\((model.v2History[id] ?? []).count)")
+        controller.stage("rest")
+        model.demoSamples = false
+        model.notchState = .silent
+    }
+
+    // MARK: Oct 24, Ryan: open any chat from the board (Feedback/OpenChat.swift)
+
+    private static func openAnyChat(_ controller: IslandController, _ model: WorkbenchModel) async {
+        let O = WorkbenchTokens.OpenChat.self
+        controller.stage("chats:hello"); await settle(0.3)
+        check("Open any chat: with nothing running, the greeting and the search beside it",
+              model.notchState == .v2Board && model.v2BoardLayout.openChat.first?.kind == .hello,
+              "\(model.v2BoardLayout.openChat.map(\.kind))")
+        controller.stage("chats:board"); await settle(0.3)
+        let parts = model.v2BoardLayout.openChat.map(\.kind)
+        check("…running, the search on a bar over the board, the pinned chats first",
+              parts.first == .header && parts.dropFirst().first == .pinned && parts.contains(.sessions), "\(parts)")
+        // Five sessions in view: their rows, and a seam before each state's part that starts in them.
+        let B = WorkbenchTokens.Board.self
+        var before = 0
+        let seams = CGFloat(max(0, model.v2BoardSections.prefix { part in
+            defer { before += part.tasks.count }
+            return before < O.rowsVisible
+        }.count - 1))
+        let sessions = model.v2BoardLayout.openChat.first { $0.kind == .sessions }?.height ?? 0
+        check("…its sessions five in view, the rest a scroll away",
+              model.v2BoardOrder.count > O.rowsVisible && model.v2BoardLayout.scrolls
+              && abs(sessions - (CGFloat(O.rowsVisible) * B.row + seams * B.groupGap)) < 0.5,
+              "\(model.v2BoardOrder.count) sessions, \(sessions) pt")
+        model.openChatPicker(); await settle(0.3)
+        let listed = model.chatPickerSections.reduce(0) { $0 + $1.chats.count }
+        check("…the search lists every chat", model.chatPickerOpen && listed == ChatBook.chats.count, "\(listed) of \(ChatBook.chats.count)")
+        // The headers of the parts the first five chats are in (Suggested 1, Pinned 3, Recent 1).
+        var seen = 0
+        let heads = CGFloat(model.chatPickerSections.prefix { section in
+            defer { seen += section.chats.count }
+            return seen < O.rowsVisible
+        }.count)
+        check("…five in view, the rest a scroll away",
+              abs(OpenChatResults.height(model: model) - (heads * O.sectionHeader + CGFloat(O.rowsVisible) * O.row)) < 0.5,
+              "\(OpenChatResults.height(model: model))")
+        model.panelPointer(away(model)); await settle(WorkbenchTokens.Panel.exitGrace + 0.4)
+        check("…it stays while the pointer is away", model.notchState == .v2Board && model.chatPickerOpen, "\(model.notchState)")
+        model.chatPickerQuery = "gaze"
+        let found = model.chatPickerSections.flatMap(\.chats)
+        check("…typed, the chats with the words", !found.isEmpty && found.allSatisfy {
+            $0.title.localizedCaseInsensitiveContains("gaze") || $0.folder.localizedCaseInsensitiveContains("gaze") }, "\(found.count)")
+        model.chatPickerQuery = ""
+        if let blocked = ChatBook.chats.first(where: { model.v2ChatBlock($0) != nil }) {
+            model.openChat(blocked)
+            check("…one that can't take a request doesn't open", model.notchState == .v2Board && model.chatPickerOpen)
+        }
+        let picked = ChatBook.chat("cx-landing", in: ChatBook.chats)
+        if let picked { model.openChat(picked) }
+        let id = model.v2Focus ?? ""
+        check("…a chat picked opens in the notch, nothing sent yet, its box ready",
+              model.notchState == .v2Chat && model.isOpenedChat(id) && model.v2ChatFromBoard && model.v2FocusTask?.session == picked?.title,
+              "\(model.notchState)")
+        await shot("40-open-any-chat-opened", model)
+        model.askMoreV2(id, text: "Tighten the hero copy", inWindow: true)
+        check("…asked there, it works in that chat and joins the board",
+              !model.isOpenedChat(id) && model.v2Task(id)?.state == .working && model.v2BoardOrder.contains { $0.id == id }
+              && (model.v2History[id] ?? []).isEmpty, "\(model.v2Task(id)?.state as Any)")
+        model.closeV2Chat()
+        check("…and closing it comes back to the board", model.notchState == .v2Board, "\(model.notchState)")
+        // Pins are kept (a staged state's aren't).
+        model.demoSamples = false
+        model.togglePin("cx-hotkey")
+        check("…a pin is kept in the prefs", controller.prefsForSmoke.pinnedChats.last == "cx-hotkey")
+        model.togglePin("cx-hotkey")
+        check("…and so is unpinning", controller.prefsForSmoke.pinnedChats == model.pinnedChats
+              && !controller.prefsForSmoke.pinnedChats.contains("cx-hotkey"))
+        model.openChatPicker()
+        _ = model.escape()
+        check("…Esc closes the search first", model.notchState == .v2Board && !model.chatPickerOpen)
+        _ = model.escape()
+        check("…then the board", model.notchState == .silent, "\(model.notchState)")
         controller.stage("rest")
         model.demoSamples = false
         model.notchState = .silent

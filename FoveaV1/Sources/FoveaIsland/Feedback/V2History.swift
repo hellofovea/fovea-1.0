@@ -180,19 +180,20 @@ struct V2SessionHistory: View {
                 VStack(alignment: .leading, spacing: V.historyTurnGap) {
                     ForEach(turns) { turn in
                         VStack(alignment: .leading, spacing: V.historyQuestionGap) {
-                            // The person's request on its band, gone to by it (a short view, so
-                            // the landing's margin holds however tall the exchange is); the
-                            // agent's answer open on the black. Oct 21, Ryan ("simpler is
+                            // The person's request in its bubble at the right, gone to by it (a
+                            // short view, so the landing's margin holds however tall the exchange
+                            // is); the agent's answer open at the left. Oct 21, Ryan ("simpler is
                             // better"): no creature in the margin beside it.
                             // Oct 15 review, QA07: the last request, editable once it's answered.
                             Group {
                                 if turn.id == now {
-                                    V2EditableQuestion(model: model, task: task, lines: 3) {
-                                        V2PromptBlock(text: turn.question, width: layout.column)
+                                    V2EditableQuestion(model: model, task: task, lines: 3,
+                                                       beside: V2RequestBubble.bubbleWidth(turn.question, width: layout.column)) {
+                                        V2RequestBubble(text: turn.question, width: layout.column)
                                     }
                                     .frame(width: layout.column)
                                 } else {
-                                    V2PromptBlock(text: turn.question, width: layout.column)
+                                    V2RequestBubble(text: turn.question, width: layout.column)
                                 }
                             }
                             .id(V2Outline.turnID(turn.id))
@@ -220,7 +221,7 @@ struct V2SessionHistory: View {
                     V2OutlineRail(items: items, inView: inView, height: layout.body - 2 * V.gap, shown: model.v2OutlineShown) { id in
                         withAnimation(WorkbenchTokens.Spring.rows) { proxy.scrollTo(id, anchor: landing) }
                     }
-                    .padding(.trailing, V.outlineInset)
+                    .padding(.trailing, layout.size == .expanded ? V.outlineInset : 0)
                 }
             }
             // The one now alone taller than the room: once laid out, its request comes to the top,
@@ -301,7 +302,7 @@ struct V2SessionHistory: View {
     static func turnHeight(model: WorkbenchModel, task: AgentTaskItem, turn: V2Turn, now: Bool, width: CGFloat) -> CGFloat {
         let V = WorkbenchTokens.V2.self
         let F = WorkbenchTokens.FeedbackV2.self
-        var h = V2PromptBlock.height(turn.question, width: width) + V.historyQuestionGap
+        var h = V2RequestBubble.height(turn.question, width: width) + V.historyQuestionGap
         if now {
             if let kind = model.v2CaseBody(task) {
                 h += V2CaseBodyView.height(model: model, task: task, kind: kind, width: width)
@@ -333,7 +334,8 @@ struct V2SessionHistory: View {
 struct V2SampleTurn {
     let question: String
     let answer: String
-    let work: V2Work
+    /// None when it answered without using a tool.
+    let work: V2Work?
 }
 
 extension V2Request {
@@ -478,37 +480,45 @@ extension V2Request {
 
 // MARK: The person's request
 
-/// The person's request in the history: on a quiet band, after the prompt's chevron, as the agents'
-/// own command lines print what was typed. Not a bubble: the column's full width, square to it,
-/// never to one side.
-struct V2PromptBlock: View {
+/// The person's request: a bubble at the column's right (Oct 24, Ryan), hugging its words up to
+/// `V2.bubbleShare` of the column; the agent's answer sits open at the left under it.
+struct V2RequestBubble: View {
     let text: String
+    /// The column it sits in.
     let width: CGFloat
+    var lines: Int? = nil
 
     var body: some View {
         let V = WorkbenchTokens.V2.self
-        HStack(alignment: .firstTextBaseline, spacing: 0) {
-            Text(Image(systemName: "chevron.right")).font(V.promptGlyph).foregroundStyle(V.promptGlyphColor)
-                .frame(width: V.promptGlyphWidth, alignment: .leading)
-            Text(text)
-                .font(.system(size: V.promptSize, weight: .medium))
-                .lineSpacing(V.promptSpacing)
-                .foregroundStyle(V.promptColor)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.horizontal, V.promptPaddingH)
-        .padding(.vertical, V.promptPaddingV)
-        .frame(width: width, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: V.promptRadius, style: .continuous).fill(V.promptFill))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("You asked: \(text)")
+        Text(text)
+            .font(.system(size: V.bubbleSize))
+            .lineSpacing(V.bubbleSpacing)
+            .foregroundStyle(V.bubbleColor)
+            .lineLimit(lines)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, V.bubblePaddingH)
+            .padding(.vertical, V.bubblePaddingV)
+            .background(RoundedRectangle(cornerRadius: V.bubbleRadius, style: .continuous).fill(V.bubbleFill))
+            .frame(maxWidth: Self.widest(width), alignment: .trailing)
+            .frame(width: width, alignment: .trailing)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("You asked: \(text)")
     }
 
-    static func height(_ text: String, width: CGFloat) -> CGFloat {
+    /// The widest a bubble gets in a column.
+    static func widest(_ width: CGFloat) -> CGFloat { (width * WorkbenchTokens.V2.bubbleShare).rounded(.down) }
+
+    /// Its width in a column: its words on one line, up to the widest, and its padding.
+    static func bubbleWidth(_ text: String, width: CGFloat) -> CGFloat {
         let V = WorkbenchTokens.V2.self
-        return V2Geometry.measure(text, size: V.promptSize, weight: .medium,
-                                  width: width - 2 * V.promptPaddingH - V.promptGlyphWidth, spacing: V.promptSpacing)
-            + 2 * V.promptPaddingV
+        let inner = widest(width) - 2 * V.bubblePaddingH
+        return min(V2Geometry.lineWidth(text, size: V.bubbleSize), inner) + 2 * V.bubblePaddingH
+    }
+
+    static func height(_ text: String, width: CGFloat, lines: Int? = nil) -> CGFloat {
+        let V = WorkbenchTokens.V2.self
+        return V2Geometry.measure(text, size: V.bubbleSize, width: widest(width) - 2 * V.bubblePaddingH,
+                                  spacing: V.bubbleSpacing, lines: lines)
+            + 2 * V.bubblePaddingV
     }
 }

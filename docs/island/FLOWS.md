@@ -173,7 +173,8 @@ The main path:
   `V2DetachedLayer`.
 - A window drags anywhere, and docks to a side and back: `moveDetachedV2`,
   `endMoveDetachedV2`, `undockV2`.
-- A window scales from its bottom-right corner or a pinch (`scaleDetachedV2`, 70–160 %).
+- A window resizes from any edge or corner (`V2WindowEdges`, `resizeDetachedV2(_:edge:from:by:)`)
+  or a pinch (`resizeDetachedV2(_:to:)`), 70–240 %; the side across from the one dragged stays.
 - A window lists every exchange (`v2Turns`, kept in `v2History` by `askMoreV2`). With
   follow-ups, `V2TurnRail` at its right edge marks the one in view and, hovered, lists the
   questions to jump to.

@@ -53,6 +53,14 @@ package final class IslandController {
         model.boardStyle = .badges
         model.petAtRest = false
         model.display = Screens.metrics(for: screen)
+        // Oct 24, Ryan: the search and the pinned chats on the board, the pins kept in the prefs
+        // (not a staged state's).
+        model.boardSearch = true
+        model.pinnedChats = prefs.prefs.pinnedChats
+        model.onPinsChanged = { [weak self] pins in
+            guard let self, !self.model.demoSamples, self.prefs.prefs.pinnedChats != pins else { return }
+            self.prefs.prefs.pinnedChats = pins
+        }
         apply(prefs.prefs, preview: false)
         // Oct 15 review, ST-03.1: the shortcuts as recorded drive the island (IslandInput.swift).
         installShortcuts()
@@ -347,8 +355,10 @@ package final class IslandController {
     private var pointerStyle: ScreenPointer.Style = .system
     private func updatePointer() {
         guard live.smoke == nil else { return }
+        // Oct 24: on a pulled-out chat's side, the Mac's resize pointer for it.
         let style: ScreenPointer.Style = model.capturing ? .crosshair
-            : model.highlighting ? .custom(AccentArrow.cursor(model.accent)) : .system
+            : model.highlighting ? .custom(AccentArrow.cursor(model.accent))
+            : model.v2ResizeEdge.map { .custom(Self.resizeCursor($0)) } ?? .system
         let changed: Bool
         switch (style, pointerStyle) {
         case (.system, .system), (.crosshair, .crosshair): changed = false
@@ -358,6 +368,25 @@ package final class IslandController {
         guard changed else { return }
         pointerStyle = style
         ScreenPointer.set(style)
+    }
+
+    /// The Mac's own resize pointer for a side (or a corner) of a window.
+    private static func resizeCursor(_ edge: V2WindowEdge) -> NSCursor {
+        if #available(macOS 15, *) {
+            let position: NSCursor.FrameResizePosition
+            switch (edge.x, edge.y) {
+            case (-1, -1): position = .topLeft
+            case (0, -1): position = .top
+            case (1, -1): position = .topRight
+            case (-1, 0): position = .left
+            case (1, 0): position = .right
+            case (-1, 1): position = .bottomLeft
+            case (0, 1): position = .bottom
+            default: position = .bottomRight
+            }
+            return NSCursor.frameResize(position: position, directions: .all)
+        }
+        return edge.x == 0 ? .resizeUpDown : .resizeLeftRight
     }
 
     // MARK: Keys
@@ -400,6 +429,7 @@ package final class IslandController {
     private func observeModel() {
         withObservationTracking {
             _ = model.notchState; _ = model.capturing; _ = model.highlighting; _ = model.v2DragOut; _ = model.v2Detached
+            _ = model.v2ResizeEdge
             _ = model.previewing; _ = model.highlights; _ = model.flights
         } onChange: { [weak self] in
             Task { @MainActor in
@@ -479,6 +509,7 @@ package final class IslandController {
         model.clearReferents()
         model.highlights = []
         model.v2Size = .usual
+        model.chatPickerOpen = false
         apply(prefs.prefs, preview: false)
         model.demoSamples = true
         let parts = name.split(separator: ":").map(String.init)
@@ -629,6 +660,10 @@ package final class IslandController {
             model.agentTasks = []
             model.v2Sessions = []
             model.showAgentPanel(pinned: true)
+        // Oct 24, Ryan: open any chat from the board (Feedback/OpenChat.swift):
+        // `chats:hello|pinned|board|open|search|opened`.
+        case "chats":
+            model.stageOpenChat(option ?? "board")
         // Asking more by voice: the band under the notch, the session below it (Oct 9, late).
         case "asksOver":
             model.stageV2(.chat)
@@ -671,7 +706,14 @@ package final class IslandController {
         names += ["referents:5", "referents:12:open", "referents:4:other", "referents:5:send"]
         // Oct 15 review, Dispatch's sessions.
         names += caseStageNames
+        // Oct 24, Ryan: open any chat, each design.
+        names += openChatStageNames
         return names
+    }
+
+    /// Oct 24, Ryan: open any chat, in every state (docs/island/OPEN_ANY_CHAT.md).
+    package static var openChatStageNames: [String] {
+        ["hello", "pinned", "board", "open", "search", "opened"].map { "chats:\($0)" }
     }
 
     /// `--design-shots`: what's on the screen under the island to take (a document's lines, a file,
