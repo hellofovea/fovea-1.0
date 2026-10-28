@@ -652,3 +652,23 @@
 "hardest" = "最深入";
 "How hard it thinks, the model and the approvals" = "思考强度、模型和审批";
 "Suggested chats, and every chat: ⌃" = "推荐的聊天，以及所有聊天：⌃";
+
+/* Oct 28: Wings' short words (Wings.swift's wingsTitle and wingsLabel, the ring's label), which had
+   none, found by fovea-mac's NotchLocalizationTests. The long forms above are the notices' titles. */
+"No speech" = "没听到声音";
+"Too short" = "录音太短";
+"Mic access off" = "麦克风已关闭";
+"No microphone" = "没有麦克风";
+"Speech access off" = "语音识别已关闭";
+"Screen Recording off" = "录屏已关闭";
+"Image over 20 MB" = "图片超过 20 MB";
+"Offline" = "已离线";
+"Service down" = "服务不可用";
+"Signed out" = "已退出登录";
+"Limit reached" = "已达用量上限";
+"Pro expired" = "Pro 已过期";
+"Too long" = "录音过长";
+"Sign In" = "登录";
+"Choose" = "选择";
+"Progress" = "进度";
+"Time left" = "剩余时间";
