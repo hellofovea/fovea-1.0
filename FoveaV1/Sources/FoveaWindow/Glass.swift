@@ -94,6 +94,44 @@ extension EnvironmentValues {
     }
 }
 
+/// Oct 27, Notion White (`T.Look.floats`): a white card floating on the grey ground, with Arc
+/// UI's two-layer shadows; in dark, a faint edge so it holds against the ground.
+struct FloatSurface<S: InsettableShape>: ViewModifier {
+    @Environment(\.palette) private var palette
+    let shape: S
+    var layers: [T.Look.Shadow]
+    var fill: Color?
+
+    func body(content: Content) -> some View {
+        content
+            .background { FloatFill(shape: shape, layers: layers, fill: fill ?? palette.card) }
+            .overlay { if palette.isDark { shape.strokeBorder(Color.white.opacity(0.06), lineWidth: 0.5) } }
+    }
+}
+
+/// The fill and its shadows, each layer on a shape of its own so they don't shadow each other.
+struct FloatFill<S: Shape>: View {
+    @Environment(\.palette) private var palette
+    let shape: S
+    var layers: [T.Look.Shadow] = T.Look.resting
+    let fill: Color
+
+    var body: some View {
+        let l = T.Look.darkened(layers, palette.isDark)
+        ZStack {
+            ForEach(l.indices, id: \.self) { i in
+                shape.fill(fill).shadow(color: .black.opacity(l[i].opacity), radius: l[i].radius, y: l[i].y)
+            }
+        }
+    }
+}
+
+extension View {
+    func floating<S: InsettableShape>(_ shape: S, _ layers: [T.Look.Shadow] = T.Look.resting, fill: Color? = nil) -> some View {
+        modifier(FloatSurface(shape: shape, layers: layers, fill: fill))
+    }
+}
+
 /// A surface Aside's way (`T.Shade`): its fill, a 0.5 pt edge just inside it (the ink at 8 %),
 /// and one soft shadow. Oct 21, Ryan ("simpler is better"): one shadow, not a tight one under a
 /// wide one, and no rim of light along the top in dark.
@@ -110,7 +148,9 @@ struct Shading<S: InsettableShape>: ViewModifier {
         // are (no edge, no shadow); only what floats over the page (the expanded card, a popover)
         // keeps its shadow, and an edge so it holds against what's under it.
         let floats = level == .raised || level == .floating
-        if WindowLook.isAligned && !floats {
+        if T.Look.floats {
+            content.floating(shape, level == .floating ? T.Look.floating : (level == .raised ? T.Look.raised : T.Look.resting), fill: fill)
+        } else if WindowLook.isAligned && !floats {
             content.background(shape.fill(fill ?? palette.card))
         } else {
             content
@@ -137,7 +177,10 @@ struct GlassSurface<S: InsettableShape>: ViewModifier {
     var interactive = false
 
     func body(content: Content) -> some View {
-        if liquid, #available(macOS 26.0, *) {
+        // Oct 27, Notion White: every control a white card floating on the grey (Arc UI's).
+        if T.Look.floats {
+            content.floating(shape, T.Look.resting, fill: tint)
+        } else if liquid, #available(macOS 26.0, *) {
             content.glassEffect(glass, in: shape)
         } else {
             content

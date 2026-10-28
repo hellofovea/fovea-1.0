@@ -13,8 +13,6 @@ struct WorkbenchOptions {
     var smoke = false
     var playDemo = false
     var recording: URL?
-    /// `--density=compact|spacious`: the open panels' room for this run (not remembered).
-    var density: PanelDensity?
     /// `--design=original|native`: the notch's design for this run (not remembered).
     var design: NotchDesign?
     /// `--native-panels=attached|floating`: how Native's panels meet the notch for this run.
@@ -32,9 +30,6 @@ struct WorkbenchOptions {
         options.playDemo = args.contains("--play-demo")
         if let i = args.firstIndex(of: "--record"), args.count > i + 1 {
             options.recording = URL(fileURLWithPath: args[i + 1])
-        }
-        if let flag = args.first(where: { $0.hasPrefix("--density=") }) {
-            options.density = PanelDensity(rawValue: String(flag.dropFirst("--density=".count)))
         }
         if let flag = args.first(where: { $0.hasPrefix("--design=") }) {
             options.design = NotchDesign(rawValue: String(flag.dropFirst("--design=".count)))
@@ -84,6 +79,9 @@ enum NotchState: String, CaseIterable, Identifiable {
     /// Dispatch Version 2 (WorkbenchModel+DispatchV2.swift): its voice bar (Voiceflow's); Choose
     /// chat; the control board; a session's expanded chat.
     case v2Voice, v2Transcribing, v2Send, v2Board, v2Chat
+    /// Oct 26, Ryan ("vibe island pops up when the agent needs approval/work is done"): a session
+    /// that needs you, or is done, pops out of the notch at rest by itself (Feedback/V2Alert.swift).
+    case v2Alert
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -104,6 +102,7 @@ enum NotchState: String, CaseIterable, Identifiable {
         case .v2Send: return "Choose chat"
         case .v2Chat: return "Expanded chat"
         case .v2Board: return "Control board"
+        case .v2Alert: return "A session pops up"
         }
     }
     /// The island's geometry for the state: Core lays out each density, corners included,
@@ -118,7 +117,7 @@ enum NotchState: String, CaseIterable, Identifiable {
         case .voiceFlow, .transcribing, .cancelled, .noSpeech, .pasteNotFound, .voiceError: return .voiceflow
         case .dispatchVoice, .chooseChat, .chatsExpanded, .chatsAll, .agentPanel: return .dispatch
         case .quickVoice, .quickThinking: return .quickActions
-        case .v2Voice, .v2Transcribing, .v2Send, .v2Board, .v2Chat: return .dispatchV2
+        case .v2Voice, .v2Transcribing, .v2Send, .v2Board, .v2Chat, .v2Alert: return .dispatchV2
         }
     }
     /// The microphone is open.
@@ -354,6 +353,13 @@ final class WorkbenchModel {
     var stackScroll: CGFloat = 0
     /// Oct 17, Ryan: a file dragged onto the notch is over it (its drop state shows).
     var fileDropTargeted = false
+    /// Oct 25, Ryan: how many files that drag carries, for the drop state's words.
+    var fileDropCount = 1
+    /// Oct 27, Ryan: a file drag has come near the notch while it listens: the drop zone opens
+    /// under it, where the hardware hides nothing.
+    var fileDragNear = false
+    /// Oct 27, Ryan: the first run's drawn guide, if one is up (Live/IslandGuideMarks.swift).
+    var guideMark: IslandGuideMark?
     /// How the island and the cards move for the change being made; set with the change.
     @ObservationIgnored var islandAnimation: Animation = WorkbenchTokens.Motion.open
     @ObservationIgnored var cardChange: CardChange = .settle
@@ -585,7 +591,6 @@ final class WorkbenchModel {
     var v2PickStorage: V2Suggestion?
     var v2Browsing = false
     var v2BrowseAgent = ChatBook.predictedAgent
-    var v2BrowseProject: String?
     /// The taken thing being looked at closer in Choose chat.
     var v2Inspecting: UUID?
     /// The expanded chat: opened from the board (✕ goes back there); the pointer on it; read.
@@ -689,16 +694,11 @@ final class WorkbenchModel {
         }
     }
     static let nativePanelsKey = "workbench.nativePanels"
-    /// The open panels' room (docs/island/SPACIOUS.md): every token that follows it reads it.
-    var density: PanelDensity = .spacious {
-        didSet {
-            DensityStore.shared.value = density
-            if !snapshotMode && !options.smoke && options.density == nil {
-                UserDefaults.standard.set(density.rawValue, forKey: Self.densityKey)
-            }
-        }
-    }
-    static let densityKey = "workbench.density"
+    /// Oct 26, Ryan: the session popped up by itself (Feedback/V2Alert.swift), the pointer on it,
+    /// and its time.
+    var v2Alert: V2Alert?
+    var v2AlertHovered = false
+    @ObservationIgnored var v2AlertClose: Task<Void, Never>?
     /// The press of ⌘ under way turned capture mode on (nil: no press, or not on a bar).
     @ObservationIgnored var commandTurnedOn: Bool?
     @ObservationIgnored let leftCommandKey = ModifierHoldMonitor.leftCommand()
@@ -760,8 +760,6 @@ final class WorkbenchModel {
     @ObservationIgnored var offscreenRender = false
     /// #16: the steps watched in the session or on the board.
     var feedbackStepsStage: StepsStage = .session
-    /// The control board's design (#9–10, #17, round three).
-    var boardStyle: BoardStyle = .sections
     /// Oct 24, Ryan: any chat opened from the board, pinned ones kept there, a search always in
     /// reach, on a bar over the board (Feedback/OpenChat.swift, docs/island/OPEN_ANY_CHAT.md). The
     /// real Mac's board; the Workbench's is as it was.
@@ -776,11 +774,6 @@ final class WorkbenchModel {
     var chatPickerQuery = ""
     /// A picture's row under the pointer (the pin it offers).
     var chatPickerHover: String?
-    /// The designs with pets: the pet of the session most in need beside the notch at rest.
-    var petAtRest = true
-    /// Creatures: the pointer over the board, in the board's points (nil: not over it), for the
-    /// creatures' eyes and the Dock-like growth under it.
-    var v2BoardPointer: CGPoint?
     /// A recording drives the pointer itself (`--record-creatures`); the real one is ignored.
     @ObservationIgnored var pointerScripted = false
     /// #16: the activity line's words (decided: the kind of step only; the board no longer shows one).
@@ -905,9 +898,6 @@ final class WorkbenchModel {
             key.onDoublePress = { [weak self] in self?.captureWholeScreen() }
         }
         accent = snapshot ? .blue : defaults.string(forKey: Self.accentKey).flatMap(FoveaAccent.init(rawValue:)) ?? .blue
-        density = options.density ?? (snapshot || options.smoke ? .spacious
-            : defaults.string(forKey: Self.densityKey).flatMap(PanelDensity.init(rawValue:)) ?? .spacious)
-        DensityStore.shared.value = density
         design = options.design ?? (snapshot || options.smoke ? .original
             : defaults.string(forKey: Self.designKey).flatMap(NotchDesign.init(rawValue:)) ?? .original)
         DesignStore.shared.value = design
@@ -937,7 +927,7 @@ final class WorkbenchModel {
             notchState = .voiceFlow
             live?.director?.islandDidEmit(.voiceOpened(dispatch: false))
         // Dispatch Version 2's own presses are taken first (v2FunctionKey); here fn is dictation.
-        case .v2Voice, .v2Transcribing, .v2Send, .v2Board, .v2Chat:
+        case .v2Voice, .v2Transcribing, .v2Send, .v2Board, .v2Chat, .v2Alert:
             notchState = .voiceFlow
         case .voiceFlow: startTranscribing()
         case .transcribing: notchState = .silent

@@ -47,7 +47,7 @@ let package = Package(
                 dependencies: ["FoveaKit", "FoveaStore", "FoveaPlatform", "FoveaLook", "CapturesCore",
                                .product(name: "FoveaCore", package: "Fovea")],
                 path: "Sources/FoveaIsland",
-                resources: [.copy("Resources/Agents")], swiftSettings: l10n("FoveaIsland")),
+                resources: [.copy("Resources/Agents"), .copy("Resources/Fonts")], swiftSettings: l10n("FoveaIsland")),
         // The window: Home and Settings (UI/Window).
         .target(name: "FoveaWindow",
                 dependencies: ["FoveaKit", "FoveaStore", "FoveaPlatform", "FoveaLook", "CapturesCore",

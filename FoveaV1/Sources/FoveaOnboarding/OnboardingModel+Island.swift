@@ -27,11 +27,12 @@ extension OnboardingModel {
 /// What the first run asks of the rest of Fovea (OnboardingCoordinator does it).
 @MainActor
 protocol OnboardingHost: AnyObject {
-    /// The notch shows the Dispatch bar with its glow, or the board, while choices are made. After
-    /// the board's look has been seen, the glow again if a light was picked (`thenLight`), else
-    /// nothing.
-    func previewAura(_ on: Bool)
-    func previewPanel(thenLight: Bool)
+    /// Make it yours: the board a moment at the notch, as a look or the accent is chosen; then
+    /// nothing. `endPreview` puts it away.
+    func previewPanel()
+    /// Oct 28, Ryan: choosing the accent, the listening bar a moment at the notch, its aurora in it.
+    func previewBar()
+    func endPreview()
     /// The microphone test's bar, and its level.
     func listening(_ on: Bool)
     func listeningLevel(_ level: Double)
@@ -72,6 +73,9 @@ protocol OnboardingHost: AnyObject {
     func pullOut(_ id: String)
     func tuck(_ id: String)
     func bringBack(_ id: String)
+    /// Oct 27, Ryan: the board's search opened, and a past chat opened from it ("Open one for me").
+    func openChatSearch()
+    func openPastChat()
 }
 
 extension OnboardingModel: IslandDirector {
@@ -165,6 +169,37 @@ extension OnboardingModel: IslandDirector {
             if step == .nowhereToType { softBeat(.heldShown) }
         case .heldCopied:
             if step == .nowhereToType { softBeat(.heldTaken) }
+        // Oct 27, Ryan: the board's search, and a past chat opened from it.
+        case .chatSearchOpened:
+            if step == .pastChats { softBeat(.searchOpened) }
+        case .pastChatOpened:
+            island = .session
+            if step == .pastChats { caughtUpPastChat() }
+        }
+    }
+
+    /// A past chat opened (a pinned one, or one found): the search counts as opened too.
+    private func caughtUpPastChat() {
+        if flow.waitingFor?.contains(.searchOpened) == true { beat(.searchOpened) }
+        softBeat(.pastChatOpened)
+    }
+
+    /// Oct 27, Ryan: the board shows its search from the step that teaches it on.
+    func allowsSearch() -> Bool {
+        guard !finished else { return true }
+        guard let here = Step.run.firstIndex(of: step), let taught = Step.run.firstIndex(of: .pastChats) else { return false }
+        return here >= taught
+    }
+
+    /// Oct 27, Ryan: the guide drawn at the notch for what the step waits for now: a ring where to
+    /// hold and an arrow to where it goes (pulling the update out, tucking it at the side), a ring
+    /// round the search.
+    var guideMark: IslandGuideMark? {
+        switch (step, waitingBeat) {
+        case (.hover, .pulledOut?): return .pullOut
+        case (.hover, .tucked?): return .tuck
+        case (.pastChats, .searchOpened?): return .search
+        default: return nil
         }
     }
 

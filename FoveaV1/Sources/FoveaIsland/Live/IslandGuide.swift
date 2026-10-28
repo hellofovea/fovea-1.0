@@ -226,6 +226,18 @@ extension IslandController {
     /// Opens the board, as the hover would.
     package func openBoard() { model.showAgentPanel(pinned: false) }
 
+    /// Oct 27, Ryan: the board's search open ("Open one for me").
+    package func openChatSearch() {
+        if !model.panelOpen { model.showAgentPanel(pinned: true) }
+        if !model.chatPickerOpen { model.openChatPicker() }
+    }
+
+    /// …and a past chat opened from it.
+    package func openPastChat() {
+        openChatSearch()
+        model.openFirstFound()
+    }
+
     /// The first run is over: its sessions leave the board.
     package func clearSessions() {
         let ids = model.directorSessions

@@ -1,5 +1,10 @@
 # Voice input for agents, and the agent at work
 
+> **Oct 27, superseded for the voice bar.** Ryan: "abandon the orbs and aurora completely, i think
+> these are too flashy. go with the voiceflow bars for both voiceflow and dispatch." Fovea 1.0's
+> Dispatch bar shows Voiceflow's small waveform and draws no aura (`BAR_DESIGNS.md`). The aura below
+> stays as the record of what was built.
+
 A research note for the Notch Workbench (2026-09-28). The panel's Notch section has three flows:
 
 - **Voiceflow**: dictation.

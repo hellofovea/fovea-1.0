@@ -107,6 +107,7 @@
 "%lld more" = "还有 %lld 个";
 "What was taken" = "选取的内容";
 "Drop to take it" = "松开即可添加";
+"Drop to take all %lld" = "松开即可添加这 %lld 个";
 "Screenshot from %@" = "来自 %@ 的截图";
 "Screenshot that couldn't be read; it won't be sent" = "这张截图读不出来，不会发送";
 "This screenshot couldn't be read, so it won't be sent" = "这张截图读不出来，所以不会发送";
@@ -618,3 +619,36 @@
 "Last active %@ ago in %@." = "%2$@ 中上次活动于 %1$@ 前。";
 "Ask below: it goes into this chat." = "在下方提问：会发到这个聊天。";
 "Ask in this chat" = "在这个聊天中提问";
+
+/* Oct 26: a session popping up by itself, and the board's designs */
+"%@ is done" = "%@ 完成了";
+"%@ couldn't finish" = "%@ 没能完成";
+"Done · %@" = "完成 · %@";
+"Running · %@" = "运行中 · %@";
+"Unknown" = "未知";
+"The build failed: 2 errors in PayloadCompiler.swift" = "构建失败：PayloadCompiler.swift 中有 2 个错误";
+
+/* Oct 27: the model sheet in two lines, the words editable, the drop zone, the first run's guides. */
+"default" = "默认";
+"Fovea picks the model for the request" = "Fovea 会为这个请求挑选模型";
+"This model answers without thinking longer" = "这个模型不做更长的思考";
+"Click to edit what you said" = "点击即可编辑你说的话";
+"Drop files here" = "把文件放到这里";
+"Let go to add it" = "松开即可加入";
+"Let go to add all %lld" = "松开即可加入全部 %lld 个";
+"Let go to add the files" = "松开即可加入这些文件";
+"Hold here, drag down" = "按住这里，向下拖";
+"Hold the top, drop it at the side" = "按住顶部，拖到屏幕边上";
+"Move your pointer here" = "把指针移到这里";
+
+/* Oct 27: Choose chat, the Sentence */
+"To" = "发到";
+"· thinking" = "· 思考";
+"barely" = "极少";
+"briefly" = "简短";
+"it through" = "仔细";
+"hard" = "深入";
+"harder" = "更深入";
+"hardest" = "最深入";
+"How hard it thinks, the model and the approvals" = "思考强度、模型和审批";
+"Suggested chats, and every chat: ⌃" = "推荐的聊天，以及所有聊天：⌃";

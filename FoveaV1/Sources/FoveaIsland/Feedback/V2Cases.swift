@@ -30,43 +30,44 @@ extension WorkbenchTokens {
     enum Cases {
         // Sending (QA06, QA10): how long "Sending to …" holds before the agent takes the request.
         static let sendingTime: Double = 0.45
-        // Every chat (QA04, QA05): rows before Load More, the list loading again, the search field.
-        static let browsePage = 8
+        // Every chat (QA04, QA05): rows before Show More, the list loading again, the search field.
+        // Oct 27: four, so a folder's New chat, four chats and Show More fill the browser's six rows.
+        static let browsePage = 4
         static let loadTime: Double = 0.8
-        static var searchWidth: CGFloat { pick(150, 172) }
-        static var searchHeight: CGFloat { pick(20, 22) }
-        static var searchFont: Font { pick(Font.system(size: 11.5), .system(size: 12)) }
-        static var searchGlyph: Font { pick(Font.system(size: 9.5, weight: .semibold), .system(size: 10, weight: .semibold)) }
+        static var searchWidth: CGFloat { size(150) }
+        static var searchHeight: CGFloat { size(20) }
+        static var searchFont: Font { Font.system(size: typeSize(11.5)) }
+        static var searchGlyph: Font { Font.system(size: typeSize(9.5), weight: .semibold) }
         static var searchFill: Color { ink(0.07) }
-        static var searchPaddingH: CGFloat { pick(7, 8) }
+        static var searchPaddingH: CGFloat { size(7) }
         static var blockedTitle: Color { ink(0.42) }
-        static var blockedGlyph: Font { pick(Font.system(size: 9, weight: .semibold), .system(size: 9.5, weight: .semibold)) }
+        static var blockedGlyph: Font { Font.system(size: typeSize(9), weight: .semibold) }
         // A status line in place of a row of chips (Sending, Not sent, a list that couldn't load).
-        static var statusFont: Font { pick(Font.system(size: 12, weight: .medium), .system(size: 12.5, weight: .medium)) }
-        static var statusGlyph: Font { pick(Font.system(size: 10.5, weight: .semibold), .system(size: 11, weight: .semibold)) }
-        static var statusGap: CGFloat { pick(6, 7) }
+        static var statusFont: Font { Font.system(size: typeSize(12), weight: .medium) }
+        static var statusGlyph: Font { Font.system(size: typeSize(10.5), weight: .semibold) }
+        static var statusGap: CGFloat { size(6) }
         // Needs you (QA14, QA15).
-        static var needsGap: CGFloat { pick(6, 7) }
-        static var detailRow: CGFloat { pick(18, 20) }
-        static var fileRow: CGFloat { pick(17, 19) }
-        static var choiceRow: CGFloat { pick(24, 26) }
-        static var answerField: CGFloat { pick(26, 28) }
-        static var formRow: CGFloat { pick(26, 28) }
-        static var formLabelWidth: CGFloat { pick(118, 128) }
-        static var labelWidth: CGFloat { pick(78, 86) }
-        static var detailFont: Font { pick(Font.system(size: 11.5), .system(size: 12)) }
-        static var codeFont: Font { pick(Font.system(size: 11, design: .monospaced), .system(size: 11.5, design: .monospaced)) }
+        static var needsGap: CGFloat { size(6) }
+        static var detailRow: CGFloat { size(18) }
+        static var fileRow: CGFloat { size(17) }
+        static var choiceRow: CGFloat { size(24) }
+        static var answerField: CGFloat { size(26) }
+        static var formRow: CGFloat { size(26) }
+        static var formLabelWidth: CGFloat { size(118) }
+        static var labelWidth: CGFloat { size(78) }
+        static var detailFont: Font { Font.system(size: typeSize(11.5)) }
+        static var codeFont: Font { Font.system(size: typeSize(11), design: .monospaced) }
         static var fieldFill: Color { ink(0.07) }
         static var fieldBorder: Color { ink(0.12) }
         static let decisionHold: Double = 3.5
         // The connection (QA16, QA24).
         static let reconnectTime: Double = 1.2
-        static var pillHeight: CGFloat { pick(20, 22) }
-        static var pillFont: Font { pick(Font.system(size: 11, weight: .medium), .system(size: 11.5, weight: .medium)) }
+        static var pillHeight: CGFloat { size(20) }
+        static var pillFont: Font { Font.system(size: typeSize(11), weight: .medium) }
         static var pillFill: Color { ink(0.08) }
-        static var pillPaddingH: CGFloat { pick(8, 9) }
-        static var attemptRow: CGFloat { pick(16, 18) }
-        static var attemptFont: Font { pick(Font.system(size: 11), .system(size: 11.5)) }
+        static var pillPaddingH: CGFloat { size(8) }
+        static var attemptRow: CGFloat { size(16) }
+        static var attemptFont: Font { Font.system(size: typeSize(11)) }
         static var attemptColor: Color { ink(0.4) }
         // Reopening from Home (QA25).
         static let reopenTime: Double = 0.7
@@ -74,10 +75,10 @@ extension WorkbenchTokens {
         static let barLineHold: Double = 4
         static let copiedHold: Double = 1.6
         // Remembered (NH-03): a row on the board, a while.
-        static var memoryRow: CGFloat { pick(34, 38) }
+        static var memoryRow: CGFloat { size(34) }
         static let memoryHold: Double = 12
         static let memoryDelay: Double = 1.2
-        static var memoryGlyph: Font { pick(Font.system(size: 11, weight: .semibold), .system(size: 12, weight: .semibold)) }
+        static var memoryGlyph: Font { Font.system(size: typeSize(11), weight: .semibold) }
         /// A state changing in place: a line, a row of chips, a pill.
         static var change: Animation { WorkbenchTokens.Spring.fadeIn(0.18) }
     }
@@ -297,7 +298,7 @@ extension WorkbenchModel {
     func v2SearchRows(_ query: String) -> [V2BrowseRow] {
         let found = ChatBook.chats
             .filter { $0.agent == v2BrowseAgent }
-            .filter { $0.title.localizedCaseInsensitiveContains(query) || $0.folder.localizedCaseInsensitiveContains(query) }
+            .filter { $0.title.localizedCaseInsensitiveContains(query) }
             .sorted { $0.minutesAgo < $1.minutesAgo }
         guard !found.isEmpty else { return [.status(.noMatch(query))] }
         return v2Paged(found.map { .chat($0) })

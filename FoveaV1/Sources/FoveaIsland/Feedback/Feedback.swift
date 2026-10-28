@@ -102,48 +102,6 @@ enum WorkStage: String, CaseIterable, Identifiable {
     var title: String { self == .working ? "Working" : "Done" }
 }
 
-/// The control board's two designs (#9–10, #17, round three): the state as a section's header
-/// over the agents' icons, or as a badge on each agent's icon.
-enum BoardStyle: String, CaseIterable, Identifiable {
-    case sections, badges, focus, capsules, wings, split, creatures, petList, petCapsules, petDesk, petLanes
-    var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .sections: return "Sections"
-        case .badges: return "Badges"
-        case .focus: return "Focus"
-        case .capsules: return "Capsules"
-        case .wings: return "Wings"
-        case .split: return "Split"
-        case .creatures: return "Pets · Wings"
-        case .petList: return "Pets · List"
-        case .petCapsules: return "Pets · Capsules"
-        case .petDesk: return "Pets · Desk"
-        case .petLanes: return "Pets · Lanes"
-        }
-    }
-
-    /// The designs with the pet (the Lasso, alive), and the pet at rest beside the notch.
-    var hasPets: Bool { [.creatures, .petList, .petCapsules, .petDesk, .petLanes].contains(self) }
-
-    /// What it is, in a line, and where it comes from.
-    var caption: String {
-        switch self {
-        case .sections: return "Every session led by its agent's icon, under Needs you, Done, Running and Status unavailable."
-        case .badges: return "The same rows in one list, the state on a badge at each icon's corner."
-        case .focus: return "The most pressing session as a card with big buttons; the rest on a shelf under it. After Pushary, Atoll and Crew Tower."
-        case .capsules: return "Each session its own small island under the notch, the one waiting on you tallest. After Droppy's bubbles and the Dynamic Island's detached minimal."
-        case .wings: return "The sessions as icons in the notch's wings, their state a ring; the one under the pointer on a stage below. After DynamicLake's and Pushary's wings."
-        case .split: return "The sessions at the left, the one under the pointer read in full at the right. After Boring Notch's and Droppy's two panes."
-        case .creatures: return "The sessions' pets in the notch's wings; the one under the pointer on a stage below. docs/island/CREATURES.md."
-        case .petList: return "Every session a row under Needs you, Done, Running: its pet first (the Lasso, drawn as far as its work has got), its agent's icon by its title."
-        case .petCapsules: return "Each session its own small island under the notch, its pet at the front, its agent's icon by its title."
-        case .petDesk: return "Every session a card, two to a row: its pet, its title, its agent and project, what it is doing."
-        case .petLanes: return "Every session a lane, its pet along it as far as its plan has got; done at the end, waiting in amber where it stopped."
-        }
-    }
-}
-
 /// A part of the board, in the hover list's order (PRD §8): what waits on the person, what came
 /// back, what runs, what can't be read.
 enum BoardSection: Int, CaseIterable, Identifiable {

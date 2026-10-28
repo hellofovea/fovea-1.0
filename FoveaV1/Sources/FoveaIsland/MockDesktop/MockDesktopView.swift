@@ -80,10 +80,6 @@ struct MockScreen: View {
             Group {
                 V2DetachedLayer(model: model)
                 MockIsland(model: model)
-                // The designs with pets: the pet most in need beside the notch at rest.
-                PetAtRest(model: model)
-                // The board's Capsules design: each session its own small island under the notch.
-                V2CapsuleBoard(model: model)
                 CaptureOverlay(model: model)
             }
             .opacity(model.hidingOwnSurfaces ? 0 : 1)

@@ -88,10 +88,14 @@ enum CardSize: String, CaseIterable {
     /// Medium was 236 (Pinterest's column); 220 since Oct 13, so four cards fit a row in the
     /// 1024-pt window, the calendar above as wide as the four.
     var width: CGFloat {
+        if T.Look.compact { return T.Look.cardWidth }
         switch self { case .small: return 200; case .medium: return 220; case .large: return 276 }
     }
+    /// Square, or in Notion White's compact cards shorter than wide (`T.Look.compact`).
+    var height: CGFloat { T.Look.compact ? T.Look.cardHeight : width }
     /// The card's inset, about 6 % of its width (Paste's proportion).
     var padding: CGFloat {
+        if T.Look.compact { return T.Look.cardPadding }
         switch self { case .small: return 12; case .medium: return 14; case .large: return 16 }
     }
 }
@@ -169,11 +173,13 @@ enum CardSpacing: String, CaseIterable {
         }
     }
 
-    /// The card's side inset at a size.
-    func padding(_ size: CardSize) -> CGFloat { size.padding + metrics.inset }
     /// Between cards, both ways; wider on Fovea's quiet-edged schemes, where the space does the
     /// grouping the edges don't.
-    func gridGap(_ surface: Surface) -> CGFloat { metrics.gridGap + (surface.quietEdges ? 4 : 0) }
+    func gridGap(_ surface: Surface) -> CGFloat {
+        T.Look.compact ? T.Look.cardGridGap : metrics.gridGap + (surface.quietEdges ? 4 : 0)
+    }
+    /// The card's side inset at a size: Notion White's compact cards add nothing to theirs.
+    func padding(_ size: CardSize) -> CGFloat { size.padding + (T.Look.compact ? 0 : metrics.inset) }
 }
 
 /// What the card's header names.

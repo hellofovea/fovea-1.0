@@ -175,73 +175,94 @@ struct V2SessionHistory: View {
         let inView = V2Outline.inView(items, tops: tops, height: layout.body)
         // A request gone to lands a margin below the rule, where the first one rests.
         let landing = UnitPoint(x: 0.5, y: V.gap / max(layout.body, 1))
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: V.historyTurnGap) {
-                    ForEach(turns) { turn in
-                        VStack(alignment: .leading, spacing: V.historyQuestionGap) {
-                            // The person's request in its bubble at the right, gone to by it (a
-                            // short view, so the landing's margin holds however tall the exchange
-                            // is); the agent's answer open at the left. Oct 21, Ryan ("simpler is
-                            // better"): no creature in the margin beside it.
-                            // Oct 15 review, QA07: the last request, editable once it's answered.
-                            Group {
-                                if turn.id == now {
-                                    V2EditableQuestion(model: model, task: task, lines: 3,
-                                                       beside: V2RequestBubble.bubbleWidth(turn.question, width: layout.column)) {
-                                        V2RequestBubble(text: turn.question, width: layout.column)
-                                    }
-                                    .frame(width: layout.column)
-                                } else {
-                                    V2RequestBubble(text: turn.question, width: layout.column)
-                                }
-                            }
-                            .id(V2Outline.turnID(turn.id))
-                            Group { if turn.id == now { current } else { past(turn) } }
+        // Drawn off the screen, where a scroll view draws nothing: the stack, clipped, at the end it
+        // would open at.
+        Group { if model.offscreenRender {
+            stack(turns, now: now, space: space)
+                .frame(width: layout.contentWidth, height: layout.body, alignment: layout.scrolls ? .bottom : .top)
+                .clipped()
+                .overlay(alignment: .trailing) {
+                    if items.count > 1 {
+                        V2OutlineRail(items: items, inView: items.last?.id ?? "", height: layout.body - 2 * V.gap,
+                                      shown: model.v2OutlineShown) { _ in }
+                            .padding(.trailing, layout.size == .expanded ? V.outlineInset : 0)
+                    }
+                }
+        } else {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    stack(turns, now: now, space: space)
+                }
+                .scrollIndicators(.never)
+                // Taller than the room, it opens at the foot, the one now in view, and keeps to it as
+                // it grows; once the person opens what an agent did, it grows downward from there.
+                .defaultScrollAnchor(layout.scrolls && !model.v2HistoryHeld ? .bottom : .top)
+                // A new scroll each time the session is expanded, and for each new request, so each
+                // opens where it should rather than where the last one was left.
+                .id("\(task.id)-\(turns.count)-\(model.v2HistoryEpoch)")
+                .coordinateSpace(name: space)
+                .onPreferenceChange(V2OutlineTops.self) { tops = $0 }
+                .overlay(alignment: .trailing) {
+                    if items.count > 1 {
+                        V2OutlineRail(items: items, inView: inView, height: layout.body - 2 * V.gap, shown: model.v2OutlineShown) { id in
+                            withAnimation(WorkbenchTokens.Spring.rows) { proxy.scrollTo(id, anchor: landing) }
                         }
-                        .outlineTop(V2Outline.turnID(turn.id), in: space)
+                        .padding(.trailing, layout.size == .expanded ? V.outlineInset : 0)
                     }
                 }
-                .overlay(alignment: .bottom) { Color.clear.frame(height: 0).outlineTop(V2Outline.endID, in: space) }
-                .padding(.vertical, V.gap)
-                .padding(.leading, layout.columnX - V2Geometry.contentX)
-                .frame(width: layout.contentWidth, alignment: .leading)
-            }
-            .scrollIndicators(.never)
-            // Taller than the room, it opens at the foot, the one now in view, and keeps to it as
-            // it grows; once the person opens what an agent did, it grows downward from there.
-            .defaultScrollAnchor(layout.scrolls && !model.v2HistoryHeld ? .bottom : .top)
-            // A new scroll each time the session is expanded, and for each new request, so each
-            // opens where it should rather than where the last one was left.
-            .id("\(task.id)-\(turns.count)-\(model.v2HistoryEpoch)")
-            .coordinateSpace(name: space)
-            .onPreferenceChange(V2OutlineTops.self) { tops = $0 }
-            .overlay(alignment: .trailing) {
-                if items.count > 1 {
-                    V2OutlineRail(items: items, inView: inView, height: layout.body - 2 * V.gap, shown: model.v2OutlineShown) { id in
-                        withAnimation(WorkbenchTokens.Spring.rows) { proxy.scrollTo(id, anchor: landing) }
-                    }
-                    .padding(.trailing, layout.size == .expanded ? V.outlineInset : 0)
-                }
-            }
-            // The one now alone taller than the room: once laid out, its request comes to the top,
-            // so the person keeps their place.
-            .onAppear {
-                guard let last = turns.last,
-                      Self.turnHeight(model: model, task: task, turn: last, now: true, width: layout.column) > layout.body - 2 * V.gap
-                else { return }
-                // A run-loop timer, which also fires inside the snapshot runs (they hold the main
-                // queue while they render).
-                Timer.scheduledTimer(withTimeInterval: V.historySettle, repeats: false) { _ in
-                    MainActor.assumeIsolated {
-                        model.v2HistoryHeld = true
-                        proxy.scrollTo(V2Outline.turnID(now), anchor: landing)
+                // The one now alone taller than the room: once laid out, its request comes to the top,
+                // so the person keeps their place.
+                .onAppear {
+                    guard let last = turns.last,
+                          Self.turnHeight(model: model, task: task, turn: last, now: true, width: layout.column) > layout.body - 2 * V.gap
+                    else { return }
+                    // A run-loop timer, which also fires inside the snapshot runs (they hold the main
+                    // queue while they render).
+                    Timer.scheduledTimer(withTimeInterval: V.historySettle, repeats: false) { _ in
+                        MainActor.assumeIsolated {
+                            model.v2HistoryHeld = true
+                            proxy.scrollTo(V2Outline.turnID(now), anchor: landing)
+                        }
                     }
                 }
             }
-        }
+        } }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Every request in this session")
+    }
+
+    /// Every exchange, top to bottom.
+    private func stack(_ turns: [V2Turn], now: Int, space: String) -> some View {
+        let V = WorkbenchTokens.V2.self
+        return VStack(alignment: .leading, spacing: V.historyTurnGap) {
+            ForEach(turns) { turn in
+                VStack(alignment: .leading, spacing: V.historyQuestionGap) {
+                    // The person's request in its bubble at the right, gone to by it (a
+                    // short view, so the landing's margin holds however tall the exchange
+                    // is); the agent's answer open at the left. Oct 21, Ryan ("simpler is
+                    // better"): no creature in the margin beside it.
+                    // Oct 15 review, QA07: the last request, editable once it's answered.
+                    Group {
+                        if turn.id == now {
+                            V2EditableQuestion(model: model, task: task, lines: 3,
+                                               beside: V2RequestBubble.bubbleWidth(turn.question, width: layout.column)) {
+                                V2RequestBubble(text: turn.question, width: layout.column)
+                            }
+                            .frame(width: layout.column)
+                        } else {
+                            V2RequestBubble(text: turn.question, width: layout.column)
+                        }
+                    }
+                    .id(V2Outline.turnID(turn.id))
+                    Group { if turn.id == now { current } else { past(turn) } }
+                }
+                .outlineTop(V2Outline.turnID(turn.id), in: space)
+            }
+        }
+        .overlay(alignment: .bottom) { Color.clear.frame(height: 0).outlineTop(V2Outline.endID, in: space) }
+        .padding(.vertical, V.gap)
+        .padding(.leading, layout.columnX - V2Geometry.contentX)
+        .frame(width: layout.contentWidth, alignment: .leading)
     }
 
     @ViewBuilder private var current: some View {

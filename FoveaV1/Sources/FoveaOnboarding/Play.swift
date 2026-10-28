@@ -12,7 +12,6 @@ enum PlayTarget: Hashable {
     case board
     case guideButton
     case accent(AccentName)
-    case aura(AuraPalette)
     case languageMore
     case tile
     case toggle

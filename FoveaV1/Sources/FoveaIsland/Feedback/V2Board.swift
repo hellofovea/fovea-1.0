@@ -17,25 +17,23 @@ import FoveaKit
 
 // MARK: Geometry
 
-/// The board: the sections' headers (or, in Badges, a gap and a hairline between them) and the
-/// rows, down to the last whole row of six; past that it scrolls.
+/// The board: its groups of rows, a gap and a hairline between them, down to the last whole row of
+/// six; past that it scrolls. Oct 27, Ryan ("only have the latest version that I approved"): the one
+/// design, the list with each state on a badge at its icon, under Open any chat's greeting, search
+/// and pinned chats (Feedback/OpenChat.swift).
 struct V2BoardLayout: Equatable {
     var outline: StackLayout.Outline
     var listHeight: CGFloat
     var scrolls: Bool
-    /// Focus, Wings and Split: the session card's body.
-    var cardBody: CGFloat = 0
-    /// Capsules: the room the capsules take under the notch, where the pointer keeps the board.
-    var hoverSize: CGSize? = nil
     /// Oct 15 review, NH-03: a "Remembered" row over the list, while there is one.
     var notice: CGFloat = 0
     /// Oct 24, Ryan: an Open any chat design's blocks, top to bottom (Feedback/OpenChat.swift).
     var openChat: [OpenChatPart] = []
 
-    static func make(sections: [Int], style: BoardStyle, metrics: ScreenMetrics) -> V2BoardLayout {
+    static func make(sections: [Int], metrics: ScreenMetrics) -> V2BoardLayout {
         let B = WorkbenchTokens.Board.self
         let spec = WorkbenchTokens.Island.spec
-        var (visible, full) = heights(sections: sections, style: style, rows: B.rowsVisible)
+        var (visible, full) = heights(sections: sections, rows: B.rowsVisible)
         // Nothing running: the greeting's room.
         if sections.reduce(0, +) == 0 { visible = B.helloHeight }
         let height = V2Geometry.top(metrics) + visible + B.paddingBottom
@@ -44,13 +42,28 @@ struct V2BoardLayout: Equatable {
                              listHeight: visible, scrolls: full > visible + 0.5)
     }
 
-    /// The list down to its `rows`th row (what comes before each section included), and the
-    /// whole list.
-    static func heights(sections: [Int], style: BoardStyle, rows limit: Int) -> (visible: CGFloat, full: CGFloat) {
+    /// The board for the sessions on it: room for "Remembered" over the list, and Open any chat's
+    /// parts round it.
+    @MainActor
+    static func board(model: WorkbenchModel, metrics: ScreenMetrics) -> V2BoardLayout {
+        var layout = V2BoardLayout.make(sections: model.v2BoardGroups.map(\.count), metrics: metrics)
+        // Oct 15 review, NH-03: room for "Remembered" over the list.
+        if model.cases.memoryNotice != nil {
+            layout.notice = WorkbenchTokens.Cases.memoryRow
+            layout.outline.size.height += layout.notice
+        }
+        // Oct 24, Ryan: open any chat, pinned chats and the search on the board (OpenChat.swift).
+        if model.boardSearchShown { return .openChat(model: model, metrics: metrics, base: layout) }
+        return layout
+    }
+
+    /// The list down to its `rows`th row (the seam before each group included), and the whole
+    /// list.
+    static func heights(sections: [Int], rows limit: Int) -> (visible: CGFloat, full: CGFloat) {
         let B = WorkbenchTokens.Board.self
         var full: CGFloat = 0, visible: CGFloat = 0, rows = 0
         for (i, count) in sections.enumerated() {
-            let lead = lead(style: style, first: i == 0)
+            let lead = lead(first: i == 0)
             full += lead
             if rows < limit { visible += lead }
             for _ in 0..<count {
@@ -62,13 +75,9 @@ struct V2BoardLayout: Equatable {
         return (visible, full)
     }
 
-    /// What comes before a section: its header; in Badges, the seam (none before the first).
-    static func lead(style: BoardStyle, first: Bool) -> CGFloat {
-        let B = WorkbenchTokens.Board.self
-        switch style {
-        case .badges, .petList: return first ? 0 : B.groupGap
-        default: return first ? B.headerFirst : B.header
-        }
+    /// What comes before a group: the seam (none before the first).
+    static func lead(first: Bool) -> CGFloat {
+        first ? 0 : WorkbenchTokens.Board.groupGap
     }
 
     static var contentX: CGFloat { WorkbenchTokens.Island.spec.expandedTopRadius + WorkbenchTokens.Board.paddingH }
@@ -159,9 +168,8 @@ struct V2ChatLayout: Equatable {
                 }
             }
         }
-        // The header and its rule; the question; (Compact: a rule;) the body; what waits; the bar; the box.
-        let parting = V.blockRules ? V.gap + 1 : 0
-        let fixed = V.chatHeader + V.headerRule + (opened ? 0 : V.gap + question + parting) + V.gap + V.gap + queue
+        // The header and its rule; the question and a rule; the body; what waits; the bar; the box.
+        let fixed = V.chatHeader + V.headerRule + (opened ? 0 : V.gap + question + (V.gap + 1)) + V.gap + V.gap + queue
             + B.actionRow + B.inputGap + V.inputHeight + V.gap
         let body = min(full, F.chatBodyMax)
         return V2ChatLayout(outline: V2Geometry.outline(content: fixed + body, bottom: V.grabArea, width: panelWidth, metrics: metrics),
@@ -173,24 +181,15 @@ struct V2ChatLayout: Equatable {
 
 // MARK: The board
 
-/// The board in the design chosen: Sections and Badges as lists; Focus, Wings and Split in the
-/// island (V2BoardVariants.swift); Capsules over the screen, the island staying the notch.
+/// The board: the list, and with Open any chat on, its greeting, search and pinned chats round it.
+/// Oct 27, Ryan: the one design ("only have the latest version that I approved"); Sections, Focus,
+/// Capsules, Wings, Split, the pets and the four drafts are gone.
 struct V2BoardContent: View {
     let model: WorkbenchModel
     let layout: V2BoardLayout
 
-    var body: some View {
-        switch model.boardStyle {
-        case .sections, .badges, .petList:
-            if model.boardSearchShown { OpenChatBoard(model: model, layout: layout) } else { V2BoardList(model: model, layout: layout) }
-        case .petDesk: V2PetDesk(model: model, layout: layout).panelScheme()
-        case .petLanes: V2PetLanes(model: model, layout: layout).panelScheme()
-        case .focus: V2FocusBoard(model: model, layout: layout).panelScheme()
-        case .wings: V2WingsBoard(model: model, layout: layout).panelScheme()
-        case .split: V2SplitBoard(model: model, layout: layout).panelScheme()
-        case .capsules, .petCapsules: Color.clear.frame(width: layout.outline.size.width, height: layout.outline.size.height)
-        case .creatures: V2CreatureBoard(model: model, layout: layout).panelScheme()
-        }
+    @ViewBuilder var body: some View {
+        if model.boardSearchShown { OpenChatBoard(model: model, layout: layout) } else { V2BoardList(model: model, layout: layout) }
     }
 }
 
@@ -226,7 +225,7 @@ struct V2BoardList: View {
                     ForEach(Array(sections.enumerated()), id: \.element.section) { i, part in
                         lead(part, first: i == 0)
                         ForEach(part.tasks) { task in
-                            V2BoardRow(model: model, task: task, focused: model.v2Focus == task.id, style: model.boardStyle)
+                            V2BoardRow(model: model, task: task, focused: model.v2Focus == task.id)
                                 .frame(height: B.row)
                         }
                     }
@@ -242,7 +241,7 @@ struct V2BoardList: View {
                         ForEach(Array(sections.enumerated()), id: \.element.section) { i, part in
                             lead(part, first: i == 0)
                             ForEach(part.tasks) { task in
-                                V2BoardRow(model: model, task: task, focused: model.v2Focus == task.id, style: model.boardStyle)
+                                V2BoardRow(model: model, task: task, focused: model.v2Focus == task.id)
                                     .frame(height: B.row)
                                     .id(task.id)
                             }
@@ -264,79 +263,19 @@ struct V2BoardList: View {
         .accessibilityLabel("Sessions")
     }
 
-    /// Before a section: in Sections, its header; in Badges, a gap with a hairline in it.
+    /// Before a group: a gap with a hairline in it (none before the first).
     @ViewBuilder
     private func lead(_ part: (section: BoardSection, tasks: [AgentTaskItem]), first: Bool) -> some View {
         let B = WorkbenchTokens.Board.self
-        let height = V2BoardLayout.lead(style: model.boardStyle, first: first)
-        switch model.boardStyle {
-        case .sections:
-            V2SectionHeader(section: part.section, news: part.tasks.map(\.id), still: model.snapshotMode)
-                .frame(height: height, alignment: .bottom)
-        case .badges, .petList:
-            if !first {
-                Rectangle().fill(B.hairline).frame(height: 0.5)
-                    .padding(.horizontal, B.rowPaddingH)
-                    .frame(height: height)
-            }
-        default:
-            EmptyView()
+        if !first {
+            Rectangle().fill(B.hairline).frame(height: 0.5)
+                .padding(.horizontal, B.rowPaddingH)
+                .frame(height: V2BoardLayout.lead(first: first))
         }
     }
 }
 
-/// A section's header: a glyph over the icons' column (the hand in amber, the ring, the check, the
-/// question mark), its word in line with the titles. No counts. The hand nods when a session
-/// joins Needs you.
-struct V2SectionHeader: View {
-    let section: BoardSection
-    let news: [String]
-    let still: Bool
-
-    var body: some View {
-        let B = WorkbenchTokens.Board.self
-        HStack(spacing: B.iconGap) {
-            glyph
-                .frame(width: B.headerGlyph, height: B.headerGlyph)
-                .frame(width: B.icon)
-            Text(section.title).font(B.headerFont).foregroundStyle(B.headerColor)
-        }
-        .padding(.horizontal, B.rowPaddingH)
-        .padding(.bottom, B.headerBottom)
-        .frame(maxWidth: .infinity, alignment: .bottomLeading)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isHeader)
-    }
-
-    @ViewBuilder private var glyph: some View {
-        let B = WorkbenchTokens.Board.self
-        switch section {
-        case .needsYou:
-            Image(systemName: "hand.raised.fill").resizable().scaledToFit()
-                .foregroundStyle(WorkbenchTokens.Panel.needsYouColor)
-                .symbolEffect(.bounce, value: still ? [] : news)
-        case .running:
-            Circle().trim(from: 0, to: 0.72)
-                .stroke(B.headerGlyphColor, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .padding(1)
-        case .done:
-            if WorkbenchTokens.isNative {
-                // Native: the system's monochrome symbol, its check cut out to the glass.
-                Image(systemName: "checkmark.circle.fill").resizable().scaledToFit()
-                    .foregroundStyle(WorkbenchTokens.Native.done)
-            } else {
-                Image(systemName: "checkmark.circle.fill").resizable().scaledToFit()
-                    .foregroundStyle(Color.black, B.headerGlyphColor)
-            }
-        case .unknown:
-            Image(systemName: "questionmark.circle").resizable().scaledToFit()
-                .foregroundStyle(B.headerColor)
-        }
-    }
-}
-
-/// A row: the agent's icon (in Badges, its state on the icon's corner); the title over one line
+/// A row: the agent's icon, its state on the icon's corner; the title over one line
 /// (what it asks, in amber; why it failed; the answer's first sentence; its project); at the
 /// right, Allow and Deny in place, or the ring and how long it has run (under the pointer, Stop),
 /// or how long since it finished (under the pointer, a chevron: it opens). A session whose state
@@ -345,20 +284,14 @@ struct V2BoardRow: View {
     let model: WorkbenchModel
     let task: AgentTaskItem
     let focused: Bool
-    let style: BoardStyle
     @State private var hovering = false
 
     var body: some View {
         let B = WorkbenchTokens.Board.self
         HStack(spacing: B.iconGap) {
-            if style == .petList {
-                PetFor(model: model, task: task, size: WorkbenchTokens.Pets.listPet)
-            } else {
-                V2BoardIcon(model: model, task: task, style: style)
-            }
+            V2BoardIcon(model: model, task: task)
             VStack(alignment: .leading, spacing: B.lineGap) {
-                AgentTitle(model: model, task: task, font: B.titleFont, color: task.statusUnknown ? B.dimTitle : B.title,
-                           icon: style == .petList)
+                Text(model.v2Title(task)).font(B.titleFont).foregroundStyle(task.statusUnknown ? B.dimTitle : B.title).lineLimit(1)
                 if task.state == .working && !task.statusUnknown {
                     V2StepLine(model: model, task: task, size: B.lineSize)
                 } else {
@@ -427,10 +360,7 @@ struct V2BoardRow: View {
                         Button { model.stopTask(task.id) } label: { StopRing(size: B.ring) }
                             .buttonStyle(IslandPressStyle())
                             .help("Stop")
-                    } else if style == .sections {
-                        AgentStateGlyph(task: task, size: B.ring, paused: model.snapshotMode)
                     }
-                    // Pets: the pet says it runs; only the time here.
                     Text(model.v2RunTime(task)).font(B.timeFont).foregroundStyle(B.time).monospacedDigit()
                 }
             case .complete, .failed:
@@ -460,21 +390,20 @@ struct V2BoardRow: View {
     }
 }
 
-/// The agent's icon. In Badges, the state sits on its corner, cut out of it by the island's black:
+/// The agent's icon, the state on its corner, cut out of it by the island's black:
 /// amber with "!", waiting on the person; red with a cross, failed; white with a check, done; dark
 /// with the turning ring, running. A session whose state can't be read: gray and faint, no badge.
 struct V2BoardIcon: View {
     let model: WorkbenchModel
     let task: AgentTaskItem
-    let style: BoardStyle
 
     var body: some View {
         let B = WorkbenchTokens.Board.self
-        ChatAgentIcon(agent: ChatAgent.named(task.agent), size: style == .sections ? B.icon : B.badgedIcon)
+        ChatAgentIcon(agent: ChatAgent.named(task.agent), size: B.badgedIcon)
             .saturation(task.statusUnknown ? B.dimSaturation : 1)
             .opacity(task.statusUnknown ? B.dimOpacity : 1)
             .overlay(alignment: .bottomTrailing) {
-                if style == .badges && !task.statusUnknown {
+                if !task.statusUnknown {
                     badge.offset(x: B.badgeOffset, y: B.badgeOffset)
                 }
             }
@@ -569,9 +498,9 @@ struct V2ChatContent: View {
                             }
                             .frame(width: layout.column, height: layout.question, alignment: .topTrailing)
                             .padding(.top, V.gap)
-                            .padding(.bottom, V.blockRules ? V.gap : 0)
+                            .padding(.bottom, V.gap)
                             .padding(.leading, lead)
-                            if V.blockRules { rule.padding(.leading, lead) }
+                            rule.padding(.leading, lead)
                         }
                         Group {
                             if opened {
@@ -656,10 +585,6 @@ struct V2ChatContent: View {
                 NotchIconButton(symbol: "chevron.left", glyph: V.backGlyph, size: V.backSize, help: L("Back to the board (esc)")) {
                     model.closeV2Chat()
                 }
-            }
-            if model.boardStyle.hasPets {
-                PetFor(model: model, task: task, size: WorkbenchTokens.Pets.headerPet, live: model.notchState == .v2Chat)
-                    .padding(.horizontal, -WorkbenchTokens.Pets.headerPet * 0.1)
             }
             ChatAgentIcon(agent: ChatAgent.named(task.agent), size: V.headerIcon)
             Text(model.v2Title(task))
@@ -832,29 +757,25 @@ struct V2SessionBar: View {
     }
 }
 
-/// ✕ and back in a session's header: a circle under its glyph, a plate under the pointer (and, in
-/// Spacious, a quiet one at rest, as Fovea Captures' round buttons). Oct 21, Ryan ("simpler is
-/// better"): the glyph no longer bounces as the pointer comes.
+/// ✕ and back in a session's header: the glyph alone, in a circle the pointer can hit, with no plate
+/// at rest or under the pointer. Oct 21, Ryan ("simpler is better"): the glyph no longer bounces as
+/// the pointer comes.
 struct NotchIconButton: View {
     let symbol: String
     let glyph: Font
     let size: CGFloat
     let help: String
     let action: () -> Void
-    @State private var hovering = false
 
     var body: some View {
-        let V = WorkbenchTokens.V2.self
         Button(action: action) {
             Image(systemName: symbol)
                 .font(glyph)
-                .foregroundStyle(hovering ? V.iconGlyphHover : V.subColor)
+                .foregroundStyle(WorkbenchTokens.V2.subColor)
                 .frame(width: size, height: size)
-                .background(Circle().fill(hovering ? V.iconPlateHover : V.iconPlate))
                 .contentShape(Circle())
         }
         .buttonStyle(IslandPressStyle())
-        .onHover { hovering = $0 }
         .help(help)
     }
 }
@@ -908,10 +829,11 @@ struct V2RouteSheet: View {
         .frame(width: V2Geometry.contentWidth, alignment: .topLeading)
     }
 
-    static func browserHeight(rows: Int) -> CGFloat {
+    static func browserHeight(rows: Int, suggestions: Bool = false) -> CGFloat {
         let V = WorkbenchTokens.V2.self
         return V.gap - V.browseSpacing + 1 + V.browseSpacing + V.railHeight + V.browseSpacing
             + CGFloat(min(rows, V.browseRowsVisible)) * V.browseRow
+            + (suggestions ? V.chipRow + V.browseSpacing : 0)
     }
 
     /// The sheet's height under the bar.
@@ -942,5 +864,22 @@ struct V2BoardHello: View {
         .padding(.horizontal, B.rowPaddingH)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
+    }
+}
+
+extension WorkbenchModel {
+    /// The answer as plain lines, its marks taken out: a paragraph a line, a point a line with a
+    /// bullet.
+    func v2AnswerPlain(_ task: AgentTaskItem) -> String {
+        guard let answer = task.answer else { return v2BoardLine(task) }
+        return MarkdownBlock.parse(answer).map { block -> String in
+            switch block {
+            case .heading(let t), .paragraph(let t), .quote(let t): return MarkdownBlock.plain(t)
+            case .bullets(let items): return items.map { "• " + MarkdownBlock.plain($0) }.joined(separator: "\n")
+            case .numbered(let items): return items.enumerated().map { "\($0.offset + 1). " + MarkdownBlock.plain($0.element) }.joined(separator: "\n")
+            case .code(let t): return t
+            case .table(let rows): return rows.dropFirst().map { $0.joined(separator: " — ") }.joined(separator: "\n")
+            }
+        }.joined(separator: "\n")
     }
 }

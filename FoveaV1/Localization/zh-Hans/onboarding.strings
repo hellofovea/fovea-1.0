@@ -54,9 +54,10 @@
 "Clear my screen" = "清理屏幕";
 
 /* Make it yours */
-"This is how I glow when you talk to an agent." = "你和 Agent 说话时，我会这样发光。";
+"This is how I look at the notch." = "这就是我在灵动岛上的样子。";
 "Make it yours" = "随心定制";
-"Your accent, the light the notch makes while it listens, and the notch itself. All of it stays in Settings." = "强调色、灵动岛聆听时的光晕，还有灵动岛本身。这些都可以随时在设置中更改。";
+"Your accent, the app light or dark, and the notch attached or floating. All of it stays in Settings." = "强调色、应用的浅色或深色，以及灵动岛贴合或悬浮。这些都可以随时在设置中更改。";
+"The app" = "应用";
 "Looks good" = "就用这些";
 "Accent" = "强调色";
 "The light when you talk to an agent" = "和 Agent 说话时的光晕";
@@ -461,3 +462,10 @@
 "The two parts show this week's signups and the pull requests merged. Signups are up on last week; six pull requests went in." = "这两处分别是本周的注册数和已合并的拉取请求。注册数比上周多；合并了六个拉取请求。";
 "For Saturday: the lower loop to the lake and back, about nine miles. The pass above it has fresh snow, so it stays off the plan." = "周六的路线：走低处的环线到湖边再折返，约九英里。上方山口刚下过雪，所以不在计划内。";
 "Noted. Start by eight to be back before the light goes at four." = "记下了。八点前出发，四点天黑前就能回来。";
+
+/* Oct 27: past chats, from the board's search. */
+"Every chat you've had." = "你所有的会话。";
+"Find a past chat from the notch." = "从灵动岛找回以前的会话。";
+"Open one for me" = "帮我打开一个";
+"Move your pointer to the notch, then click the search." = "把指针移到灵动岛，然后点击搜索。";
+"Type a few letters of a chat, then click it to open it." = "输入会话名的几个字，然后点击打开。";

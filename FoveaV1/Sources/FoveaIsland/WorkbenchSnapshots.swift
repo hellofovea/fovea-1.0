@@ -192,25 +192,11 @@ enum WorkbenchSnapshots {
             shot("15-titles", .titles),
             shot("19-review-off", .skipReview, prepare: { $0.v2Request = .code }),
             shot("19-route-open", .skipReview, prepare: { $0.v2Request = .code; $0.feedbackRouteOpen = true }),
-            shot("09-board", .progress, prepare: { $0.boardStyle = .sections }),
-            shot("09-board-badges", .progress, prepare: { $0.boardStyle = .badges }),
-            shot("09-board-focus", .progress, prepare: { $0.boardStyle = .focus }),
-            shot("09-board-capsules", .progress, prepare: { $0.boardStyle = .capsules }),
-            shot("09-board-wings", .progress, prepare: { $0.boardStyle = .wings }),
-            shot("09-board-split", .progress, prepare: { $0.boardStyle = .split }),
-            shot("09-board-creatures", .progress, prepare: { $0.boardStyle = .creatures }),
-            // The same pet in each design (docs/island/CREATURES.md).
-            shot("09-board-pet-list", .progress, prepare: { $0.boardStyle = .petList }),
-            shot("09-board-pet-capsules", .progress, prepare: { $0.boardStyle = .petCapsules }),
-            shot("09-board-pet-desk", .progress, prepare: { $0.boardStyle = .petDesk }),
-            shot("09-board-pet-lanes", .progress, prepare: { $0.boardStyle = .petLanes }),
-            shot("09-board-pet-rest", .progress, prepare: { $0.boardStyle = .petList }, after: { $0.notchState = .silent }),
-            shot("09-board-pet-opened", .progress, prepare: { $0.boardStyle = .petList }, after: { $0.openV2("t-shortcuts") }),
+            shot("09-board", .progress),
             shot("09-board-opened", .progress, after: { $0.openV2("t-snapshots") }),
             shot("16-steps-session", .steps, prepare: { $0.feedbackStepsStage = .session }),
             shot("16-steps-board", .steps, prepare: { $0.feedbackStepsStage = .board }),
-            shot("09-board-end", .progress, prepare: { $0.boardStyle = .sections }, after: { $0.v2ScrollTarget = "t-docs" }),
-            shot("09-board-badges-end", .progress, prepare: { $0.boardStyle = .badges }, after: { $0.v2ScrollTarget = "t-docs" }),
+            shot("09-board-end", .progress, after: { $0.v2ScrollTarget = "t-docs" }),
             shot("09-chat-working", .answer, prepare: { $0.v2Request = .code; $0.feedbackWorkStage = .working }),
             shot("23-working", .reanswer, prepare: { $0.v2Request = .code; $0.feedbackWorkStage = .working }),
             shot("23-done", .reanswer, prepare: { $0.v2Request = .code; $0.feedbackWorkStage = .done }),
@@ -318,12 +304,10 @@ enum WorkbenchSnapshots {
             model.columnVisibility = shot.sidebar ? .all : .detailOnly
             model.design = shot.design
             model.nativePanels = shot.panels
-            // Every shot starts from the board's default design (a feedback shot sets its own),
-            // its scroll at the top, and Choose chat's browser closed with nothing picked.
-            model.boardStyle = .sections
+            // Every shot starts from the board's scroll at the top, and Choose chat's browser closed
+            // with nothing picked.
             model.v2ScrollTarget = V2BoardList.topID
             model.v2Browsing = false
-            model.v2BrowseProject = nil
             model.v2BrowseAgent = ChatBook.predictedAgent
             model.v2PickStorage = nil
             model.appearance = shot.appearance
@@ -368,7 +352,6 @@ enum WorkbenchSnapshots {
                 }
                 if shot.v2Browse {
                     model.toggleV2Browse()
-                    if let project = model.v2BrowseRows.first { model.pickV2Browse(project) }
                 }
                 // A touch after (a session's size, the outline open).
                 if shot.feedback == nil { shot.after?(model) }

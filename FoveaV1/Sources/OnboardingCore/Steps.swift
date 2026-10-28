@@ -35,6 +35,10 @@ public enum Step: String, CaseIterable, Sendable, Codable {
     case permissions, microphone
     case agents
     case weeklyUpdate, hover, packList, followUp
+    /// Oct 27, Ryan: "users will also be able to see their past chats from the empty notch search
+    /// button + search chats. so add this to the onboarding as well": the board's search, and a
+    /// past chat opened from it.
+    case pastChats
     case dictationIntro, dictation
     /// Oct 15 review, OB-01.6: what Fovea remembers, read before the closing page.
     case dictionary, memory, home
@@ -54,7 +58,7 @@ public enum Step: String, CaseIterable, Sendable, Codable {
         case .name, .signIn, .hello, .makeItYours: .arrive
         case .permissions, .microphone: .turnOn
         case .agents: .agents
-        case .weeklyUpdate, .hover, .packList, .followUp, .takeFew, .whileWorking: .pointAndSay
+        case .weeklyUpdate, .hover, .packList, .followUp, .pastChats, .takeFew, .whileWorking: .pointAndSay
         case .dictationIntro, .dictation, .nowhereToType: .dictation
         case .dictionary, .memory, .home: .home
         }
@@ -85,6 +89,8 @@ public enum Step: String, CaseIterable, Sendable, Codable {
         case .packList: [[.requestKey], [.passage], [.file], [.finish], [.review], [.send], [.approved], [.answer]]
         // Oct 23, Ryan: then the whole session, expanded.
         case .followUp: [[.followKey], [.followAnswer], [.expanded]]
+        // Oct 27, Ryan: the board's search opened, then a past chat opened from it.
+        case .pastChats: [[.searchOpened], [.pastChatOpened]]
         // Two windows: the feedback first, then Messages (Oct 9). Oct 17, Ryan: in the feedback,
         // something taken while talking (⌘ and a drag, Oct 19), which lands after the words. Oct
         // 23, Ryan: in Messages, the words thrown away with esc and brought back with ⌘Z first.
@@ -120,7 +126,7 @@ public enum Step: String, CaseIterable, Sendable, Codable {
         case .signIn, .name, .hello, .makeItYours, .memory, .home: .never
         case .dictationIntro, .dictation, .dictionary: .now
         case .permissions, .agents: .after(8)
-        case .microphone, .hover, .nowhereToType: .after(10)
+        case .microphone, .hover, .pastChats, .nowhereToType: .after(10)
         case .followUp: .after(12)
         case .weeklyUpdate, .packList, .takeFew, .whileWorking: .after(15)
         }
@@ -237,6 +243,8 @@ public enum Beat: String, CaseIterable, Sendable, Codable {
     /// Oct 23, Ryan: the update's session opened from the board, pulled down out of the notch,
     /// tucked at a side of the screen as a tab, and the tab clicked to bring it back.
     case openedSession, pulledOut, tucked, broughtBack
+    /// Oct 27, Ryan: the board's search opened; a past chat opened from it.
+    case searchOpened, pastChatOpened
     /// The edit the agent asked for, allowed from the notch.
     case approved
     /// The whole session, expanded (⌃ or the expand button).

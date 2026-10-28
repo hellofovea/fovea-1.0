@@ -68,7 +68,8 @@ package final class HomeWindowController: NSObject {
         window.title = "Fovea"
         // No title in the toolbar: the filter sits where it would be.
         window.titleVisibility = .hidden
-        window.toolbarStyle = .unified
+        // Oct 27: Notion White on the Mac's compact toolbar ("the top menu bar is too big").
+        window.toolbarStyle = T.Look.compact ? .unifiedCompact : .unified
         window.isReleasedWhenClosed = false
         window.setContentSize(T.Layout.window)
         window.tabbingMode = .disallowed
@@ -247,7 +248,6 @@ package final class HomeWindowController: NSObject {
         set(\.glowDrift, p.glowDrift)
         set(\.notchAppearance, p.notchAppearance)
         set(\.panels, p.panels)
-        set(\.density, p.density)
         set(\.hoverOpens, p.hoverOpens)
         set(\.hoverWait, p.hoverWait)
         set(\.showAnswers, p.showAnswers)
@@ -291,7 +291,6 @@ package final class HomeWindowController: NSObject {
         p.glowDrift = m.glowDrift
         p.notchAppearance = m.notchAppearance
         p.panels = m.panels
-        p.density = m.density
         p.hoverOpens = m.hoverOpens
         p.hoverWait = m.hoverWait
         p.showAnswers = m.showAnswers
@@ -364,6 +363,8 @@ package final class HomeWindowController: NSObject {
         case .light: window.appearance = NSAppearance(named: .aqua)
         case .dark: window.appearance = NSAppearance(named: .darkAqua)
         }
+        // Oct 27, Lights Down: as dark as the notch, whatever Appearance says.
+        if T.Look.alwaysDark { window.appearance = NSAppearance(named: .darkAqua) }
         applyChrome()
     }
 
@@ -371,7 +372,8 @@ package final class HomeWindowController: NSObject {
     /// With the page inset, the titlebar is transparent over the window's material, the toolbar's
     /// glass floating on it.
     private func applyChrome() {
-        let own = model.surface != .system || model.layout == .library || model.pageStyle == .inset
+        // Oct 27, Notion White: the grey ground runs up behind the toolbar.
+        let own = model.surface != .system || model.layout == .library || model.pageStyle == .inset || T.Look.floats
         window.titlebarAppearsTransparent = own
         window.titlebarSeparatorStyle = own ? .none : .automatic
         if model.layout == .library {
@@ -387,6 +389,7 @@ package final class HomeWindowController: NSObject {
         } else if window.toolbar?.identifier == Self.libraryToolbar {
             window.toolbar = nil
         }
+        if model.layout != .library { window.toolbarStyle = T.Look.compact ? .unifiedCompact : .unified }
         let dark = (window.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua)
         let titlebar = window.standardWindowButton(.closeButton)?.superview
         titlebar?.appearance = (model.surface == .notch && !dark && model.layout == .cards) ? NSAppearance(named: .darkAqua) : nil
@@ -452,12 +455,15 @@ package final class HomeWindowController: NSObject {
         if model.page != .captures { model.back() }
         model.setKind(sender.tag == 0 ? nil : CaptureKind.allCases[sender.tag - 1])
     }
-    /// View › Current Design / Aligned Design (Oct 24).
+    /// View › the window's designs (Oct 24: Current and Aligned; Oct 27: the five, `T.Look`).
     @objc func chooseLook(_ sender: NSMenuItem) {
-        model.look = sender.tag == 1 ? .aligned : .current
+        guard WindowLook.allCases.indices.contains(sender.tag) else { return }
+        model.look = WindowLook.allCases[sender.tag]
         for item in sender.menu?.items ?? [] where item.action == #selector(chooseLook(_:)) {
             item.state = item.tag == sender.tag ? .on : .off
         }
+        // Lights Down is dark whatever Appearance says; the others go back to it.
+        applyAppearance()
     }
     @objc func showHome(_ sender: Any?) {
         show()
@@ -516,11 +522,11 @@ package final class HomeWindowController: NSObject {
             item(L("Dispatch"), #selector(showKind(_:)), "3", tag: 2, target: self),
             // Oct 24, Ryan: the two designs side by side, switched at once (docs/window/ALIGNED.md).
             .separator(),
-            item(L("Current Design"), #selector(chooseLook(_:)), "", tag: 0, target: self),
-            item(L("Aligned Design"), #selector(chooseLook(_:)), "", tag: 1, target: self),
-        ])
+        ] + WindowLook.allCases.enumerated().map { i, look in
+            item(L(key: look.title), #selector(chooseLook(_:)), "", tag: i, target: self)
+        })
         for i in view.items where i.action == #selector(chooseLook(_:)) {
-            i.state = (i.tag == 1) == (model.look == .aligned) ? .on : .off
+            i.state = WindowLook.allCases.indices.contains(i.tag) && WindowLook.allCases[i.tag] == model.look ? .on : .off
         }
         // ⇧⌘ and a letter, as Finder's Go menu has them, clear of View's ⌘1–3.
         _ = add(L("Go"), [

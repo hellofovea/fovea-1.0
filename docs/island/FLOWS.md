@@ -59,7 +59,8 @@ was taken, in order (`pastePieces`). The Workbench's mock keeps ⌘ and left ⌥
 press only turns capture off, never takes the whole screen. Files are dragged onto the notch (a drop
 target over the island while a file drag is under way, `FileDropView`, "Drop to take it"; on Choose
 chat too), never taken by a click; taken words keep an accent highlight over their lines until the
-session ends or the referent leaves the stack.
+session ends or the referent leaves the stack. Oct 25: many files dropped at once are all taken, in
+order, dealt into the stack one after another ("Drop to take all 5"; REFERENT_STACK.md).
 
 **Oct 19 (Ryan):** ⌘ (either side) takes the screen again, as before Oct 17: once a region, held while held (a region per drag), twice the whole screen of the pointer's display (capture off, nothing else taken); ⌘ with a key (⌘C, ⌘V) or another modifier is never a press, and ⌥ does nothing. The region stays recordable; ⌘ twice stays fixed.
 
@@ -216,9 +217,9 @@ and lets the body grow to the display's foot. Esc steps back first.
 - Keep every number, colour and duration in `WorkbenchTokens` (`V2`, `Panel`, `Progress`,
   `Capture`, `VoiceGlow`). Follow the island rules: white at an opacity on black, no gradients,
   no counts or logs, never an empty board.
-- An open panel's size follows the Density switch. Write its tokens as `pick(compact, spacious)`
-  (`Density.swift`). Compact stays as it was; Spacious follows `SPACIOUS.md`. The voice bar and
-  the resting notch have one value in both.
+- An open panel has one size, Compact (Oct 27). Write its lengths as `size(_)` and its words'
+  sizes as `typeSize(_)` (`Density.swift`), which scale them. The voice bar and the resting notch
+  take their numbers as they are.
 - Add a smoke check for each behaviour change. The sections are in `WorkbenchSmoke.swift`:
   `screenshots` and `pasteNotFound` for Voiceflow; `voiceGlow`, `dispatchV2` and `v2Hover` for
   Version 2.

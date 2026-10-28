@@ -52,9 +52,9 @@ public enum Copy {
                 button: L("Begin"))
         case .makeItYours:
             return StepCopy(
-                caption: L("This is how I glow when you talk to an agent."),
+                caption: L("This is how I look at the notch."),
                 title: L("Make it yours"),
-                body: L("Your accent, the light the notch makes while it listens, and the notch itself. All of it stays in Settings."),
+                body: L("Your accent, the app light or dark, and the notch attached or floating. All of it stays in Settings."),
                 button: L("Looks good"))
         case .permissions:
             // Both lists in one step, named and nothing more (Oct 9, round two).
@@ -113,6 +113,12 @@ public enum Copy {
                 title: L("Your list is ready. Ask for more by voice."),
                 script: L("Now sort it into clothes and gear."),
                 skipLabel: L("Skip the follow-up"))
+        case .pastChats:
+            // Oct 27, Ryan: every chat you've had, from the board's search.
+            return StepCopy(
+                caption: L("Every chat you've had."),
+                title: L("Find a past chat from the notch."),
+                skipLabel: L("Open one for me"))
         case .dictationIntro:
             return StepCopy(
                 caption: L("One more, if you want it."),
@@ -285,6 +291,11 @@ public enum Copy {
             return answered ? L("Click the tab to bring the update back.") : L("When the tab shows a check, click it to bring the update back.")
         case (.hover, .answer):
             return L("Still writing. The update comes into the window.")
+        // Oct 27, Ryan: the board's search, and a past chat from it.
+        case (.pastChats, .searchOpened):
+            return L("Move your pointer to the notch, then click the search.")
+        case (.pastChats, .pastChatOpened):
+            return L("Type a few letters of a chat, then click it to open it.")
         case (.whileWorking, .answer):
             return L("Your message waits until this answer is done.")
         case (_, .answer):
@@ -396,9 +407,6 @@ public enum Copy {
 
     /// Make it yours' two choices, kept well apart (Oct 9).
     public static var accentLabel: String { L("Accent") }
-    public static var auraLabel: String { L("The light when you talk to an agent") }
-    /// The ninth light, the one whose hue and drift are set (Oct 18, Ryan).
-    public static var customizeAura: String { L("Customize") }
 
     /// The agents (Oct 9, round two): the ones Fovea connects, and a say in what comes next.
     public static var agentNotInstalled: String { L("Not on this Mac. Install it, and Fovea connects it.") }

@@ -13,7 +13,6 @@ final class PrefsTests: XCTestCase {
         var prefs = FoveaPrefs()
         prefs.notchAppearance = .light
         prefs.panels = .floating
-        prefs.density = .compact
         prefs.accent = .green
         prefs.glowPalette = .ocean
         prefs.glowDrift = 0.8
@@ -26,7 +25,6 @@ final class PrefsTests: XCTestCase {
         let prefs = try JSONDecoder().decode(FoveaPrefs.self, from: old)
         XCTAssertEqual(prefs.accent, .red)
         XCTAssertEqual(prefs.glowPalette, .gold)
-        XCTAssertEqual(prefs.density, .spacious)
         XCTAssertEqual(prefs.panels, .attached)
         XCTAssertTrue(prefs.reviewFirst)
     }
@@ -35,7 +33,6 @@ final class PrefsTests: XCTestCase {
         var prefs = FoveaPrefs()
         prefs.notchAppearance = .light
         prefs.panels = .floating
-        prefs.density = .compact
         prefs.glowHue = 120
         XCTAssertFalse(prefs.notchIsDefault)
         prefs.restoreNotch()

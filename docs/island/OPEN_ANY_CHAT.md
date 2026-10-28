@@ -1,5 +1,9 @@
 # Open any chat from the notch (Oct 24)
 
+**Oct 27, Ryan:** the agents give Fovea every chat but nothing about the folder it's in. So a pinned
+or found chat is named with its agent alone ("Claude Code", not "FoveaGaze · Claude Code"), and a
+search looks in the titles.
+
 Ryan, Oct 24: "when the user hovers their mouse over the notch, they can open any chat. The notch
 does not need to contain an input field; it is simply for selecting a chat. Users will also be able
 to pin chats there." The search button "should always be present, even when other tasks or agents

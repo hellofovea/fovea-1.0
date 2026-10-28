@@ -19,6 +19,7 @@ import FoveaKit
 struct MockIsland: View {
     let model: WorkbenchModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var scheme
 
     private func contentAnimation(for state: NotchState) -> Animation {
         bandAnimation(shown: state.collects)
@@ -54,7 +55,7 @@ struct MockIsland: View {
         let state = model.notchState
         // The waveform: Voiceflow's, and on Dispatch's bar too, a new request or asking more in a
         // session (Oct 9, evening: talking to the notch looks the same every time, the bar flowing
-        // as you speak; the aura stays Dispatch's).
+        // as you speak; Oct 27: Dispatch's aura is gone, the waveform is all there is).
         // Oct 17, Ryan: a file dragged over the bar: its drop state in place of the waveform.
         let dropping = model.fileDropTargeted && !model.stackExpanded
         let voice = (state == .voiceFlow || state == .v2Voice) && model.barNotice == nil && !dropping
@@ -64,14 +65,55 @@ struct MockIsland: View {
         ZStack(alignment: .top) {
             Color.clear
 
-            // Oct 21, perf: the level read in a view of its own (`VoiceBarLevel`).
-            VoiceBarLevel(model: model, paused: !voice)
+            // Oct 21, perf: the level read in a view of its own (`VoiceBarLevel`). Oct 27: Wings draws
+            // every state of the bar (Wings.swift); today's bands are left for the Workbench's Original.
+            let designed = layout.wings != nil
+            VoiceBarLevel(model: model, paused: !voice || designed)
                 .frame(width: WorkbenchTokens.Island.waveformSpan, height: maxH)
-                .modifier(VoiceContentTransition(progress: voice ? 1 : 0))
+                .modifier(VoiceContentTransition(progress: voice && !designed ? 1 : 0))
                 .animation(contentAnimation(for: state), value: state)
-                .accessibilityHidden(!voice)
+                .accessibilityHidden(!voice || designed)
                 .offset(x: layout.waveform.x, y: layout.waveform.y - maxH / 2)
                 .animation(model.islandAnimation, value: layout.waveform)
+
+            // Wings over a panel, attached: the bar black on the glass, from the top edge, as the
+            // notch is drawn on it (floating, and the strip, the surface draws it as its island).
+            if let bar = layout.wingsBar, WorkbenchTokens.panelsHangFromTop, !layout.floats {
+                WingsBarOnGlass(bar: bar)
+                    .transition(.opacity)
+            }
+
+            if layout.wings != nil, model.dropZoneOpen {
+                DropZoneCard(model: model, layout: layout)
+                    .transition(.opacity)
+            }
+
+            // Oct 28, Ryan: a little aurora in the accent in the bar's bottom-right corner while it
+            // listens, Voiceflow and Dispatch alike, under the waveform (Wings.swift).
+            if layout.wings != nil {
+                let A = WorkbenchTokens.Aurora.self
+                let listening = model.auroraShows
+                let bar = layout.wingsBar ?? layout.outline
+                let room = CGSize(width: A.width, height: bar.size.height)
+                WingsAurora(model: model, height: room.height, paused: !listening)
+                    .modifier(BarSlot(at: CGPoint(x: bar.size.width / 2 - bar.topRadius - room.width / 2, y: room.height / 2),
+                                      size: room, half: layout.outline.size.width / 2, fromEdge: true))
+                    .opacity(listening ? 1 : 0)
+                    .animation(.easeInOut(duration: A.fade), value: listening)
+                    .transition(.opacity)
+            }
+
+            // Oct 27, Ryan: Wings' two sides, each placed from the wing's own edge, which moves frame
+            // by frame, so they come out from under the notch with it and never get ahead of it.
+            if let pose = layout.wings, let left = layout.wingsLeft, let right = layout.wingsRight {
+                let half = layout.outline.size.width / 2
+                WingsLeftView(model: model, pose: pose, size: left.size)
+                    .modifier(BarSlot(at: CGPoint(x: left.midX, y: left.midY), size: left.size, half: half, fromEdge: true))
+                    .transition(.opacity)
+                WingsRightView(model: model, pose: pose, size: right.size, shown: true)
+                    .modifier(BarSlot(at: CGPoint(x: right.midX, y: right.midY), size: right.size, half: half, fromEdge: true))
+                    .transition(.opacity)
+            }
 
             // Transcribing and Cancelled share the bar: each band crossfades in on its own.
             let spec = WorkbenchTokens.Island.spec
@@ -79,23 +121,23 @@ struct MockIsland: View {
             let transcribing = state == .transcribing, cancelled = state == .cancelled, noSpeech = state == .noSpeech
             TranscribingBand(model: model)
                 .frame(width: bandWidth, height: spec.voiceBelow)
-                .modifier(VoiceContentTransition(progress: transcribing ? 1 : 0))
+                .modifier(VoiceContentTransition(progress: transcribing && !designed ? 1 : 0))
                 .animation(bandAnimation(shown: transcribing), value: state)
                 .offset(y: model.metrics.safeAreaTop)
                 .allowsHitTesting(false)
                 .accessibilityHidden(!transcribing)
             CancelledBand(model: model)
                 .frame(width: bandWidth, height: spec.voiceBelow)
-                .modifier(VoiceContentTransition(progress: cancelled ? 1 : 0))
+                .modifier(VoiceContentTransition(progress: cancelled && !designed ? 1 : 0))
                 .animation(bandAnimation(shown: cancelled), value: state)
                 .contentShape(Rectangle())
                 .onHover { model.setUndoHover($0) }
                 .offset(y: model.metrics.safeAreaTop)
-                .allowsHitTesting(cancelled)
-                .accessibilityHidden(!cancelled)
+                .allowsHitTesting(cancelled && !designed)
+                .accessibilityHidden(!cancelled || designed)
             NoSpeechBand()
                 .frame(width: bandWidth, height: spec.voiceBelow)
-                .modifier(VoiceContentTransition(progress: noSpeech ? 1 : 0))
+                .modifier(VoiceContentTransition(progress: noSpeech && !designed ? 1 : 0))
                 .animation(bandAnimation(shown: noSpeech), value: state)
                 .offset(y: model.metrics.safeAreaTop)
                 .allowsHitTesting(false)
@@ -145,20 +187,23 @@ struct MockIsland: View {
                     .contentShape(Rectangle())
                     .frame(width: hit.width, height: hit.height)
                     .onHover { model.setStackHovered($0) }
-                    .onTapGesture { model.setExpanded(true) }
+                    // Oct 27: opened, the bar's left puts the strip away again.
+                    .onTapGesture { model.setExpanded(!model.stackExpanded) }
                     .linkCursor()
                     .offset(x: hit.midX, y: hit.minY)
                     .zIndex(200)
                     .accessibilityElement()
                     .accessibilityLabel("\(model.referents.count) screenshots")
-                    .accessibilityHint("Shows every screenshot")
+                    .accessibilityHint(model.stackExpanded ? "Puts the screenshots away" : "Shows every screenshot")
                     .accessibilityAddTraits(.isButton)
-                    .accessibilityAction { model.setExpanded(true) }
+                    .accessibilityAction { model.setExpanded(!model.stackExpanded) }
             }
 
             // Oct 15 review, VF04: "+N" on the stack, the referents hidden behind the three that show.
             if let more = layout.more {
                 ReferentMoreChip(count: layout.moreCount)
+                    // Oct 26: on a listening bar design's black, as on the black island.
+                    .environment(\.colorScheme, layout.wings != nil ? .dark : scheme)
                     .offset(x: more.midX, y: more.minY)
                     .animation(model.cardAnimation(index: T.maxLayers - 1, count: T.maxLayers), value: more)
                     .opacity(model.barNotice == nil && !dropping ? 1 : 0)
@@ -206,12 +251,17 @@ struct MockIsland: View {
                                             removal: .opacity.animation(T.closeOut)))
             }
         }
+        // Oct 26: a listening bar design shorter than today's bands (Wings, Droplets: the notch's
+        // height) keeps them from making the content taller than the bar, which the surface's
+        // bottom alignment would push up.
+        .frame(height: layout.wings != nil ? layout.outline.size.height : nil, alignment: .top)
+        .animation(bandAnimation(shown: layout.wings != nil), value: layout.wings)
         // Paste not found: the island grows to hold the transcript, its words a beat behind the
         // shape. An overlay, so its height never sizes the island's content: as a child of the
         // stack, it made the stack taller than the bar, and the outline's bottom alignment
         // pushed every state's content up.
         .overlay(alignment: .top) {
-            let paste = state == .pasteNotFound
+            let paste = state == .pasteNotFound && layout.wings == nil
             PasteNotFoundContent(model: model, layout: model.pasteLayout)
                 .bandShown(paste) // Oct 21, perf
                 .modifier(VoiceContentTransition(progress: paste ? 1 : 0))
@@ -225,7 +275,7 @@ struct MockIsland: View {
         // Thinking: the agent at work, over the island the same way (an overlay never sizes it).
         // Feedback #2: the notice in place of the bar.
         .overlay(alignment: .top) {
-            let shown = state == .voiceError
+            let shown = state == .voiceError && layout.wings == nil
             VoiceErrorContent(model: model)
                 .bandShown(shown) // Oct 21, perf
                 .modifier(VoiceContentTransition(progress: shown ? 1 : 0))
@@ -238,7 +288,7 @@ struct MockIsland: View {
         }
         // …and inside the listening bar, which listens on (#2), and the last minute at its right (#4).
         .overlay(alignment: .top) {
-            let shown = state.collects && model.barNotice != nil && !model.stackExpanded
+            let shown = state.collects && model.barNotice != nil && !model.stackExpanded && layout.wings == nil
             BarNoticeBand(model: model)
                 .bandShown(shown) // Oct 21, perf
                 .frame(width: WorkbenchTokens.Feedback.barNoticeWidth - 2 * WorkbenchTokens.Island.spec.compactTopRadius,
@@ -250,7 +300,7 @@ struct MockIsland: View {
                 .accessibilityHidden(!shown)
         }
         .overlay(alignment: .top) {
-            let shown = state.collects && model.inLastMinute && model.barNotice == nil && !model.stackExpanded
+            let shown = state.collects && model.inLastMinute && model.barNotice == nil && !model.stackExpanded && layout.wings == nil
             let spec = WorkbenchTokens.Island.spec
             let width = model.metrics.notchWidth ?? spec.softwareIslandWidth
             HStack {
@@ -268,24 +318,29 @@ struct MockIsland: View {
         // Feedback #19: with the words' review off, the chosen chat's agent at the bar's right; a
         // click opens where it goes (Dispatch's suggestions and every chat) and the model, under it.
         .overlay(alignment: .top) {
+            // Oct 27: in Wings the agent is at the bar's right (Wings.swift) and only the sheet is here.
+            let wings = layout.wings != nil
             let shown = state == .v2Voice && !model.v2ReviewBeforeSend && !model.stackExpanded && !model.v2AsksOver
+                && (!wings || model.v2RouteOpen)
             let spec = WorkbenchTokens.Island.spec
             let notch = NotchGeometry.notchRect(metrics: model.metrics, spec: spec)
             ZStack(alignment: .top) {
                 // Closed, at the bar's right; open, at the right of Dispatch's width (the stack has
                 // gone to the left).
-                HStack {
-                    Spacer()
-                    V2RouteButton(model: model)
+                if !wings {
+                    HStack {
+                        Spacer()
+                        V2RouteButton(model: model)
+                    }
+                    .padding(.trailing, model.v2RouteOpen ? 0 : WorkbenchTokens.Board.routeInset)
+                    .frame(width: model.v2RouteOpen ? V2Geometry.contentWidth : notch.width, height: spec.voiceBelow)
+                    .offset(y: notch.height)
+                    .animation(model.v2RouteOpen ? WorkbenchTokens.V2.resize : WorkbenchTokens.V2.fold, value: model.v2RouteOpen)
                 }
-                .padding(.trailing, model.v2RouteOpen ? 0 : WorkbenchTokens.Board.routeInset)
-                .frame(width: model.v2RouteOpen ? V2Geometry.contentWidth : notch.width, height: spec.voiceBelow)
-                .offset(y: notch.height)
-                .animation(model.v2RouteOpen ? WorkbenchTokens.V2.resize : WorkbenchTokens.V2.fold, value: model.v2RouteOpen)
                 if model.v2RouteOpen {
                     V2RouteSheet(model: model)
                         .panelScheme()
-                        .offset(y: notch.height + spec.voiceBelow + WorkbenchTokens.V2.gap + WorkbenchTokens.Native.panelGap)
+                        .offset(y: notch.height + (wings ? 0 : spec.voiceBelow) + WorkbenchTokens.V2.gap + WorkbenchTokens.Native.contentDrop)
                         .transition(.opacity)
                 }
             }
@@ -333,11 +388,12 @@ struct MockIsland: View {
                 .allowsHitTesting(panel)
                 .accessibilityHidden(!panel)
         }
-        // Dispatch Version 2: Choose chat, the control board, the expanded chat (its voice input
-        // is the aura, drawn by AgentEdgeLayer). Overlays too, each fading in with the shape.
-        // Dispatch Version 2 transcribing: the words, over the aura filling the bar's edge.
+        // Dispatch Version 2: Choose chat, the control board, the expanded chat. Overlays too, each
+        // fading in with the shape.
+        // Dispatch Version 2 transcribing: the words (Oct 27: the aura that filled the bar's edge
+        // under them is gone).
         .overlay(alignment: .top) {
-            let shown = state == .v2Transcribing
+            let shown = state == .v2Transcribing && layout.wings == nil
             ThinkingText(label: L("Transcribing"))
                 .frame(width: model.metrics.notchWidth ?? WorkbenchTokens.Island.spec.softwareIslandWidth,
                        height: WorkbenchTokens.Island.spec.voiceBelow)
@@ -372,8 +428,18 @@ struct MockIsland: View {
             let shown = state == .v2Chat || over
             V2ChatContent(model: model, layout: model.v2ChatLayout)
                 .bandShown(shown) // Oct 21, perf
-                .offset(y: over ? WorkbenchTokens.Island.spec.voiceBelow : 0)
+                .offset(y: over && layout.wings == nil ? WorkbenchTokens.Island.spec.voiceBelow : 0)
                 .animation(model.islandAnimation, value: over)
+                .modifier(VoiceContentTransition(progress: shown ? 1 : 0))
+                .animation(v2Content(shown), value: shown)
+                .allowsHitTesting(shown)
+                .accessibilityHidden(!shown)
+        }
+        // Oct 26, Ryan: a session popping up by itself, needing you or done (Feedback/V2Alert.swift).
+        .overlay(alignment: .top) {
+            let shown = state == .v2Alert
+            V2AlertContent(model: model)
+                .bandShown(shown)
                 .modifier(VoiceContentTransition(progress: shown ? 1 : 0))
                 .animation(v2Content(shown), value: shown)
                 .allowsHitTesting(shown)
@@ -382,7 +448,7 @@ struct MockIsland: View {
         // Oct 17, Ryan: a file dragged over the notch, listening or on Choose chat: the bar (or the
         // panel) lights as a well and says what letting go does.
         .overlay(alignment: .top) {
-            let shown = model.fileDropTargeted && (state.collects || state == .v2Send)
+            let shown = model.fileDropTargeted && (state.collects || state == .v2Send) && layout.wings == nil
             let F = WorkbenchTokens.Feedback.self
             let outline = layout.outline
             let notch = NotchGeometry.notchRect(metrics: model.metrics, spec: WorkbenchTokens.Island.spec)
@@ -404,6 +470,79 @@ struct MockIsland: View {
         // The outline (Original), or the black island and the glass panel under it (Native,
         // docs/island/NATIVE.md).
         .modifier(IslandSurface(model: model, layout: layout))
+    }
+}
+
+/// Oct 26: a listening bar design's orb or waveform at its place (x from the island's center, y
+/// from its top): beside the notch, measured from the shape's nearer side, which follows the
+/// shape's width as it springs; under the notch, from the center.
+/// Oct 27, Ryan: files dragged near the notch while it listens: under the bar, clear of the
+/// hardware notch, a well with dashes says where to let go; over it, the well lights in the accent
+/// and says how many will join.
+private struct DropZoneCard: View {
+    let model: WorkbenchModel
+    let layout: StackLayout
+
+    var body: some View {
+        let C = WorkbenchTokens.Capture.self
+        let V = WorkbenchTokens.V2.self
+        let notch = NotchGeometry.notchRect(metrics: model.metrics, spec: WorkbenchTokens.Island.spec)
+        let over = model.fileDropTargeted
+        let accent = model.accent.color
+        let well = RoundedRectangle(cornerRadius: C.dropWellRadius, style: .continuous)
+        HStack(spacing: 8) {
+            Image(systemName: model.fileDropCount > 1 ? "doc.on.doc" : "tray.and.arrow.down")
+                .font(.system(size: C.dropGlyph, weight: .medium))
+            Text(over ? (model.fileDropCount > 1 ? L("Let go to add all \(model.fileDropCount)") : L("Let go to add it"))
+                      : L("Drop files here"))
+                .font(V.browseFont)
+        }
+        .foregroundStyle(over ? accent : V.subColor)
+        .frame(width: C.dropZoneWidth - 2 * C.dropZonePadding, height: C.dropZoneHeight)
+        .background(well.fill(over ? accent.opacity(C.dropWellFill) : .clear))
+        .overlay(well.strokeBorder(over ? accent : C.dropWellIdle,
+                                   style: StrokeStyle(lineWidth: C.dropWellStroke, dash: over ? [] : C.dropWellDash)))
+        .offset(y: notch.height + WorkbenchTokens.Native.floatGap + C.dropZonePadding)
+        .panelScheme()
+        .animation(WorkbenchTokens.Spring.hover, value: over)
+        .allowsHitTesting(false)
+        .accessibilityLabel(over ? L("Let go to add the files") : L("Drop files here"))
+    }
+}
+
+/// Wings over an attached panel: the bar black on the glass, square at the top edge, its foot
+/// rounded as the bar's.
+private struct WingsBarOnGlass: View {
+    let bar: StackLayout.Outline
+
+    var body: some View {
+        IslandShape(topRadius: 0, bottomRadius: bar.bottomRadius, earY: 0)
+            .fill(WorkbenchTokens.Island.surface)
+            .frame(width: max(0, bar.size.width - 2 * bar.topRadius), height: bar.size.height)
+            .allowsHitTesting(false)
+    }
+}
+
+private struct BarSlot: ViewModifier {
+    let at: CGPoint
+    let size: CGSize
+    /// Half the island's width, at its target.
+    let half: CGFloat
+    let fromEdge: Bool
+
+    func body(content: Content) -> some View {
+        let left = at.x < 0
+        if fromEdge {
+            content
+                .frame(width: size.width, height: size.height)
+                .padding(left ? .leading : .trailing, max(0, half - abs(at.x) - size.width / 2))
+                .frame(maxWidth: .infinity, alignment: left ? .leading : .trailing)
+                .offset(y: at.y - size.height / 2)
+        } else {
+            content
+                .frame(width: size.width, height: size.height)
+                .offset(x: at.x, y: at.y - size.height / 2)
+        }
     }
 }
 

@@ -75,8 +75,9 @@ public final class PassthroughHostingView<Content: View>: NSHostingView<Content>
 /// that takes a drop of files from Finder or the desktop; it's put up only while such a drag is
 /// under way, so no other drag, and no click, ever lands on it.
 public final class FileDropView: NSView {
-    /// The drag is over it (true) or has left (false).
-    public var onTargeted: (Bool) -> Void = { _ in }
+    /// The drag is over it, with how many files it carries (Oct 25, Ryan: many at once), or has
+    /// left (0).
+    public var onTargeted: (Int) -> Void = { _ in }
     /// The files let go on it, and where (AppKit's screen point). True when they were taken.
     public var onDrop: ([URL], NSPoint) -> Bool = { _, _ in false }
 
@@ -98,8 +99,9 @@ public final class FileDropView: NSView {
     }
 
     public override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard !files(sender).isEmpty else { return [] }
-        onTargeted(true)
+        let count = files(sender).count
+        guard count > 0 else { return [] }
+        onTargeted(count)
         return .copy
     }
 
@@ -107,18 +109,18 @@ public final class FileDropView: NSView {
         files(sender).isEmpty ? [] : .copy
     }
 
-    public override func draggingExited(_ sender: NSDraggingInfo?) { onTargeted(false) }
+    public override func draggingExited(_ sender: NSDraggingInfo?) { onTargeted(0) }
 
     public override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { !files(sender).isEmpty }
 
     public override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         let urls = files(sender)
-        onTargeted(false)
+        onTargeted(0)
         let point = window.map { $0.convertPoint(toScreen: sender.draggingLocation) } ?? NSEvent.mouseLocation
         return onDrop(urls, point)
     }
 
-    public override func draggingEnded(_ sender: NSDraggingInfo) { onTargeted(false) }
+    public override func draggingEnded(_ sender: NSDraggingInfo) { onTargeted(0) }
 }
 
 /// The screens Fovea lives on.

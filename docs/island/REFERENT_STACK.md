@@ -82,6 +82,13 @@ where a screenshot's chrome is.
 - **Oct 17, round 2 (Ryan).** No whole screen on ⌥ twice (the Claude app's). Files join by being
   dragged onto the notch, the bar lit as a well ("Drop to take it"); taken words stay highlighted in
   the accent for the session.
+- **Oct 25 (Ryan): many files at once.** Still only while listening or on Choose chat (Ryan chose
+  that over a drop at rest starting a request, or holding the files with the mic off). The well
+  says how many ("Drop to take all 5"). Every file is taken at once, in the order dragged; one
+  already in the stack isn't taken again. Their cards wait in a small pile where they were let go
+  (each 5 pt down and right of the one before, three deep) and leave 70 ms apart, the last within
+  560 ms however many (`WorkbenchTokens.Capture.dropStagger`/`dropSpread`). Past three, the "+N"
+  counts the rest. `--smoke` drops four.
 - **To the right, never sideways.** The reference fans its cards left and right from the middle.
   Here every movement goes right from the first capture: at rest the pile peeks right; hovered,
   it fans further right (5 → 11 pt apart, tilts +8° and −6°) without moving the front card or the

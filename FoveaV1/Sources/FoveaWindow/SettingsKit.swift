@@ -814,7 +814,10 @@ private struct SettingsSurface<S: InsettableShape>: ViewModifier {
     let shape: S
     let level: T.Shade.Level
     func body(content: Content) -> some View {
-        if native {
+        if T.Look.floats {
+            // Oct 27, Notion White: a group is a white card floating on the grey.
+            content.floating(shape)
+        } else if native {
             content.background(WindowLook.isAligned ? palette.card : palette.nativeGroup, in: shape)
         } else {
             content.shading(shape, level)

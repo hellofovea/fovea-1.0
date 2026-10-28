@@ -87,7 +87,8 @@ struct SlidingSegments<Value: Hashable>: View {
     private func segment(_ i: Int) -> some View {
         let s = segments[i]
         let on = s.value == (shown ?? selection)
-        let solid = pill == .island || WindowLook.isAligned
+        // Notion White: Arc's segmented control, the chosen one's words in the ink (`chosen`).
+        let solid = (pill == .island || WindowLook.isAligned) && !T.Look.floats
         let ink: Color = on ? (solid ? palette.onPill : palette.text) : (hovered == i ? palette.text : palette.secondary)
         return HStack(spacing: 5) {
                 // Aligned: the words alone (Oct 24, Ryan: no mark before Dictation and Dispatch).
@@ -134,7 +135,15 @@ struct SlidingSegments<Value: Hashable>: View {
 
     @ViewBuilder private var chosen: some View {
         let (contact, _) = T.Shade.layers(.control, dark: palette.isDark)
-        if WindowLook.isAligned {
+        if T.Look.floats {
+            // Arc UI's segmented control: on a quiet track, the chosen one a white card resting on
+            // it; on a white card (the toolbar's), the ground's grey sunk into it.
+            if track == .glass {
+                Capsule().fill(palette.background)
+            } else {
+                FloatFill(shape: Capsule(), fill: palette.card)
+            }
+        } else if WindowLook.isAligned {
             // The first run's (NotchChoiceRow): solid ink, white in dark; no edge, no shadow.
             Capsule().fill(palette.pill)
         } else {
@@ -276,6 +285,11 @@ private struct PillBody: View {
         switch kind {
         case .prominent:
             Capsule().fill(palette.accent.opacity(pressed ? A.primaryPressed : (lit ? A.primaryHover : 1)))
+        case .secondary where T.Look.floats:
+            // Notion White: a white card resting on the grey, a hairline round it on a white group.
+            FloatFill(shape: Capsule(), fill: pressed ? palette.background : palette.card)
+                .overlay(Capsule().strokeBorder(palette.hairline, lineWidth: 0.5))
+                .opacity(lit && !pressed ? 0.94 : 1)
         case .secondary:
             Capsule().fill(palette.ink(pressed ? A.secondaryPressed : (lit ? A.secondaryHover : A.secondaryFill)))
         case .plain:
@@ -287,7 +301,7 @@ private struct PillBody: View {
 
     private var label: Color {
         switch kind {
-        case .prominent: return .white
+        case .prominent: return palette.onAccent
         case .destructive: return palette.danger
         case .secondary, .plain: return palette.text
         }
@@ -338,11 +352,20 @@ struct IconButton: View {
     var body: some View {
         Button(action: action) {
             // Oct 21, Ryan ("simpler is better"): a new symbol (Copy's checkmark) replaces the
-            // old one at once; it bounced under the pointer and swapped out of a blur.
-            Image(systemName: symbol)
-                .font(.system(size: 13, weight: .medium))
-                .frame(width: 28, height: 28)
-                .contentShape(Circle())
+            // old one at once; it bounced under the pointer and swapped out of a blur. Oct 27,
+            // Notion White: Arc UI's copy button (MIT), quick and quiet: the new symbol fades in
+            // from 85 % in 0.16 s, the old one fades out in 0.1 s; no blur, no bounce.
+            ZStack {
+                Image(systemName: symbol)
+                    .font(.system(size: 13, weight: .medium))
+                    .id(symbol)
+                    .transition(T.Look.floats
+                        ? .asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.85)).animation(T.Look.swapIn),
+                                      removal: .opacity.animation(T.Look.swapOut))
+                        : .identity)
+            }
+            .frame(width: 28, height: 28)
+            .contentShape(Circle())
         }
         .buttonStyle(IconButtonStyle(confirmed: confirmed, destructive: role == .destructive))
         // Oct 18, Ryan: in the primary language (a literal help is looked up as it's drawn).

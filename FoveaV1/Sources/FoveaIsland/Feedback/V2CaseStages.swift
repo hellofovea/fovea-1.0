@@ -114,12 +114,11 @@ extension WorkbenchModel {
         stageV2(.send)
     }
 
-    /// The browser open on an agent (a project opened, a search typed).
-    private func caseBrowser(agent: String, project: String? = nil, query: String = "") {
+    /// The browser open on an agent (a search typed).
+    private func caseBrowser(agent: String, query: String = "") {
         caseChooseChat()
         toggleV2Browse()
         browseV2Agent(agent)
-        v2BrowseProject = project
         setBrowseQuery(query)
     }
 
@@ -131,19 +130,19 @@ extension WorkbenchModel {
         // Oct 18, Ryan: the sample searches in the primary language, so the Chinese titles are found.
         case "qa:browseSearch": caseBrowser(agent: "claude-code", query: L("island.search.found", english: "notch"))
         case "qa:browseEmpty": caseBrowser(agent: "claude-code", query: L("island.search.none", english: "invoices"))
-        case "qa:browseMore": caseBrowser(agent: "claude-code", project: ChatBook.project)
+        case "qa:browseMore": caseBrowser(agent: "claude-code")
         case "qa:browseLoading":
             caseBrowser(agent: "claude-code")
             cases.browseLoad = .loading
         case "qa:browseFailed":
             caseBrowser(agent: "claude-code")
             cases.browseLoad = .failed
-        case "qa:blockedInUse": caseBrowser(agent: "codex", project: "fovea-mac")
-        case "qa:blockedReadOnly": caseBrowser(agent: "claude-code", project: "Futuro")
-        case "qa:blockedFolder": caseBrowser(agent: "claude-code", project: ChatBook.project)
+        case "qa:blockedInUse": caseBrowser(agent: "codex", query: L("CI cache keys"))
+        case "qa:blockedReadOnly": caseBrowser(agent: "claude-code", query: L("Release notes draft"))
+        case "qa:blockedFolder": caseBrowser(agent: "claude-code")
         case "qa:blockedAgent":
             cases.downAgent = "codex"
-            caseBrowser(agent: "codex", project: ChatBook.project)
+            caseBrowser(agent: "codex")
         // QA06, QA10: sending.
         case "qa:sending":
             caseChooseChat()

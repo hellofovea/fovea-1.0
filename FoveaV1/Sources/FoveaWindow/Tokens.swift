@@ -27,8 +27,10 @@ enum T {
     enum Layout {
         /// The window's one size, as Wispr Flow's and Typeless's are fixed: it can't be resized
         /// or made full screen. 1112 × 784 was the size it had on Ryan's 13-inch Air; Oct 13, "a
-        /// little bit smaller": 1024 × 720, the same shape at 92 %.
-        static let window = CGSize(width: 1024, height: 720)
+        /// little bit smaller": 1024 × 720, the same shape at 92 %. Oct 27, Ryan: "i want the
+        /// window to be smaller than now and the size should be fixed": 880 × 620, the same shape
+        /// at 86 %.
+        static let window = CGSize(width: 880, height: 620)
 
         // The grid: one centered block, as wide as its columns.
         /// The least space either side of the grid.
@@ -52,7 +54,14 @@ enum T {
         static let pageRadius: CGFloat = 10
         /// Aside's card radius (its "Next up" card): a little rounder than the page's corner, as a
         /// small thing reads rounder at the same radius.
-        static var cardRadius: CGFloat { WindowLook.isAligned ? T.Aligned.cardRadius : 12 }
+        static var cardRadius: CGFloat {
+            switch WindowLook.shown {
+            case .current: return 12
+            case .book: return T.Look.bookRadius
+            case .notion: return T.Look.floatRadius
+            default: return T.Aligned.cardRadius
+            }
+        }
         /// Paste 5's header band, for the corner icon.
         static let headerHeight: CGFloat = 50
         /// The small, whole app icon (its artwork is about 80 % of this).
@@ -87,8 +96,9 @@ enum T {
         static let columnGap: CGFloat = 24
         static let searchWidth: CGFloat = 240
         /// The toolbar's glass, as tall as macOS 27 draws its own (36.5 pt, measured): search's
-        /// circle and capsule, and the circle around you.
-        static let toolbarControl: CGFloat = 36
+        /// circle and capsule, and the circle around you. Oct 27, Ryan: "the top menu bar is too
+        /// big": 30 in Notion White, on the Mac's compact toolbar (`T.Look.compact`).
+        static var toolbarControl: CGFloat { T.Look.compact ? T.Look.compactControl : 36 }
         /// Below this window width the open search is shorter (the toolbar's center control
         /// spans about 360 pt; search and you must clear it).
         static let compactWidth: CGFloat = 1000
@@ -272,6 +282,12 @@ enum T {
 /// change and its reason: docs/window/ALIGNED.md.
 enum WindowLook: String, CaseIterable {
     case current, aligned
+    /// Oct 27, Ryan, of the notch in Wings: "the notch becomes The app and the notch feel like two
+    /// entirely different products… If the UI were more minimal and whiter—more white, like Notion
+    /// style—it might be a better fit", then: "actually build all 5 and lemme check". Five ways to
+    /// make the window and the notch one product, each built on Aligned's parts and differing in
+    /// its paper, its ink, its cards and its faces (`T.Look`, docs/window/LOOKS.md).
+    case room, book, twoSizes, lightsDown, notion
 
     /// The look being drawn. The views read it through `T.Aligned` and the palette; the window's
     /// content is drawn again when it changes (MainView's `.id`).
@@ -280,12 +296,118 @@ enum WindowLook: String, CaseIterable {
         if let flag = args.first(where: { $0.hasPrefix("--window-look=") }) {
             return WindowLook(rawValue: String(flag.dropFirst("--window-look=".count))) ?? .current
         }
-        return UserDefaults.standard.string(forKey: storeKey).flatMap(WindowLook.init(rawValue:)) ?? .current
+        // Oct 27, Ryan: "lets go with the build of notion white": the window's design unless
+        // another is chosen in View.
+        return UserDefaults.standard.string(forKey: storeKey).flatMap(WindowLook.init(rawValue:)) ?? .notion
     }()
-    static var isAligned: Bool { shown == .aligned }
+    /// Aligned's parts are drawn: in Aligned and in each of the five built on it.
+    static var isAligned: Bool { shown != .current }
     static let storeKey = "fovea.window.look"
 
-    var title: String { self == .current ? "Current Design" : "Aligned Design" }
+    var title: String {
+        switch self {
+        case .current: return "Current Design"
+        case .aligned: return "Aligned Design"
+        case .room: return "Monochrome Room"
+        case .book: return "The Book"
+        case .twoSizes: return "Same Object, Two Sizes"
+        case .lightsDown: return "Lights Down"
+        case .notion: return "Notion White"
+        }
+    }
+}
+
+extension T {
+    /// Oct 27: what each of the five looks changes on Aligned's parts (docs/window/LOOKS.md).
+    /// - Monochrome Room: white, the ink and nothing else; the notch's black as the main button,
+    ///   its green, orange and red for state; the website's Garamond only for a page's title.
+    /// - The Book: the website's paper and ink; the words you said set in Garamond; cards as
+    ///   entries under a rule, not boxes.
+    /// - Same Object, Two Sizes: the newest day's captures drawn as the notch draws its rows,
+    ///   black, on a white page.
+    /// - Lights Down: the window as dark as the notch, whatever the Mac says.
+    /// - Notion White: Notion's white and warm ink, one sans, cards with an edge; no serif.
+    enum Look {
+        static var shown: WindowLook { WindowLook.shown }
+
+        /// A title's face: New York (Aligned), the website's Garamond italic, or the system face.
+        enum Face { case newYork, garamond, system }
+        /// A page's title, an empty page's, the day page's.
+        static var titleFace: Face {
+            switch shown {
+            case .room, .book, .lightsDown: return .garamond
+            case .twoSizes, .notion: return .system
+            case .current, .aligned: return .newYork
+            }
+        }
+        /// A day's name over its cards: Garamond only in The Book; elsewhere in the five, the
+        /// system face, so the serif stays one phrase a page.
+        static var dayFace: Face {
+            switch shown {
+            case .book: return .garamond
+            case .room, .twoSizes, .lightsDown, .notion: return .system
+            case .current, .aligned: return .newYork
+            }
+        }
+        /// Garamond is small on its body: set this much larger to sit with the system face; the
+        /// words in a card a little less, so they don't outsize the title over them.
+        static let garamondScale: CGFloat = 1.18
+        static let garamondWordsScale: CGFloat = 1.1
+        /// The words you said, as the website sets its words (The Book). Garamond has no Chinese:
+        /// words with any stay in the system face, at its size.
+        static func wordsInGaramond(_ text: String) -> Bool {
+            shown == .book && !text.unicodeScalars.contains { $0.properties.isIdeographic }
+        }
+        /// Lights Down: dark, whatever the Mac or Appearance says.
+        static var alwaysDark: Bool { shown == .lightsDown }
+        /// How a card sits on the page: a fill (Aligned), an entry under a rule (The Book), or
+        /// white with an edge (Notion).
+        enum Card { case fill, rule, edge }
+        static var card: Card { shown == .book ? .rule : .fill }
+        static let bookRadius: CGFloat = 0
+        /// Same Object, Two Sizes: the newest day's captures as the notch's rows.
+        static var newestAsNotch: Bool { shown == .twoSizes }
+        /// The accent the person chose goes through Current and Aligned; the five keep their own.
+        static var keepsAccent: Bool { shown == .current || shown == .aligned }
+        /// A day's name in the system face.
+        static let daySize: CGFloat = 15
+
+        /// Oct 27, Ryan, of Notion White: "the top menu bar is too big. and 2 i thnkk the capture
+        /// card is too big as well… like reducing the information shown below the top bar of icon,
+        /// capture name, type, and time." The chosen design is compact: the Mac's compact toolbar
+        /// with 30 pt controls; cards 196 × 128 (four a row in the window, were 220 square), under
+        /// their header three lines of words with what you took as chips in the line, no preview.
+        static var compact: Bool { shown == .notion }
+        static let compactControl: CGFloat = 30
+        static let cardWidth: CGFloat = 196
+        static let cardHeight: CGFloat = 128
+        static let cardLines = 3
+        static let cardPadding: CGFloat = 12
+        static let cardBodyGap: CGFloat = 6
+        static let cardGridGap: CGFloat = 16
+
+        /// Oct 27: Notion White's surfaces are white cards floating on the grey ground, as Arc
+        /// UI's are (its MIT foundation.css): every button, every capture, the year's dashboard,
+        /// Settings' groups.
+        static var floats: Bool { shown == .notion }
+        /// Arc's shadows, CSS `0 y blur rgba(0,0,0,a)` with SwiftUI's radius half the blur: what
+        /// rests on the ground (a card, a button), what's lifted, what floats over everything.
+        struct Shadow { var opacity: Double; var radius: CGFloat; var y: CGFloat }
+        static let resting = [Shadow(opacity: 0.035, radius: 1, y: 1), Shadow(opacity: 0.05, radius: 6, y: 3)]
+        static let raised = [Shadow(opacity: 0.065, radius: 9, y: 6), Shadow(opacity: 0.035, radius: 1.5, y: 1)]
+        static let floating = [Shadow(opacity: 0.105, radius: 24, y: 20), Shadow(opacity: 0.045, radius: 5, y: 3)]
+        /// Dark needs about three times the opacity to show at all.
+        static func darkened(_ layers: [Shadow], _ dark: Bool) -> [Shadow] {
+            dark ? layers.map { Shadow(opacity: min(0.5, $0.opacity * 3), radius: $0.radius, y: $0.y) } : layers
+        }
+        /// A card's corner, and the year's dashboard's (Arc's panel radius, at the window's scale).
+        static let floatRadius: CGFloat = 16
+        static let dashboardRadius: CGFloat = 20
+        static let dashboardPadding: CGFloat = 18
+        /// Arc UI's copy feedback: in on its standard ease (.22, 1, .36, 1) in 0.16 s, out in 0.1 s.
+        static let swapIn = Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.16)
+        static let swapOut = Animation.timingCurve(0.22, 1, 0.36, 1, duration: 0.1)
+    }
 }
 
 extension T {
@@ -407,6 +529,12 @@ struct Palette {
     var highlight: Color?
     /// What's chosen and what has focus: the selection ring, the focus ring, a chosen tab.
     var accent: Color
+    /// Words on the accent (a prominent button's): white, or black on a white accent.
+    var onAccent: Color = .white
+    /// Same Object, Two Sizes: a card drawn as the notch's black object.
+    var notchObject = false
+    /// The sidebar's own color (Notion's warm gray), else the page's.
+    var sidebarColor: Color?
     var isDark: Bool
     var surface: Surface
     /// The signature fill behind ink: referent tabs, the words you pointed with, the busiest
@@ -458,7 +586,8 @@ struct Palette {
     }
 
     /// `accent`: the one the person chose in Settings › Appearance; nil keeps the theme's own.
-    static func make(dark: Bool, surface: Surface, accent: Color? = nil) -> Palette {
+    static func make(dark asked: Bool, surface: Surface, accent: Color? = nil) -> Palette {
+        let dark = asked || T.Look.alwaysDark
         var p: Palette
         switch surface {
         case .macula: p = macula(dark)
@@ -468,7 +597,7 @@ struct Palette {
         }
         // A chosen accent goes through the whole window, whatever the theme: what's chosen, the
         // things you took, the words you pointed with, the calendar's shades.
-        if let accent {
+        if let accent, T.Look.keepsAccent {
             p.accent = accent
             p.mark = accent
             p.onMark = .white
@@ -478,6 +607,109 @@ struct Palette {
             p.onHeat = .white
         }
         if WindowLook.isAligned { p.align() }
+        p.look()
+        // Oct 27, Ryan, of the year's calendar: "make the color here the color of the accent". In
+        // every look its shades are the accent chosen (the Mac's own with Multicolor), the empty
+        // square the look's.
+        let shade = accent ?? Color.accentColor
+        p.heat = [p.heat.first ?? p.fill, shade.opacity(dark ? 0.35 : 0.22), shade.opacity(dark ? 0.55 : 0.42),
+                  shade.opacity(dark ? 0.78 : 0.68), shade]
+        p.onHeat = .white
+        return p
+    }
+
+    /// The five looks' own paper, ink, cards and accent, over Aligned's (`T.Look`).
+    private mutating func look() {
+        let dark = isDark
+        func hexes(_ h: [UInt32]) -> [Color] { h.map { Color(hex: $0) } }
+        switch WindowLook.shown {
+        case .current, .aligned:
+            return
+        case .room:
+            // White and the ink; the notch's black is the one strong thing.
+            background = Color(hex: dark ? 0x1C1C1C : 0xFFFFFF)
+            card = Color(hex: dark ? 0x272727 : 0xF5F5F5)
+            raised = Color(hex: dark ? 0x2F2F2F : 0xFFFFFF)
+            sidebarColor = Color(hex: dark ? 0x171717 : 0xF7F7F7)
+            accent = dark ? .white : Color(hex: 0x0C0C0C)
+            heat = hexes(dark ? [0x272727, 0x484848, 0x7A7A7A, 0xB8B8B8, 0xFFFFFF] : [0xF0F0F0, 0xD6D6D6, 0xA6A6A6, 0x5C5C5C, 0x0C0C0C])
+        case .twoSizes:
+            // Aligned's white page; the notch's black for what you press and for the newest day.
+            accent = dark ? .white : .black
+            heat = hexes(dark ? [0x2E2E2E, 0x4E4E4E, 0x7E7E7E, 0xBDBDBD, 0xFFFFFF] : [0xF0F0F0, 0xD4D4D4, 0xA3A3A3, 0x595959, 0x000000])
+        case .book:
+            // The website's paper (book.css): #F8F8F5, ink #141414, its soft and quiet greys.
+            background = Color(hex: dark ? 0x141413 : 0xF8F8F5)
+            card = background
+            sidebarColor = background
+            raised = Color(hex: dark ? 0x1F1F1D : 0xFFFFFF)
+            text = Color(hex: dark ? 0xEDEDE8 : 0x141414)
+            secondary = Color(hex: dark ? 0xA3A39E : 0x6B6B67)
+            tertiary = Color(hex: dark ? 0x75756F : 0xA2A29E)
+            hairline = Color(hex: dark ? 0x2F2F2C : 0xE3E3DF)
+            accent = text
+            heat = hexes(dark ? [0x232321, 0x3E3E3B, 0x6E6E6A, 0xB5B5AF, 0xEDEDE8] : [0xECECE7, 0xD2D2CC, 0xA6A6A0, 0x6B6B67, 0x141414])
+            pill = text
+            onPill = background
+        case .lightsDown:
+            // As dark as the notch: near-black layers, white words.
+            background = Color(hex: 0x101010)
+            card = Color(hex: 0x1A1A1A)
+            raised = Color(hex: 0x232323)
+            sidebarColor = Color(hex: 0x0A0A0A)
+            accent = .white
+            heat = hexes([0x1E1E1E, 0x3A3A3A, 0x6B6B6B, 0xB3B3B3, 0xFFFFFF])
+            pill = .white
+            onPill = Color(hex: 0x101010)
+        case .notion:
+            // Oct 27, Ryan: "i like this feeling of white cards hovering on a light gray background…
+            // use the same color as the reference pic" (Arc UI's site, uiarc.dev, and its MIT
+            // foundation.css): the ground #EFEFF1, white cards, near-black words (Arc's
+            // neutral-11) over its greys (neutral-8, -7), its hairline, its near-black for what's
+            // chosen. Dark: Arc's dark ground, surfaces a step lighter.
+            background = Color(hex: dark ? 0x1A1A1B : 0xEFEFF1)
+            card = Color(hex: dark ? 0x262627 : 0xFFFFFF)
+            raised = Color(hex: dark ? 0x2E2E30 : 0xFFFFFF)
+            text = Color(hex: dark ? 0xF2F2F2 : 0x111111)
+            secondary = Color(hex: dark ? 0xBDBDBD : 0x5E5E5E)
+            tertiary = Color(hex: dark ? 0x9B9B9B : 0x8A8A8A)
+            hairline = Color(hex: dark ? 0x3A3A3A : 0xE8E8E8)
+            accent = Color(hex: dark ? 0xEDEDED : 0x262626)
+            // The heatmap's levels as Arc's: tints of the near-black over an empty square.
+            heat = hexes(dark ? [0x323234, 0x4F4F52, 0x77777A, 0xA9A9AC, 0xEDEDED] : [0xEEEEEE, 0xBFBFBF, 0x949494, 0x666666, 0x3B3B3B])
+            pill = text
+            onPill = card
+            sidebarColor = background
+            band = background
+        }
+        // Black or white as the accent: the other for the words on it; the calendar's darkest
+        // days the same.
+        let lightAccent = WindowLook.shown == .lightsDown || ((WindowLook.shown == .room || WindowLook.shown == .twoSizes || WindowLook.shown == .book || WindowLook.shown == .notion) && dark)
+        onAccent = lightAccent ? .black : .white
+        onHeat = onAccent
+        mark = accent
+        onMark = onAccent
+        binding = .underline
+        bindingWash = text.opacity(0.6)
+        kinds = [secondary, secondary, secondary]
+    }
+
+    /// Same Object, Two Sizes: this palette as the notch draws its rows (black, white words at the
+    /// board's opacities).
+    func notchRow() -> Palette {
+        var p = self
+        let A = T.Aligned.self
+        p.isDark = true
+        p.notchObject = true
+        p.card = .black
+        p.raised = Color(hex: 0x1C1C1C)
+        p.text = .white.opacity(A.text)
+        p.secondary = .white.opacity(A.secondary)
+        p.tertiary = .white.opacity(A.tertiary)
+        p.hairline = .white.opacity(A.hairline)
+        p.fill = .white.opacity(0.07)
+        p.fillStrong = .white.opacity(0.14)
+        p.kinds = [p.secondary, p.secondary, p.secondary]
         return p
     }
 
@@ -789,11 +1021,7 @@ extension T.Aligned {
     static let rowDetail: CGFloat = 11.5
     /// A section's header over its group: the notch's titles are semibold, never bold.
     static let sectionHeader = Font.system(size: 13, weight: .semibold)
-    /// The light's tiles: the first run's AuraChip, the seven colors as dots on the notch's black,
-    /// three to a row as the first run lays them; the chosen one ringed in the secondary ink.
-    static let auraChipBack = Color.black
-    static let auraChipHeight: CGFloat = 26, auraChipRadius: CGFloat = 8
-    static let auraDot: CGFloat = 8, auraDotGap: CGFloat = 3, auraColumns = 3
+    /// A chosen tile, ringed in the secondary ink. (Oct 27: the light's tiles went with the aura.)
     static let chosenRing: CGFloat = 1.5, chosenRingRadius: CGFloat = 10, chosenRingPadding: CGFloat = 4
     /// The accent's swatches: the first run's (16 pt, a 7 pt white dot on the chosen one, a
     /// hairline round each, the chosen one ringed 2 pt out).

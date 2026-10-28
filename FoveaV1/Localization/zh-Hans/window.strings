@@ -956,7 +956,7 @@
 "The board shows what your agents are doing; with nothing running, it says hello." = "控制面板会显示 Agent 正在做什么；没有任务时，它会向你问好。";
 "The board still shows each time you send." = "每次发送后，控制面板仍会显示。";
 "The capture it came from in Home, or the app" = "在主页打开它所来自的记录，或打开对应的 App";
-"The colorful glow, opening at the notch, and reviewing your words before sending." = "缤纷光晕、指针移到灵动岛时打开，以及发送前检查文字。";
+"The notch's look, opening at the notch, and reviewing your words before sending." = "灵动岛的外观、指针移到灵动岛时打开，以及发送前检查文字。";
 "The glow's colors" = "光晕的颜色";
 "The hue your colors fan out from" = "颜色向两侧展开的起点色相";
 "The language you speak is in Language." = "你说的语言在“语言”中设置。";

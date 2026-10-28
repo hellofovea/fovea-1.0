@@ -17,32 +17,32 @@ import FoveaKit
 extension WorkbenchTokens {
     enum OpenChat {
         // The search button: a quiet disc, the glass's ink at a low opacity, as the board's Stop.
-        static var button: CGFloat { pick(24, 26) }
-        static var buttonGlyph: Font { pick(Font.system(size: 11, weight: .semibold), .system(size: 12, weight: .semibold)) }
+        static var button: CGFloat { size(24) }
+        static var buttonGlyph: Font { Font.system(size: typeSize(11), weight: .semibold) }
         static var buttonFill: Color { ink(0.08) }
         static var buttonHover: Color { ink(0.14) }
         static var buttonGlyphColor: Color { ink(0.72) }
         // The bar over the list.
-        static var header: CGFloat { pick(30, 34) }
+        static var header: CGFloat { size(30) }
         /// Pinned chats on the board, at most; the rest are in the search.
         static let pinsShown = 5
         // The search.
-        static var field: CGFloat { pick(28, 30) }
-        static var fieldGap: CGFloat { pick(5, 6) }
-        static var fieldFont: Font { pick(Font.system(size: 12.5), .system(size: 13)) }
-        static var fieldGlyph: Font { pick(Font.system(size: 11, weight: .semibold), .system(size: 11.5, weight: .semibold)) }
+        static var field: CGFloat { size(28) }
+        static var fieldGap: CGFloat { size(5) }
+        static var fieldFont: Font { Font.system(size: typeSize(12.5)) }
+        static var fieldGlyph: Font { Font.system(size: typeSize(11), weight: .semibold) }
         static var fieldFill: Color { ink(0.07) }
-        static var fieldPaddingH: CGFloat { pick(9, 10) }
-        static var sectionHeader: CGFloat { pick(22, 24) }
-        static var row: CGFloat { pick(36, 40) }
-        static var rowIcon: CGFloat { pick(18, 20) }
+        static var fieldPaddingH: CGFloat { size(9) }
+        static var sectionHeader: CGFloat { size(22) }
+        static var row: CGFloat { size(36) }
+        static var rowIcon: CGFloat { size(18) }
         /// Oct 24, Ryan: "the maximum number of chats there should be 5, if more than 5, the user
         /// should scroll through all"; then "for the sessions running, if there's more than 5,
         /// also collapse to 5 and let the user scroll to find". The search's chats and the
         /// board's sessions alike.
         static let rowsVisible = 5
-        static var resultFont: Font { pick(Font.system(size: 12.5), .system(size: 13.5)) }
-        static var pinFont: Font { pick(Font.system(size: 9, weight: .semibold), .system(size: 9.5, weight: .semibold)) }
+        static var resultFont: Font { Font.system(size: typeSize(12.5)) }
+        static var pinFont: Font { Font.system(size: typeSize(9), weight: .semibold) }
         static var pinColor: Color { ink(0.42) }
         static let blockedOpacity: Double = 0.45
     }
@@ -74,7 +74,8 @@ extension WorkbenchModel {
         let all = ChatBook.chats.sorted { $0.minutesAgo < $1.minutesAgo }
         let query = chatPickerQuery.trimmingCharacters(in: .whitespaces)
         if !query.isEmpty {
-            let found = all.filter { $0.title.localizedCaseInsensitiveContains(query) || $0.folder.localizedCaseInsensitiveContains(query) }
+            // Oct 27: the agents give a chat's title, not its folder, so a search looks in the titles.
+            let found = all.filter { $0.title.localizedCaseInsensitiveContains(query) }
             return found.isEmpty ? [] : [OpenChatSection(title: L("Chats"), chats: found)]
         }
         var sections: [OpenChatSection] = []
@@ -97,6 +98,7 @@ extension WorkbenchModel {
         chatPickerQuery = ""
         chatPickerHover = nil
         withAnimation(WorkbenchTokens.V2.resize) { chatPickerOpen = true }
+        live?.director?.islandDidEmit(.chatSearchOpened)
     }
 
     func closeChatPicker() {
@@ -116,6 +118,7 @@ extension WorkbenchModel {
         chatPickerOpen = false
         chatPickerQuery = ""
         chatPickerHover = nil
+        live?.director?.islandDidEmit(.pastChatOpened)
         if let task = agentTasks.first(where: { $0.agent == chat.agent && $0.session == chat.title && $0.project == chat.folder }) {
             openV2(task.id)
             return
@@ -147,9 +150,10 @@ extension WorkbenchModel {
     /// One with nothing asked in it at all (not a sample's): a line in the answer's place.
     func isBlankChat(_ id: String) -> Bool { isOpenedChat(id) && (v2Task(id)?.request.isEmpty ?? true) }
 
-    /// The search and the pinned chats on the board: the real Mac's, not in the first run (it
-    /// teaches the board as it is, with its own sessions).
-    var boardSearchShown: Bool { boardSearch && live?.director == nil }
+    /// The search and the pinned chats on the board: the real Mac's; in the first run, from the step
+    /// that teaches them (Oct 27, Ryan: "users will also be able to see their past chats from the
+    /// empty notch search button + search chats. so add this to the onboarding as well").
+    var boardSearchShown: Bool { boardSearch && (live?.director.map { $0.allowsSearch() } ?? true) }
 
     /// Return in the search: the first chat found that can take a request.
     func openFirstFound() {
@@ -239,7 +243,7 @@ extension V2BoardLayout {
             }
             if running {
                 if !pins.isEmpty { parts.append(OpenChatPart(kind: .seam, height: B.groupGap)) }
-                let list = V2BoardLayout.heights(sections: model.v2BoardGroups.map(\.count), style: model.boardStyle,
+                let list = V2BoardLayout.heights(sections: model.v2BoardGroups.map(\.count),
                                                  rows: O.rowsVisible)
                 parts.append(OpenChatPart(kind: .sessions, height: list.visible))
                 layout.listHeight = list.visible
@@ -340,6 +344,13 @@ struct OpenChatSearchButton: View {
         .onHover { hovering = $0 }
         .help(open ? L("Close") : L("Open any chat"))
         .accessibilityLabel(open ? L("Close the search") : L("Search chats"))
+        // The first run's guide: a ring round it while it's what to click.
+        .overlay {
+            if model.guideMark == .search, !open {
+                GuideRing(diameter: size + WorkbenchTokens.Guide.ringOutset, color: model.accent.color)
+                    .allowsHitTesting(false)
+            }
+        }
     }
 }
 
@@ -360,14 +371,15 @@ struct OpenChatSessions: View {
                         .frame(height: B.groupGap)
                 }
                 ForEach(part.tasks) { task in
-                    V2BoardRow(model: model, task: task, focused: model.v2Focus == task.id, style: model.boardStyle)
+                    V2BoardRow(model: model, task: task, focused: model.v2Focus == task.id)
                         .frame(height: B.row)
                         .id(task.id)
                 }
             }
         }
         if model.offscreenRender {
-            rows.frame(maxHeight: .infinity, alignment: .top).clipped()
+            // Both bounds, so the frame takes the room it is given and the rows start at its top.
+            rows.frame(minHeight: 0, maxHeight: .infinity, alignment: .top).clipped()
         } else {
             ScrollViewReader { proxy in
                 ScrollView {
@@ -402,7 +414,8 @@ struct OpenChatRow: View {
             ChatAgentIcon(agent: ChatAgent.named(chat.agent), size: icon)
             VStack(alignment: .leading, spacing: B.lineGap) {
                 title.lineLimit(1).truncationMode(.tail)
-                Text(reason ?? "\(chat.folder) · \(ChatAgent.named(chat.agent).name)")
+                // Oct 27, Ryan: nothing is known of a chat's folder, so its agent alone.
+                Text(reason ?? ChatAgent.named(chat.agent).name)
                     .font(B.lineFont).foregroundStyle(B.line).lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -439,7 +452,7 @@ struct OpenChatRow: View {
         .onTapGesture { model.openChat(chat) }
         .contextMenu { Button(pinned ? L("Unpin") : L("Pin to the notch")) { model.togglePin(chat.id) } }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(chat.title), \(chat.folder), \(ChatAgent.named(chat.agent).name)")
+        .accessibilityLabel("\(chat.title), \(ChatAgent.named(chat.agent).name)")
         .accessibilityAction { model.openChat(chat) }
     }
 
@@ -467,7 +480,13 @@ struct OpenChatField: View {
         let B = WorkbenchTokens.Board.self
         HStack(spacing: 7) {
             Image(systemName: "magnifyingglass").font(O.fieldGlyph).foregroundStyle(WorkbenchTokens.V2.subColor)
-            TextField(L("Search chats"), text: Binding(get: { model.chatPickerQuery }, set: { model.chatPickerQuery = $0 }))
+            Group {
+                if model.offscreenRender {
+                    FieldStandIn(prompt: L("Search chats"), text: model.chatPickerQuery)
+                } else {
+                    TextField(L("Search chats"), text: Binding(get: { model.chatPickerQuery }, set: { model.chatPickerQuery = $0 }))
+                }
+            }
                 .textFieldStyle(.plain)
                 .font(O.fieldFont)
                 .foregroundStyle(WorkbenchTokens.V2.titleColor)
@@ -481,7 +500,7 @@ struct OpenChatField: View {
         .frame(height: O.field)
         .background(Capsule(style: .continuous).fill(O.fieldFill))
         .padding(.horizontal, B.rowPaddingH - 4)
-        .background(KeyWindowMaker())
+        .background { if !model.offscreenRender { KeyWindowMaker() } }
         .onAppear { if !model.snapshotMode { focused = true } }
     }
 }
@@ -520,14 +539,14 @@ struct OpenChatResults: View {
                     .frame(maxWidth: .infinity, minHeight: O.sectionHeader, maxHeight: O.sectionHeader, alignment: .bottomLeading)
                 ForEach(section.chats) { chat in
                     OpenChatRow(model: model, chat: chat,
-                                reason: section.suggested ? "\(chat.folder) · " + L("Last sent here, 4m ago") : nil,
+                                reason: section.suggested ? L("Last sent here, 4m ago") : nil,
                                 query: model.chatPickerQuery)
                         .frame(height: O.row)
                 }
             }
         }
         if model.offscreenRender {
-            list.frame(maxHeight: .infinity, alignment: .top).clipped()
+            list.frame(minHeight: 0, maxHeight: .infinity, alignment: .top).clipped()
         } else {
             ScrollView { list }.scrollIndicators(.automatic)
         }

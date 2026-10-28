@@ -35,6 +35,12 @@ extension HomeWindowController {
             model.calendarYear = Lines.calendar.component(.year, from: Date())
             await settle(0.8)
         }
+        // Oct 27: `--looks` pictures each of the window's designs (`WindowLook`, T.Look), the
+        // window kept behind every other one (pictured all the same) and never brought forward.
+        if CommandLine.arguments.contains(where: { $0 == "--looks" || $0.hasPrefix("--looks=") }) {
+            await lookShots(dir)
+            return
+        }
         // Oct 21, Ryan: `--smoke-detail` checks the expanded card's Copy, Save and Delete by doing
         // them (DetailSmoke.swift); it needs a `--data-dir` of its own.
         if CommandLine.arguments.contains("--smoke-detail") {
@@ -83,6 +89,37 @@ extension HomeWindowController {
         window.appearance = NSAppearance(named: .aqua)
         // Oct 24: `--no-review` stops at Home and the panes (the review's states take minutes).
         if !CommandLine.arguments.contains("--no-review") { await reviewShots(dir) }
+    }
+
+    /// Oct 27: each design's Home, an open capture and two Settings panes, in Light (Lights Down is
+    /// always dark): `<look>-home.png`… The look the person chose is put back afterwards.
+    private func lookShots(_ dir: URL) async {
+        let kept = UserDefaults.standard.string(forKey: WindowLook.storeKey)
+        window.orderBack(nil)
+        NSApp.appearance = NSAppearance(named: .aqua)
+        // `--looks=notion,book`: those alone.
+        let named = CommandLine.arguments.first { $0.hasPrefix("--looks=") }?.dropFirst("--looks=".count).split(separator: ",").map(String.init)
+        for look in WindowLook.allCases where named?.contains(look.rawValue) ?? true {
+            model.look = look
+            window.appearance = NSAppearance(named: T.Look.alwaysDark ? .darkAqua : .aqua)
+            model.show(.captures)
+            await settle(1.2)
+            shoot("\(look.rawValue)-home", dir)
+            if let first = model.visible.first?.capture.id {
+                model.open(first)
+                await settle(1.2)
+                shoot("\(look.rawValue)-capture-open", dir)
+                model.closeDetail()
+                await settle(0.8)
+            }
+            for pane in ["notch", "appearance"] {
+                model.show(.settings)
+                openSettings(pane)
+                await settle(1.0)
+                shoot("\(look.rawValue)-settings-\(pane)", dir)
+            }
+        }
+        if let kept { UserDefaults.standard.set(kept, forKey: WindowLook.storeKey) } else { UserDefaults.standard.removeObject(forKey: WindowLook.storeKey) }
     }
 
     /// Oct 15 review: each state the review added, as its stage shows it.

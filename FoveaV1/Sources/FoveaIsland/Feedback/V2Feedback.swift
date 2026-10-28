@@ -75,6 +75,11 @@ enum ModelCatalog {
         }
     }
 
+    /// Least to most, for the slider.
+    static func effortRank(_ effort: String) -> Int {
+        ["minimal", "low", "medium", "high", "xhigh", "max"].firstIndex(of: effort) ?? 99
+    }
+
     static func effortName(_ effort: String) -> String {
         switch effort {
         case "minimal": return L("Minimal")
@@ -368,12 +373,19 @@ extension WorkbenchModel {
         ModelCatalog.options(agent: v2Pick.agent == ChatAgent.fovea.id ? "claude-code" : v2Pick.agent)
     }
 
-    /// The efforts the chosen model takes (any of the agent's, on Auto).
+    /// The efforts the chosen model takes (any of the agent's, on Auto), least to most.
     var v2EffortOptions: [String] {
         if let id = v2Model, let model = v2ModelOptions.first(where: { $0.id == id }) { return model.efforts }
         var seen: [String] = []
         for option in v2ModelOptions { for e in option.efforts where !seen.contains(e) { seen.append(e) } }
-        return seen
+        return seen.sorted { ModelCatalog.effortRank($0) < ModelCatalog.effortRank($1) }
+    }
+
+    /// The effort it uses when none is picked: the chosen model's own; on Auto, the agent's first
+    /// model's.
+    var v2DefaultEffort: String? {
+        if let id = v2Model, let model = v2ModelOptions.first(where: { $0.id == id }) { return model.defaultEffort }
+        return v2ModelOptions.first(where: { $0.defaultEffort != nil })?.defaultEffort
     }
 
     func chooseModel(_ id: String?) {
@@ -394,7 +406,6 @@ extension WorkbenchModel {
                 if v2RouteOpen {
                     // Every chat, from the chosen one's agent, as Dispatch's rail opens.
                     v2BrowseAgent = v2Pick.quick ? ChatBook.predictedAgent : v2Pick.agent
-                    v2BrowseProject = nil
                 }
             } else {
                 v2ModelSheet.toggle()

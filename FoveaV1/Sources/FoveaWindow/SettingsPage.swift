@@ -148,7 +148,7 @@ struct Prefs {
     var answerWith = "Fovea"
     var gaze: Gaze = .idle
     // Settings › Notch.
-    var glow: GlowChoice = .colorful
+    var glow: GlowPalette = .colorful
     /// Degrees: how far the palette turns round the color wheel; Custom's own hue.
     var glowHue: Double = 0
     /// Degrees Custom's seven colors fan across (0, one color; 360, the whole wheel).
@@ -158,8 +158,6 @@ struct Prefs {
     /// The notch's glass, light or dark, and how what drops below meets it (Oct 9).
     var notchAppearance: NotchAppearance = .dark
     var panels: NativePanels = .attached
-    /// How much room what opens below the notch takes (Oct 9).
-    var density: NotchDensity = .spacious
     var hoverOpens = true
     var hoverWait: HoverWait = .normal
     var showAnswers = true
@@ -175,13 +173,13 @@ struct Prefs {
 
     /// The notch's settings as they ship.
     var notchIsDefault: Bool {
-        glow == .colorful && glowHue == 0 && glowSpread == 120 && glowDrift == 0.5 && panels == .attached && density == .spacious
+        glow == .colorful && glowHue == 0 && glowSpread == 120 && glowDrift == 0.5 && panels == .attached
             && hoverOpens && hoverWait == .normal && showAnswers && reviewFirst
     }
     mutating func restoreNotch() {
         let d = Prefs()
         glow = d.glow; glowHue = d.glowHue; glowSpread = d.glowSpread
-        glowDrift = d.glowDrift; panels = d.panels; density = d.density; hoverOpens = d.hoverOpens
+        glowDrift = d.glowDrift; panels = d.panels; hoverOpens = d.hoverOpens
         hoverWait = d.hoverWait; showAnswers = d.showAnswers; reviewFirst = d.reviewFirst
     }
 }

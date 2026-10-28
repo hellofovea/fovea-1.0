@@ -18,7 +18,8 @@ struct HomeFeed: View {
         let hasHistory = !model.library.captures.isEmpty
         VStack(alignment: .leading, spacing: model.cardSpacing.metrics.sectionGap) {
             if hasHistory && model.historyStyle == .yearGraphTop {
-                CalendarSection { YearGraph(width: layout.contentWidth) }
+                CalendarSection { YearGraph(width: DashboardCard.inner(layout.contentWidth)) }
+                    .modifier(DashboardCard())
                     .id("earlier")
             }
             VStack(alignment: .leading, spacing: 16) {
@@ -28,9 +29,9 @@ struct HomeFeed: View {
             if hasHistory {
                 switch model.historyStyle {
                 case .yearGraph:
-                    CalendarSection { YearGraph(width: layout.contentWidth) }.id("earlier")
+                    CalendarSection { YearGraph(width: DashboardCard.inner(layout.contentWidth)) }.modifier(DashboardCard()).id("earlier")
                 case .months:
-                    CalendarSection { MonthCalendars(width: layout.contentWidth) }.id("earlier")
+                    CalendarSection { MonthCalendars(width: DashboardCard.inner(layout.contentWidth)) }.modifier(DashboardCard()).id("earlier")
                 case .yearGraphTop, .timeline:
                     EmptyView()
                 }
@@ -54,6 +55,25 @@ struct HomeFeed: View {
         case (.week, false): return L("Nothing this week.")
         case (.month, false): return L("Nothing this month.")
         }
+    }
+}
+
+/// Oct 27, Notion White: the year's dashboard (the years, the total, the graph) as one white card
+/// floating on the grey, as Arc UI's panels do.
+struct DashboardCard: ViewModifier {
+    func body(content: Content) -> some View {
+        if T.Look.floats {
+            content
+                .padding(T.Look.dashboardPadding)
+                .floating(RoundedRectangle(cornerRadius: T.Look.dashboardRadius, style: .continuous))
+        } else {
+            content
+        }
+    }
+
+    /// What's left inside the card for the graph.
+    static func inner(_ width: CGFloat) -> CGFloat {
+        T.Look.floats ? width - 2 * T.Look.dashboardPadding : width
     }
 }
 
@@ -308,14 +328,15 @@ private struct DayCell: View {
         let n = model.dayCounts[day] ?? 0
         let level = model.levels.level(n)
         let open = model.archiveDay == day && (model.page == .day || model.archiveStyle == .inline)
-        let shape = RoundedRectangle(cornerRadius: max(2, size * 0.24), style: .continuous)
+        // Notion White: Arc's squares, rounder (28 % of the side), filled with no edge.
+        let shape = RoundedRectangle(cornerRadius: max(2, size * (T.Look.floats ? 0.28 : 0.24)), style: .continuous)
         Group {
             if future {
                 shape.strokeBorder(palette.hairline, lineWidth: 0.5)
             } else {
                 shape
                     .fill(palette.heat[level])
-                    .overlay(shape.strokeBorder(level == 0 ? palette.hairline : Color.black.opacity(palette.isDark ? 0 : 0.06), lineWidth: 0.5))
+                    .overlay(shape.strokeBorder(T.Look.floats ? .clear : (level == 0 ? palette.hairline : Color.black.opacity(palette.isDark ? 0 : 0.06)), lineWidth: 0.5))
                     .overlay {
                         if open { shape.strokeBorder(palette.text, lineWidth: 1.5).padding(-1.5) }
                     }

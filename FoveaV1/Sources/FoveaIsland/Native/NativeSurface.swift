@@ -21,16 +21,14 @@ enum NotchSurfaceKind: Equatable {
 
 extension WorkbenchModel {
     var notchSurface: NotchSurfaceKind {
+        // Oct 27: whatever Wings draws is the island, at the menu bar's height (Wings.swift); over a
+        // panel, the bar and the panel under it.
+        if wingsPose != nil { return wingsOverPanel ? .split : .island }
         switch notchState {
-        case .pasteNotFound, .voiceError, .v2Send, .v2Chat:
+        case .pasteNotFound, .voiceError, .v2Send, .v2Chat, .v2Alert:
             return .panel
         case .v2Board:
-            switch boardStyle {
-            // The island stays the notch; each capsule is its own glass.
-            case .capsules, .petCapsules: return .island
-            case .wings, .creatures: return .split
-            default: return .panel
-            }
+            return .panel
         case .voiceFlow, .v2Voice:
             if stackExpanded { return .panel }
             if v2AsksOver { return .split }
@@ -46,12 +44,18 @@ extension WorkbenchModel {
     /// The shapes the Native surface draws for the state on show: the outline (as Original's, the
     /// gap included), the black island inside it, and whether a panel shows.
     var nativeShapes: NativeShapes {
-        let outline = stackLayout.outline
+        let layout = stackLayout
+        let outline = layout.outline
         let spec = WorkbenchTokens.Island.spec
         let notch = NotchGeometry.notchRect(metrics: metrics, spec: spec)
         var shapes = NativeShapes(outline: outline)
-        // Attached panels: one glass shape hanging from the top edge, Original's outline.
-        guard WorkbenchTokens.floatsPanels else { return shapes }
+        // Attached: one glass shape hanging from the top edge, Original's outline, its shoulders
+        // Wings' (the notch's angle) and the notch's black blurred into it (Halo, Oct 27). Floating
+        // panels, the opened captures' strip and the drop zone float under the island.
+        guard layout.floats || WorkbenchTokens.floatsPanels else {
+            if WorkbenchTokens.blendsPanels { shapes.islandTop = min(shapes.islandTop, WorkbenchTokens.Bar.wingsEar) }
+            return barFilled(shapes, layout)
+        }
         switch notchSurface {
         case .island:
             break
@@ -62,7 +66,12 @@ extension WorkbenchModel {
             shapes.islandBottom = rest.bottomRadius
             shapes.presence = 1
         case .split:
-            if notchState == .v2Board {
+            if let bar = layout.wingsBar {
+                // Wings over a panel: the bar, black, at the notch's height.
+                shapes.island = bar.size
+                shapes.islandTop = bar.topRadius
+                shapes.islandBottom = bar.bottomRadius
+            } else if notchState == .v2Board {
                 // The band over the wings: as wide as the board, the notch's height and a little.
                 let rest = NotchGeometry.frames(density: .resting, metrics: metrics, spec: spec)
                 shapes.island = CGSize(width: outline.size.width, height: notch.height + WorkbenchTokens.Native.bandExtra)
@@ -77,6 +86,21 @@ extension WorkbenchModel {
             }
             shapes.presence = 1
         }
+        return barFilled(shapes, layout)
+    }
+
+    /// Oct 27, Ryan: the bar is Wings, black as the notch, and so are a session popping up and a
+    /// board design (Wings.swift). An island that's only the notch (at rest, over a floating panel)
+    /// is drawn black too, so coming out and going back never pass through glass.
+    private func barFilled(_ shapes: NativeShapes, _ layout: StackLayout) -> NativeShapes {
+        var shapes = shapes
+        let spec = WorkbenchTokens.Island.spec
+        let rest = NotchGeometry.frames(density: .resting, metrics: metrics, spec: spec)
+        let atNotch = abs(shapes.island.width - rest.width) < 0.5 && abs(shapes.island.height - rest.minHeight) < 0.5
+        // Wings over a panel, attached: the shape is the panel's, the bar drawn black on it as the
+        // notch is (MockIsland's `WingsBarOnGlass`).
+        let barOnGlass = layout.wingsBar != nil && WorkbenchTokens.panelsHangFromTop && !layout.floats
+        if (layout.fill == .black && !barOnGlass) || (atNotch && WorkbenchTokens.isNative) { shapes.black = 1 }
         return shapes
     }
 }
@@ -94,6 +118,8 @@ struct NativeShapes: Equatable {
     var islandBottom: CGFloat
     /// 0: no panel (an island state); 1: the panel shows.
     var presence: CGFloat = 0
+    /// Oct 27: 0 (today's glass) to 1: the island black, as Wings is (Wings.swift).
+    var black: CGFloat = 0
 
     init(outline: StackLayout.Outline) {
         width = outline.size.width
@@ -106,21 +132,24 @@ struct NativeShapes: Equatable {
     }
 
     var vector: NativeVector {
-        NativeVector(values: [width, height, topRadius, bottomRadius, island.width, island.height, islandTop, islandBottom, presence])
+        NativeVector(values: [width, height, topRadius, bottomRadius, island.width, island.height, islandTop, islandBottom, presence,
+                              black])
     }
 
     init(vector v: NativeVector) {
-        let x = v.values + Array(repeating: 0, count: max(0, 9 - v.values.count))
+        let x = v.values + Array(repeating: 0, count: max(0, NativeVector.count - v.values.count))
         width = x[0]; height = x[1]; topRadius = x[2]; bottomRadius = x[3]
         island = CGSize(width: x[4], height: x[5]); islandTop = x[6]; islandBottom = x[7]; presence = x[8]
+        black = x[9]
     }
 }
 
-/// Nine numbers that animate together.
+/// Ten numbers that animate together.
 struct NativeVector: VectorArithmetic {
     var values: [CGFloat]
+    static let count = 10
 
-    static var zero: NativeVector { NativeVector(values: Array(repeating: 0, count: 9)) }
+    static var zero: NativeVector { NativeVector(values: Array(repeating: 0, count: count)) }
 
     private static func zip(_ a: NativeVector, _ b: NativeVector, _ f: (CGFloat, CGFloat) -> CGFloat) -> NativeVector {
         let n = max(a.values.count, b.values.count)
@@ -169,7 +198,9 @@ struct NativeSurface<Edge: View>: ViewModifier, Animatable {
         let radius = max(0, min(s.bottomRadius, panel.width / 2, panel.height / 2))
         let islandShape = IslandShape(topRadius: s.islandTop, bottomRadius: s.islandBottom, earY: earY)
         let grown = max(island.width - rest.size.width, island.height - rest.size.height)
-        let islandGlass = min(1, max(0, grown / WorkbenchTokens.Native.islandGlassRamp))
+        let ramp = min(1, max(0, grown / WorkbenchTokens.Native.islandGlassRamp))
+        // Oct 27: Wings' island is black, no glass under it.
+        let islandGlass = ramp * max(0, 1 - s.black)
         content
             .frame(width: s.width, height: s.height, alignment: .bottom)
             .overlay(alignment: .topLeading) {
@@ -209,6 +240,15 @@ struct NativeSurface<Edge: View>: ViewModifier, Animatable {
                                                                bottom: -N.glassShadowRoom, trailing: -N.glassShadowRoom))
                             }
                             .offset(x: island.minX, y: -N.glassLift)
+                        // Oct 27, Ryan: the notch's black into the glass "smooth and almost
+                        // seamless", attached (HaloBlend).
+                        if WorkbenchTokens.blendsPanels {
+                            HaloBlend(shape: IslandShape(topRadius: s.islandTop, bottomRadius: s.islandBottom, earY: earY),
+                                          size: island.size, band: rest.size.height, notchWidth: rest.size.width,
+                                          notchRadius: rest.bottomRadius, light: displayScheme == .light)
+                                .opacity(Double(islandGlass))
+                                .offset(x: island.minX)
+                        }
                     }
                     // The real Mac: the notch with its ears, black, blending the hardware's into the
                     // glass, coming in with it.
@@ -224,10 +264,86 @@ struct NativeSurface<Edge: View>: ViewModifier, Animatable {
                         .fill(WorkbenchTokens.Island.surface)
                         .frame(width: notch.size.width, height: notch.size.height)
                         .offset(x: (s.width - notch.size.width) / 2)
+                    // Oct 27: Wings, black as the notch (Wings.swift).
+                    if s.black > 0.001 {
+                        islandShape.fill(WorkbenchTokens.Island.surface)
+                            .frame(width: island.width, height: island.height)
+                            .opacity(Double(min(1, s.black)))
+                            .offset(x: island.minX)
+                    }
                 }
                 .frame(width: s.width, height: s.height, alignment: .topLeading)
             }
     }
+}
+
+/// Oct 27, Ryan: the notch's black, clearing into the glass "smooth and almost seamless", then "halo
+/// but much smaller so that it barely touches more than what the notch covers", "go with halo now
+/// and delete the other ones" (Ease and Dusk, black down the panel, are gone), and "the floating
+/// stays as it was. it is supposed to replace the attached part": attached panels. The notch's own
+/// shape, a little larger, blurred: black over the notch and just past it, gone some 20 pt further
+/// on, the glass meeting the menu bar beside it. A blur has no start or end to see, as a linear fade
+/// has; a fine grain dithers it against 8-bit banding; the glass's rim is covered where the black is.
+struct HaloBlend<S: Shape>: View {
+    let shape: S
+    let size: CGSize
+    /// The notch's height: black to here, the same as the notch beside it.
+    let band: CGFloat
+    let notchWidth: CGFloat
+    let notchRadius: CGFloat
+    /// On light glass, closer in (the first line under the notch stays clear).
+    var light = false
+
+    var body: some View {
+        let N = WorkbenchTokens.Native.self
+        let black = WorkbenchTokens.Island.surface
+        ZStack(alignment: .topLeading) {
+            fill.mask(shape)
+            // The rim (the glass's own hairline) hidden under the black, clearing with it.
+            shape.stroke(black, lineWidth: N.blendRimCover).mask(fill)
+            // A fine grain over the blur, against banding.
+            Rectangle().fill(ImagePaint(image: Dither.image, scale: 1))
+                .opacity(N.ditherOpacity).blendMode(.overlay)
+                .mask(fill.mask(shape))
+        }
+        .frame(width: size.width, height: size.height, alignment: .topLeading)
+        .allowsHitTesting(false)
+    }
+
+    /// The black round the notch, drawn up past the top edge so the blur doesn't lighten it there.
+    private var fill: some View {
+        let N = WorkbenchTokens.Native.self
+        let spread = light ? N.haloSpreadLight : N.haloSpread
+        let blur = light ? N.haloBlurLight : N.haloBlur
+        let above = blur * 3
+        return UnevenRoundedRectangle(bottomLeadingRadius: notchRadius + spread, bottomTrailingRadius: notchRadius + spread,
+                                      style: .continuous)
+            .fill(.black)
+            .frame(width: notchWidth + spread * 2, height: band + spread + above)
+            .blur(radius: blur)
+            .position(x: size.width / 2, y: (band + spread - above) / 2)
+            .frame(width: size.width, height: size.height, alignment: .topLeading)
+    }
+}
+
+/// A fine grain, the same every time (a fixed seed), for dithering gradients.
+enum Dither {
+    static let image: Image = {
+        let side = 128
+        var bytes = [UInt8](repeating: 255, count: side * side * 4)
+        var seed: UInt32 = 0x9E3779B9
+        for i in 0..<(side * side) {
+            seed = seed &* 1664525 &+ 1013904223
+            let v = UInt8(truncatingIfNeeded: seed >> 24)
+            bytes[i * 4] = v; bytes[i * 4 + 1] = v; bytes[i * 4 + 2] = v
+        }
+        let space = CGColorSpaceCreateDeviceRGB()
+        let provider = CGDataProvider(data: Data(bytes) as CFData)!
+        let cg = CGImage(width: side, height: side, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: side * 4, space: space,
+                         bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue), provider: provider,
+                         decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
+        return Image(decorative: cg, scale: 2)
+    }()
 }
 
 /// Where the content shows in Native: inside the island, and inside the panel while it shows.
@@ -276,19 +392,22 @@ struct IslandSurface: ViewModifier {
             let resting = StackLayout.Outline(size: CGSize(width: rest.width, height: rest.minHeight),
                                               topRadius: rest.topRadius, bottomRadius: rest.bottomRadius)
             content
-                .modifier(NativeSurface(shapes: model.nativeShapes, earY: earY, gap: WorkbenchTokens.Native.panelGap,
+                .modifier(NativeSurface(shapes: model.nativeShapes, earY: earY,
+                                        gap: layout.floats ? WorkbenchTokens.Native.floatGap : WorkbenchTokens.Native.panelGap,
                                         notch: live ? Self.hardwareNotch(model) : resting,
                                         rest: resting,
-                                        blendNotch: live && model.metrics.notchWidth != nil) { edge in
-                    AgentEdgeLayer(model: model, edge: edge)
+                                        blendNotch: live && model.metrics.notchWidth != nil) { _ in
+                    // Oct 27, Ryan: no aura on the bar's edge ("abandon the orbs and aurora completely").
+                    EmptyView()
                 })
                 .animation(model.islandAnimation, value: model.nativeShapes)
         } else {
             content
                 .modifier(IslandOutline(width: layout.outline.size.width, height: layout.outline.size.height,
                                         topRadius: layout.outline.topRadius, bottomRadius: layout.outline.bottomRadius,
-                                        earY: earY) { edge in
-                    AgentEdgeLayer(model: model, edge: edge)
+                                        earY: earY) { _ in
+                    // Oct 27, Ryan: no aura on the bar's edge ("abandon the orbs and aurora completely").
+                    EmptyView()
                 })
                 .animation(model.islandAnimation, value: layout.outline)
         }

@@ -68,6 +68,8 @@ extension IslandController {
     package var probeAsksOver: Bool { model.v2AsksOver }
     package var probeCaptionUnderNotch: Bool { false }
     package var probeBoardEmpty: Bool { model.v2BoardOrder.isEmpty }
+    /// Oct 28: the listening bar's aurora showing, and in how many hues (the accent's one; Multicolor's three).
+    package var probeAurora: (shows: Bool, hues: Int) { (model.auroraShows, model.auroraColors.count) }
 
     /// The island's sessions: their id, state, the steps of the exchange now, and the files.
     package var probeSessions: [(id: String, state: String, steps: Int, files: [String], history: Int)] {
@@ -82,4 +84,7 @@ extension IslandController {
 
     package func probeOpen(_ id: String) { model.openV2(id) }
     package var probeFocus: String? { model.v2Focus }
+    /// Oct 27: the first run's guide up at the notch, and the board's search shown.
+    package var probeGuide: IslandGuideMark? { model.guideMark }
+    package var probeSearchShown: Bool { model.boardSearchShown }
 }

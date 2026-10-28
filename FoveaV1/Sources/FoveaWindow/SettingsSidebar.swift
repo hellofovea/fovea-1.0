@@ -62,7 +62,8 @@ struct SettingsSidebar: View {
     /// Label's icon up to the Mac's sidebar icon size) and no system selection shows under the
     /// row's own quiet fill, as the notch's board marks its row. Oct 24, Ryan.
     private var aligned: some View {
-        let accent = model.accent.color ?? .accentColor
+        // Oct 27: the five looks mark the chosen pane in their own accent (`T.Look`).
+        let accent = T.Look.keepsAccent ? (model.accent.color ?? .accentColor) : palette.accent
         let A = T.Aligned.self
         return List {
             ForEach(Array(SettingsCategory.groups.enumerated()), id: \.offset) { _, group in
@@ -80,7 +81,7 @@ struct SettingsSidebar: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .listRowBackground(chosen ? SidebarMark(color: palette.ink(A.sidebarChosen)) : nil)
+                        .listRowBackground(chosen ? SidebarMark(color: T.Look.floats ? palette.card : palette.ink(A.sidebarChosen), floats: T.Look.floats) : nil)
                         .accessibilityAddTraits(chosen ? .isSelected : [])
                     }
                 }
@@ -97,11 +98,19 @@ struct SettingsSidebar: View {
 /// fringes its corners.
 private struct SidebarMark: View {
     let color: Color
+    /// Notion White: the chosen pane a white card floating on the grey.
+    var floats = false
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(color)
-            .padding(.horizontal, 9)
+        if floats {
+            FloatFill(shape: RoundedRectangle(cornerRadius: 10, style: .continuous), fill: color)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 1)
+        } else {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(color)
+                .padding(.horizontal, 9)
+        }
     }
 }
 

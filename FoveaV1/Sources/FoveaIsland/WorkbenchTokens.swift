@@ -231,6 +231,13 @@ enum WorkbenchTokens {
         /// 24 pt bottom corner − 16 pt padding.
         static var expandedRadius: CGFloat { Island.spec.expandedBottomRadius - expandedPadding }
         static var expandedMaxWidth: CGFloat { Island.spec.reviewWidth }
+        // Oct 27, Ryan: "there should only be a floating strip of 5 pics, (>5 pics then user needs
+        // to slide left and right to find all the pics), and then clicking on the pic will give
+        // expanded view". Opened, the captures are a strip floating under the bar (whether the
+        // panels float or not): five in view, a little room round them, its corners concentric.
+        static let stripVisible = 5
+        static let stripPadding: CGFloat = 8
+        static let stripRadius: CGFloat = 16
         static let footerHeight: CGFloat = 28
         static let footerGap: CGFloat = 12
         static let closeWidth: CGFloat = 54
@@ -340,50 +347,50 @@ enum WorkbenchTokens {
     enum Paste {
         /// The island's width, ears included: 330 pt of text, about 55 characters of 13.5 pt
         /// SF Pro a line, inside a readable measure.
-        static var width: CGFloat { pick(368, 400) }
-        static var paddingH: CGFloat { pick(14, 16) }
-        static var paddingTop: CGFloat { pick(9, 10) + Native.panelGap }
-        static var paddingBottom: CGFloat { pick(11, 12) }
+        static var width: CGFloat { size(368) }
+        static var paddingH: CGFloat { size(14) }
+        static var paddingTop: CGFloat { size(9) + Native.contentDrop }
+        static var paddingBottom: CGFloat { size(11) }
         /// The transcript: the Island's body text in the label color, the first two lines
         /// closed, cut at the tail with an ellipsis.
-        static var text: Font { pick(Font.system(size: 12.5), .system(size: 13.5)) }
+        static var text: Font { Font.system(size: typeSize(12.5)) }
         static var textColor: Color { ink(0.85) }
         static let lineSpacing: CGFloat = 2
         static let lines = 2
         /// Opened, the whole transcript, scrolling past this.
         static let maxTextHeight: CGFloat = 200
-        static var rowGap: CGFloat { pick(9, 10) }
-        static var rowHeight: CGFloat { pick(21, 24) }
+        static var rowGap: CGFloat { size(9) }
+        static var rowHeight: CGFloat { size(21) }
         // ✕: the quietest control, a plain glyph in the secondary label color, in the
         // countdown's ring; a disc lifts inside the ring under the pointer, and the target is
         // larger than the ring.
-        static var closeDiscSize: CGFloat { pick(16, 18) }
-        static var closeHitSize: CGFloat { pick(26, 30) }
+        static var closeDiscSize: CGFloat { size(16) }
+        static var closeHitSize: CGFloat { size(26) }
         /// The ring: 24 pt across, 2 pt (a download ring's weight around a control this size;
         /// the lines' 4 pt would crowd the glyph), the lines' white on their track.
-        static var ringDiameter: CGFloat { pick(21, 24) }
+        static var ringDiameter: CGFloat { size(21) }
         static let ringWeight: CGFloat = 2
         static var ringTrack: Color { Progress.track }
         static var ringFill: Color { Progress.fill }
-        static var closeGlyph: Font { pick(Font.system(size: 10.5, weight: .semibold), .system(size: 10.5, weight: .semibold)) }
+        static var closeGlyph: Font { Font.system(size: typeSize(10.5), weight: .semibold) }
         static var closeFillHover: Color { ink(0.12) }
         static var closeGlyphColor: Color { ink(0.55) }
         static var closeGlyphHover: Color { ink(0.85) }
         // The chevron: a glyph in the secondary label color, a fill only under the pointer.
-        static var expandWidth: CGFloat { pick(32, 36) }
-        static var expandHeight: CGFloat { pick(19, 22) }
-        static var expandGlyph: Font { pick(Font.system(size: 10.5, weight: .semibold), .system(size: 11, weight: .semibold)) }
+        static var expandWidth: CGFloat { size(32) }
+        static var expandHeight: CGFloat { size(19) }
+        static var expandGlyph: Font { Font.system(size: typeSize(10.5), weight: .semibold) }
         static var expandColor: Color { ink(0.55) }
         static var expandColorHover: Color { ink(0.85) }
         static var expandFillHover: Color { ink(0.1) }
         // Copy: a gray capsule, white words. The gray is Apple's dark systemFill as it lands
         // on black (rgba(120,120,128,0.36) ≈ white 0.17); lighter under the pointer, lighter
         // again pressed, as dark controls highlight. The Undo pill's face and weight.
-        static var copyHeight: CGFloat { pick(21, 24) }
-        static var copyPaddingH: CGFloat { pick(11, 12) }
+        static var copyHeight: CGFloat { size(21) }
+        static var copyPaddingH: CGFloat { size(11) }
         static let copySpacing: CGFloat = 4
-        static var copyFont: Font { pick(Font.system(size: 11.5, weight: .semibold), .system(size: 12, weight: .semibold)) }
-        static var copyGlyph: Font { pick(Font.system(size: 10, weight: .bold), .system(size: 10, weight: .bold)) }
+        static var copyFont: Font { Font.system(size: typeSize(11.5), weight: .semibold) }
+        static var copyGlyph: Font { Font.system(size: typeSize(10), weight: .bold) }
         static var copyFill: Color { skin(Color.white.opacity(0.17), Native.accent) }
         static var copyFillHover: Color { skin(Color.white.opacity(0.23), Native.accent.opacity(Native.accentHover)) }
         static var copyFillPressed: Color { skin(Color.white.opacity(0.29), Native.accent.opacity(Native.accentPressed)) }
@@ -407,8 +414,8 @@ enum WorkbenchTokens {
         /// The words coming in with the shape (Oct 21, Ryan, "simpler is better": no beat behind).
         static var contentIn: Animation { Spring.fadeIn(0.18) }
         static var hover: Animation { Spring.hover }
-        /// The bottom corners: the Island's expanded ones; Spacious, rounder for the larger panel.
-        static var bottomRadius: CGFloat { pick(Island.spec.expandedBottomRadius, 28) }
+        /// The bottom corners: the Island's expanded ones.
+        static var bottomRadius: CGFloat { size(Island.spec.expandedBottomRadius) }
     }
 
     /// Voice input for agents: libraries.dev/voice (voice-glow, Jakub Antalik, MIT) ported to the
@@ -827,12 +834,12 @@ enum WorkbenchTokens {
         /// goes dashed (a mark that keeps turning on a stall reads as broken).
         static let stallAfter: Double = 300
         // Buttons in a row: the island's gray capsule; the primary (Allow) white with black words.
-        static var buttonHeight: CGFloat { pick(18, 20) }
-        static var buttonPaddingH: CGFloat { pick(8, 9) }
-        static var buttonGap: CGFloat { pick(4.5, 5) }
-        static var buttonFont: Font { pick(Font.system(size: 11, weight: .semibold), .system(size: 11.5, weight: .medium)) }
-        static var buttonSymbol: Font { pick(Font.system(size: 8.5, weight: .bold), .system(size: 8.5, weight: .semibold)) }
-        static var buttonSymbolGap: CGFloat { pick(4, 4) }
+        static var buttonHeight: CGFloat { size(18) }
+        static var buttonPaddingH: CGFloat { size(8) }
+        static var buttonGap: CGFloat { size(4.5) }
+        static var buttonFont: Font { Font.system(size: typeSize(11), weight: .semibold) }
+        static var buttonSymbol: Font { Font.system(size: typeSize(8.5), weight: .bold) }
+        static var buttonSymbolGap: CGFloat { size(4) }
         static var buttonFill: Color { ink(0.14) }
         static var buttonFillHover: Color { ink(0.22) }
         static var buttonText: Color { ink(0.9) }
@@ -891,23 +898,23 @@ enum WorkbenchTokens {
     /// its ears end), so nothing leans. Beside the notch at rest, two equal wings.
     enum V2 {
         // The shape: Compact a little narrower (Oct 9, evening).
-        static var width: CGFloat { pick(600, 660) }
+        static var width: CGFloat { size(600) }
         /// Inside the body: the same on every side.
-        static var margin: CGFloat { pick(14, 16) }
+        static var margin: CGFloat { size(14) }
         /// From the notch's foot to the content; in Native, from the panel's top (the gap under
-        /// the island is added: docs/island/NATIVE.md).
-        static var topGap: CGFloat { pick(9, 10) + Native.panelGap }
-        static var bottomRadius: CGFloat { pick(25, 28) }
-        static var gap: CGFloat { pick(11, 12) }
+        /// the island is added: docs/island/NATIVE.md; attached, room for the halo).
+        static var topGap: CGFloat { size(9) + Native.contentDrop }
+        static var bottomRadius: CGFloat { size(25) }
+        static var gap: CGFloat { size(11) }
         // Type and ink.
-        static var titleFont: Font { pick(Font.system(size: 12.5, weight: .semibold), .system(size: 13.5, weight: .semibold)) }
+        static var titleFont: Font { Font.system(size: typeSize(12.5), weight: .semibold) }
         static var titleColor: Color { ink(0.94) }
         static var subColor: Color { ink(0.5) }
-        static var statusFont: Font { pick(Font.system(size: 11), .system(size: 11.5)) }
-        static var badgeFont: Font { pick(Font.system(size: 10.5, weight: .medium), .system(size: 10.5, weight: .medium)) }
+        static var statusFont: Font { Font.system(size: typeSize(11)) }
+        static var badgeFont: Font { Font.system(size: typeSize(10.5), weight: .medium) }
         static var badgeFill: Color { ink(0.1) }
         static var bodyColor: Color { ink(0.78) }
-        static var detailFont: Font { pick(Font.system(size: 11.5), .system(size: 12)) }
+        static var detailFont: Font { Font.system(size: typeSize(11.5)) }
         static let avatar: CGFloat = 26
         // Rows and keys.
         static let rowRadius: CGFloat = 10
@@ -917,41 +924,37 @@ enum WorkbenchTokens {
         static var keyColor: Color { ink(0.42) }
         static var keyFill: Color { ink(0.08) }
         static let keySize: CGFloat = 18
-        static var hintFont: Font { pick(Font.system(size: 11), .system(size: 11.5)) }
+        static var hintFont: Font { Font.system(size: typeSize(11)) }
         static let hintKeyFont = Font.system(size: 11, weight: .semibold)
         static var hintColor: Color { ink(0.38) }
         static let hintHeight: CGFloat = 18
         // Choose chat: the request and what was taken; where it could go; every chat.
-        static var requestSize: CGFloat { pick(13, 14) }
+        static var requestSize: CGFloat { size(13) }
         static var requestColor: Color { ink(0.9) }
         static let attachmentHeight: CGFloat = 52
-        static var attachmentGap: CGFloat { pick(7, 8) }
-        static var attachmentRadius: CGFloat { pick(6, 7) }
-        static var labelFont: Font { pick(Font.system(size: 10.5, weight: .semibold), .system(size: 11, weight: .semibold)) }
-        static var labelColor: Color { pick(ink(0.4), ink(0.5)) }
+        static var attachmentRadius: CGFloat { size(6) }
+        static var labelFont: Font { Font.system(size: typeSize(10.5), weight: .semibold) }
+        static var labelColor: Color { ink(0.4) }
         static let labelHeight: CGFloat = 18
         static let suggestionHeight: CGFloat = 36
         static let suggestionIcon: CGFloat = 18
         static let suggestionFont = Font.system(size: 13, weight: .medium)
-        static var reasonFont: Font { pick(Font.system(size: 11.5), .system(size: 12)) }
-        /// Choose chat, as Dispatch has it: what was taken, the chat in a pill, the send button; the
-        /// suggestions as chips under. It waits for the person: nothing sends by itself.
-        static var attachRow: CGFloat { pick(39, 44) }
-        static var attachThumb: CGFloat { pick(35, 40) }
+        static var reasonFont: Font { Font.system(size: typeSize(11.5)) }
+        /// Choose chat (the Sentence, Oct 27: ChooseChatSentence.swift has its own): a taken thing's
+        /// card; Send under the pointer. It waits for the person: nothing sends by itself.
+        static var attachThumb: CGFloat { size(35) }
         static let pillMaxWidth: CGFloat = 250
-        static var pillHeight: CGFloat { pick(28, 32) }
-        static var sendSize: CGFloat { pick(28, 32) }
         static let sendHoverOpacity: Double = 0.85
-        static var chipRow: CGFloat { pick(25, 28) }
-        static var chipHeight: CGFloat { pick(23, 26) }
-        static var chipFont: Font { pick(Font.system(size: 12, weight: .medium), .system(size: 12.5, weight: .medium)) }
+        static var chipRow: CGFloat { size(25) }
+        static var chipHeight: CGFloat { size(23) }
+        static var chipFont: Font { Font.system(size: typeSize(12), weight: .medium) }
         static var chipFill: Color { ink(0.07) }
         static var chipChosenFill: Color { skin(Color.white.opacity(0.16), Native.accent.opacity(Native.accentWash)) }
         /// Every chat, as Dispatch's expanded view: the agents' rail, then rows.
-        static var railHeight: CGFloat { pick(26, 30) }
-        static var railIcon: CGFloat { pick(16, 18) }
-        static var railTab: CGSize { pick(CGSize(width: 28, height: 23), CGSize(width: 32, height: 26)) }
-        static var browseRow: CGFloat { pick(26, 30) }
+        static var railHeight: CGFloat { size(26) }
+        static var railIcon: CGFloat { size(16) }
+        static var railTab: CGSize { CGSize(width: 28, height: 23) }
+        static var browseRow: CGFloat { size(26) }
         static let browseRowsVisible = 6
         // The control board: the focus's screen (16:10) beside every session.
         static let focusWidth: CGFloat = 336
@@ -970,18 +973,18 @@ enum WorkbenchTokens {
         static var readyColor: Color { ink(0.9) }
         // The expanded chat: the agent and session; the request; the response beside its screen;
         // its state; what to do; the grab bar that pulls it out.
-        static var chatHeader: CGFloat { pick(35, 40) }
-        static var questionSize: CGFloat { pick(13.5, 15) }
+        static var chatHeader: CGFloat { size(35) }
+        static var questionSize: CGFloat { size(13.5) }
         static let chatScreen: CGFloat = 268
         static let columnGap: CGFloat = 20
         static let chatBodyMax: CGFloat = 280
         static let statusHeight: CGFloat = 34
         static let barHeight: CGFloat = 36
         static let grabSize = CGSize(width: 40, height: 5)
-        static var grabArea: CGFloat { pick(14, 16) }
+        static var grabArea: CGFloat { size(14) }
         static var grabColor: Color { ink(0.32) }
         static var rule: Color { ink(0.08) }
-        static var outcomeSize: CGFloat { pick(13.5, 14.5) }
+        static var outcomeSize: CGFloat { size(13.5) }
         static var outcomeColor: Color { ink(0.96) }
         /// An answer that came this quickly opens by itself (the person is likely still waiting);
         /// anything slower waits on the board, Ready for review.
@@ -991,11 +994,11 @@ enum WorkbenchTokens {
         /// Pulled this far below the notch, the chat comes out as a window.
         static let pullThreshold: CGFloat = 28
         // A chat pulled out: a small window, anywhere; tucked into a side, a tab.
-        static var detachedSize: CGSize { pick(CGSize(width: 313, height: 431), CGSize(width: 340, height: 468)) }
+        static var detachedSize: CGSize { CGSize(width: 313, height: 431) }
         /// A pulled-out chat's follow-up box.
-        static var inputHeight: CGFloat { pick(30, 34) }
+        static var inputHeight: CGFloat { size(30) }
         static var inputFill: Color { ink(0.07) }
-        static var detachedRadius: CGFloat { pick(14, 16) }
+        static var detachedRadius: CGFloat { size(14) }
         /// How small and how big a pulled-out chat's window can be made, against its usual size (its
         /// corner or a pinch). The window resizes; its words stay their size and reflow (Oct 11).
         /// Oct 24, Ryan: its four sides resize it as a Mac window's, so it may grow well past
@@ -1080,59 +1083,55 @@ enum WorkbenchTokens {
                 return Spring.resize
             }
         }
-        // Values that were written in the views, now here so they follow the density
-        // (docs/island/SPACIOUS.md). Compact is each one's value through Oct 6.
+        // Values that were written in the views (docs/island/SPACIOUS.md), each its value through
+        // Oct 6.
         // Choose chat.
-        static var requestWeight: Font.Weight { pick(.medium, .regular) }
-        static var requestMeasureWeight: NSFont.Weight { pick(.medium, .regular) }
-        static var requestSpacing: CGFloat { pick(2, 2) }
-        /// Under the row of the stack, the pills and Send.
-        static var attachBottom: CGFloat { pick(9, 10) }
-        static var chipGap: CGFloat { pick(5.5, 6) }
-        static var labelTrailing: CGFloat { pick(4, 4) }
-        static var chipPaddingH: CGFloat { pick(9, 10) }
-        static var chipIcon: CGFloat { pick(12, 14) }
+        static var requestWeight: Font.Weight { .medium }
+        static var requestMeasureWeight: NSFont.Weight { .medium }
+        static var requestSpacing: CGFloat { size(2) }
+        /// Oct 27: the words being edited: the field round them, its corner, its fill, the
+        /// accent's ring.
+        static var requestEditInset: CGFloat { size(5) }
+        static var requestEditRadius: CGFloat { size(7) }
+        static var requestEditFill: Color { ink(0.06) }
+        static let requestEditRing = 0.55
+        static var chipGap: CGFloat { size(5.5) }
+        static var labelTrailing: CGFloat { size(4) }
+        static var chipPaddingH: CGFloat { size(9) }
+        static var chipIcon: CGFloat { size(12) }
         static var chipText: Color { ink(0.72) }
-        static var pillPaddingH: CGFloat { pick(11, 12) }
-        static var pillIcon: CGFloat { pick(16, 18) }
-        static var pillFont: Font { pick(Font.system(size: 12, weight: .medium), .system(size: 13, weight: .medium)) }
-        static var pillChevron: Font { pick(Font.system(size: 9.5, weight: .semibold), .system(size: 9.5, weight: .semibold)) }
-        static var pillGlyph: Font { pick(Font.system(size: 10.5, weight: .semibold), .system(size: 11, weight: .semibold)) }
-        static var sendGlyph: Font { pick(Font.system(size: 12, weight: .bold), .system(size: 13, weight: .bold)) }
         // Every chat: the rail, the rows.
-        static var browseSpacing: CGFloat { pick(5.5, 6) }
-        static var railGap: CGFloat { pick(4, 4) }
-        static var railTabRadius: CGFloat { pick(6, 7) }
-        static var railName: Font { pick(Font.system(size: 12, weight: .semibold), .system(size: 13, weight: .semibold)) }
-        static var browseFont: Font { pick(Font.system(size: 12, weight: .medium), .system(size: 13, weight: .medium)) }
-        static var browsePaddingH: CGFloat { pick(9, 10) }
-        static var browseChevron: Font { pick(Font.system(size: 9, weight: .semibold), .system(size: 9, weight: .semibold)) }
-        static var browseBack: Font { pick(Font.system(size: 10, weight: .semibold), .system(size: 10, weight: .semibold)) }
-        static var browseGlyph: Font { pick(Font.system(size: 10), .system(size: 10)) }
+        static var browseSpacing: CGFloat { size(5.5) }
+        static var railGap: CGFloat { size(4) }
+        static var railTabRadius: CGFloat { size(6) }
+        static var railName: Font { Font.system(size: typeSize(12), weight: .semibold) }
+        static var browseFont: Font { Font.system(size: typeSize(12), weight: .medium) }
+        static var browsePaddingH: CGFloat { size(9) }
+        static var browseGlyph: Font { Font.system(size: typeSize(10)) }
+        /// Oct 27: each chat led by its agent's icon; a New chat's with a plus at its corner.
+        static var browseIcon: CGFloat { size(15) }
+        static var browseNewGlyph: Font { Font.system(size: typeSize(8), weight: .bold) }
+        static var browseNewPlate: Color { Native.card }
+        static let browseNewOffset: CGFloat = 3
         /// The #19 sheet's rule between every chat and the model: this much above and below it.
-        static var sheetRuleGap: CGFloat { pick(7, 8) }
+        static var sheetRuleGap: CGFloat { size(7) }
         // The session in the notch: its header, the rules, the question.
-        static var headerSpacing: CGFloat { pick(9, 10) }
-        static var headerIcon: CGFloat { pick(19, 22) }
-        static var headerTitle: Font { pick(Font.system(size: 13, weight: .semibold), .system(size: 14, weight: .semibold)) }
-        /// The rule under the header; Spacious keeps only this one, finer.
-        static var headerRule: CGFloat { pick(1, 1) }
-        static var headerRuleColor: Color { pick(rule, ink(0.12)) }
-        /// The rule between the question and the answer: Spacious parts them with space.
-        static var blockRules: Bool { pick(true, false) }
-        static var questionLineSpacing: CGFloat { pick(0, 0) }
+        static var headerSpacing: CGFloat { size(9) }
+        static var headerIcon: CGFloat { size(19) }
+        static var headerTitle: Font { Font.system(size: typeSize(13), weight: .semibold) }
+        /// The rule under the header.
+        static var headerRule: CGFloat { size(1) }
+        static var headerRuleColor: Color { rule }
+        static var questionLineSpacing: CGFloat { size(0) }
         /// The question as measured for the outline (Compact measured it with 2 the view never set).
-        static var questionMeasureSpacing: CGFloat { pick(2, 2) }
-        static var badgeHeight: CGFloat { pick(14, 16) }
-        static var badgePaddingH: CGFloat { pick(5.5, 6) }
-        // ✕ and back: a circle, a plate under the pointer (Spacious shows a quiet one at rest).
-        static var closeSize: CGFloat { pick(21, 24) }
-        static var closeGlyph: Font { pick(Font.system(size: 10.5, weight: .bold), .system(size: 10.5, weight: .semibold)) }
-        static var backSize: CGFloat { pick(19, 22) }
-        static var backGlyph: Font { pick(Font.system(size: 10.5, weight: .semibold), .system(size: 11, weight: .semibold)) }
-        static var iconPlate: Color { pick(Color.clear, ink(0.08)) }
-        static var iconPlateHover: Color { pick(Color.clear, ink(0.14)) }
-        static var iconGlyphHover: Color { pick(subColor, titleColor) }
+        static var questionMeasureSpacing: CGFloat { size(2) }
+        static var badgeHeight: CGFloat { size(14) }
+        static var badgePaddingH: CGFloat { size(5.5) }
+        // ✕ and back: the glyph alone, in a circle the pointer can hit.
+        static var closeSize: CGFloat { size(21) }
+        static var closeGlyph: Font { Font.system(size: typeSize(10.5), weight: .bold) }
+        static var backSize: CGFloat { size(19) }
+        static var backGlyph: Font { Font.system(size: typeSize(10.5), weight: .semibold) }
         // Expanded (Oct 7, docs/island/WHOLE_SESSION.md): the whole session, every exchange in it,
         // as tall as it needs down to the display's foot, 40 pt from the display's sides and 16
         // above its foot (the shipping app's reading margins). Narrower than the shipping app's 960,
@@ -1140,29 +1139,29 @@ enum WorkbenchTokens {
         // the panel's edges.
         static let readingSideMargin: CGFloat = 40
         static let readingBottomMargin: CGFloat = 16
-        static var expandedWidth: CGFloat { pick(840, 880) }
-        static var expandGlyph: Font { pick(Font.system(size: 10, weight: .semibold), .system(size: 10, weight: .semibold)) }
+        static var expandedWidth: CGFloat { size(840) }
+        static var expandGlyph: Font { Font.system(size: typeSize(10), weight: .semibold) }
         static let grabHitWidth: CGFloat = 120
         /// The column the requests, the answers, the bar and the box keep when expanded: about 90
-        /// characters a line at the answer's size (13.5 and 15 pt SF Pro set 6.3 and 6.9 pt a
-        /// character), the long end of Practical Typography's 45–90, for answers full of paths and
-        /// code. 130 pt each side in Spacious (140 in Compact), the outline in the right one.
-        static var readingMeasure: CGFloat { pick(560, 620) }
+        /// characters a line at the answer's size (13.5 pt SF Pro sets 6.3 pt a character), the long
+        /// end of Practical Typography's 45–90, for answers full of paths and code. 140 pt each side,
+        /// the outline in the right one.
+        static var readingMeasure: CGFloat { size(560) }
         /// Every exchange, oldest first, parted by space (no rules).
-        static var historyTurnGap: CGFloat { pick(28, 32) }
-        static var historyQuestionGap: CGFloat { pick(11, 12) }
+        static var historyTurnGap: CGFloat { size(28) }
+        static var historyQuestionGap: CGFloat { size(11) }
         /// The person's words and the agent's (Oct 24, Ryan: "the user will be able to easily
         /// identify the request sent by them and the agent's response"): each request in a bubble
         /// at the column's right, as Messages, ChatGPT and Claude set what you sent; the agent's
         /// answer open at the left, the column's full width. A line's bubble is a capsule. (Oct 8
         /// had the request on a band across the column, after a prompt's chevron.)
-        static var bubbleSize: CGFloat { pick(13.5, 14.5) }
-        static var bubbleSpacing: CGFloat { pick(2, 2) }
+        static var bubbleSize: CGFloat { size(13.5) }
+        static var bubbleSpacing: CGFloat { size(2) }
         static var bubbleFill: Color { ink(0.11) }
         static var bubbleColor: Color { ink(0.96) }
-        static var bubbleRadius: CGFloat { pick(15, 16) }
-        static var bubblePaddingH: CGFloat { pick(11, 12) }
-        static var bubblePaddingV: CGFloat { pick(7, 7.5) }
+        static var bubbleRadius: CGFloat { size(15) }
+        static var bubblePaddingH: CGFloat { size(11) }
+        static var bubblePaddingV: CGFloat { size(7) }
         /// A bubble is at most this share of the column, so the answer's side stays open.
         static let bubbleShare: CGFloat = 0.82
         /// The last request's Edit, beside its bubble.
@@ -1185,9 +1184,9 @@ enum WorkbenchTokens {
         static let outlineCardWidth: CGFloat = 280
         static let outlineCardRadius: CGFloat = 14
         static let outlineCardPadding: CGFloat = 6
-        static var outlineRowRequest: CGFloat { pick(25, 28) }
-        static var outlineRequestFont: Font { pick(Font.system(size: 12), .system(size: 12.5)) }
-        static var outlineRequestFontOn: Font { pick(Font.system(size: 12, weight: .semibold), .system(size: 12.5, weight: .semibold)) }
+        static var outlineRowRequest: CGFloat { size(25) }
+        static var outlineRequestFont: Font { Font.system(size: typeSize(12)) }
+        static var outlineRequestFontOn: Font { Font.system(size: typeSize(12), weight: .semibold) }
         static var outlineCardFill: Color { skin(Color(white: 0.12), Native.card) }
         static var outlineCardBorder: Color { ink(0.12) }
         static let outlineCardShadow = Color.black.opacity(0.25)
@@ -1202,27 +1201,27 @@ enum WorkbenchTokens {
         /// to fit with its answer is brought to the top.
         static let historySettle: Double = 0.35
         /// Waiting on the person: its question and that it waits.
-        static var needsYouBody: CGFloat { pick(53, 60) }
-        static var responseGap: CGFloat { pick(9, 10) }
-        static var responseFont: Font { pick(Font.system(size: 12), .system(size: 13)) }
+        static var needsYouBody: CGFloat { size(53) }
+        static var responseGap: CGFloat { size(9) }
+        static var responseFont: Font { Font.system(size: typeSize(12)) }
         // A chat pulled out.
-        static var detachedPadding: CGFloat { pick(11, 12) }
-        static var detachedSpacing: CGFloat { pick(9, 10) }
-        static var detachedHeader: CGFloat { pick(19, 22) }
-        static var detachedIcon: CGFloat { pick(16, 18) }
-        static var detachedTitle: Font { pick(Font.system(size: 12, weight: .semibold), .system(size: 13, weight: .semibold)) }
-        static var detachedClose: CGFloat { pick(18, 20) }
-        static var detachedCloseGlyph: Font { pick(Font.system(size: 9.5, weight: .bold), .system(size: 9.5, weight: .semibold)) }
-        static var turnSpacing: CGFloat { pick(9, 10) }
-        static var turnQuestion: Font { pick(Font.system(size: 12, weight: .semibold), .system(size: 12.5, weight: .semibold)) }
-        static var movedOnFont: Font { pick(Font.system(size: 12), .system(size: 12.5)) }
+        static var detachedPadding: CGFloat { size(11) }
+        static var detachedSpacing: CGFloat { size(9) }
+        static var detachedHeader: CGFloat { size(19) }
+        static var detachedIcon: CGFloat { size(16) }
+        static var detachedTitle: Font { Font.system(size: typeSize(12), weight: .semibold) }
+        static var detachedClose: CGFloat { size(18) }
+        static var detachedCloseGlyph: Font { Font.system(size: typeSize(9.5), weight: .bold) }
+        static var turnSpacing: CGFloat { size(9) }
+        static var turnQuestion: Font { Font.system(size: typeSize(12), weight: .semibold) }
+        static var movedOnFont: Font { Font.system(size: typeSize(12)) }
         // The box to ask more.
-        static var inputSpacing: CGFloat { pick(7, 8) }
-        static var inputPaddingLeading: CGFloat { pick(11, 12) }
-        static var inputPaddingTrailing: CGFloat { pick(4.5, 5) }
-        static var inputFont: Font { pick(Font.system(size: 12), .system(size: 13)) }
-        static var inputSend: CGFloat { pick(21, 24) }
-        static var inputSendGlyph: Font { pick(Font.system(size: 10.5, weight: .bold), .system(size: 11, weight: .bold)) }
+        static var inputSpacing: CGFloat { size(7) }
+        static var inputPaddingLeading: CGFloat { size(11) }
+        static var inputPaddingTrailing: CGFloat { size(4.5) }
+        static var inputFont: Font { Font.system(size: typeSize(12)) }
+        static var inputSend: CGFloat { size(21) }
+        static var inputSendGlyph: Font { Font.system(size: typeSize(10.5), weight: .bold) }
     }
 
     /// What the agent at work shows on the mock screen besides its pointer
@@ -1440,31 +1439,31 @@ enum WorkbenchTokens {
     enum Feedback {
         // #2: the notice in place of the bar: Paste not found's width and corners, its ring and
         // gray capsule; the glyph in the tone's color, everything else white at an opacity.
-        static var noticeWidth: CGFloat { pick(368, 400) }
+        static var noticeWidth: CGFloat { size(368) }
         /// Inside the listening bar: wide enough for the words and one capsule.
         static let barNoticeWidth: CGFloat = 340
         /// The largest picture a request carries (Image over 20 MB, not added).
         static let imageLimit = 20 * 1024 * 1024
         /// Where the words landed, lit a moment (#7, the real field's frame through Accessibility).
         static let landMarkHold: Double = 0.9
-        static var noticePaddingH: CGFloat { pick(14, 16) }
-        static var noticePaddingTop: CGFloat { pick(8, 9) + Native.panelGap }
-        static var noticePaddingBottom: CGFloat { pick(11, 12) }
-        static var noticeRow: CGFloat { pick(23, 26) }
+        static var noticePaddingH: CGFloat { size(14) }
+        static var noticePaddingTop: CGFloat { size(8) + Native.contentDrop }
+        static var noticePaddingBottom: CGFloat { size(11) }
+        static var noticeRow: CGFloat { size(23) }
         static let noticeMessageGap: CGFloat = 2
-        static var noticeMessageHeight: CGFloat { pick(16, 18) }
-        static var noticeGlyph: Font { pick(Font.system(size: 12, weight: .semibold), .system(size: 12.5, weight: .semibold)) }
-        static var noticeGlyphWidth: CGFloat { pick(16, 18) }
-        static var noticeTitle: Font { pick(Font.system(size: 12.5, weight: .semibold), .system(size: 13.5, weight: .semibold)) }
+        static var noticeMessageHeight: CGFloat { size(16) }
+        static var noticeGlyph: Font { Font.system(size: typeSize(12), weight: .semibold) }
+        static var noticeGlyphWidth: CGFloat { size(16) }
+        static var noticeTitle: Font { Font.system(size: typeSize(12.5), weight: .semibold) }
         static var noticeTitleColor: Color { ink(0.94) }
-        static var noticeMessage: Font { pick(Font.system(size: 12), .system(size: 12.5)) }
+        static var noticeMessage: Font { Font.system(size: typeSize(12)) }
         static var noticeMessageColor: Color { ink(0.55) }
         static var infoColor: Color { ink(0.62) }
         static var yoursColor: Color { Panel.needsYouColor }
         static var failureColor: Color { Panel.failedColor }
-        static var actionHeight: CGFloat { pick(21, 24) }
-        static var actionPaddingH: CGFloat { pick(11, 12) }
-        static var actionFont: Font { pick(Font.system(size: 11.5, weight: .semibold), .system(size: 12, weight: .semibold)) }
+        static var actionHeight: CGFloat { size(21) }
+        static var actionPaddingH: CGFloat { size(11) }
+        static var actionFont: Font { Font.system(size: typeSize(11.5), weight: .semibold) }
         /// How long each kind stays (paused while the pointer is on it).
         static let errorInfoTime: Double = 2.5
         static let errorWarningTime: Double = 4
@@ -1518,10 +1517,10 @@ enum WorkbenchTokens {
         // #6: Split View's two apps, the divider between them.
         static let splitDivider: CGFloat = 6
         static let splitWindowRadius: CGFloat = 10
-        // The notice's room that followed the density (docs/island/SPACIOUS.md).
-        static var noticeSpacing: CGFloat { pick(7, 8) }
-        static var noticeBottomRadius: CGFloat { pick(Island.spec.expandedBottomRadius, 28) }
-        // Inside the listening bar, the voice bar's size in both densities.
+        // The notice's room (docs/island/SPACIOUS.md).
+        static var noticeSpacing: CGFloat { size(7) }
+        static var noticeBottomRadius: CGFloat { size(Island.spec.expandedBottomRadius) }
+        // Inside the listening bar, the voice bar's size.
         static let barNoticeGlyph = Font.system(size: 12.5, weight: .semibold)
         static let barNoticeTitle = Font.system(size: 12.5, weight: .medium)
         static let barNoticeSpacing: CGFloat = 7
@@ -1538,80 +1537,74 @@ enum WorkbenchTokens {
     enum Board {
         // Round three: two-line rows led by the agent's icon, parted by state. Sections puts the
         // state in a header (a glyph and a word) over its rows; Badges puts it on each icon.
-        static var width: CGFloat { pick(368, 400) }
-        static var paddingH: CGFloat { pick(5.5, 6) }
-        static var paddingBottom: CGFloat { pick(7, 8) }
+        static var width: CGFloat { size(368) }
+        static var paddingH: CGFloat { size(5.5) }
+        static var paddingBottom: CGFloat { size(7) }
         /// Nothing running (the real Mac, Oct 9): the board greets the person instead, in two
         /// lines, the title's face over the line's.
-        static var helloHeight: CGFloat { pick(50, 56) }
+        static var helloHeight: CGFloat { size(50) }
         // Oct 18, Ryan: in the primary language.
         static var helloLead: String { L("Start building here.") }
-        static var bottomRadius: CGFloat { pick(19, 22) }
-        static var row: CGFloat { pick(40, 46) }
+        static var bottomRadius: CGFloat { size(19) }
+        static var row: CGFloat { size(40) }
         static let rowsVisible = 6
-        static var rowPaddingH: CGFloat { pick(9, 10) }
-        static var rowRadius: CGFloat { pick(8, 9) }
-        static var lineGap: CGFloat { pick(2, 2) }
-        static var groupGap: CGFloat { pick(8, 9) }
+        static var rowPaddingH: CGFloat { size(9) }
+        static var rowRadius: CGFloat { size(8) }
+        static var lineGap: CGFloat { size(2) }
+        static var groupGap: CGFloat { size(8) }
         static var hairline: Color { ink(0.08) }
-        static var highlight: Color { pick(ink(0.07), ink(0.06)) }
+        static var highlight: Color { ink(0.07) }
         static var move: Animation { Spring.rows }
-        // A section's header: its glyph and its word, quiet; the first sits closer to the notch.
-        static var header: CGFloat { pick(23, 26) }
-        static var headerFirst: CGFloat { pick(18, 20) }
-        static var headerGlyph: CGFloat { pick(10, 11) }
-        static let headerGap: CGFloat = 6
-        static var headerFont: Font { pick(Font.system(size: 10.5, weight: .semibold), .system(size: 11, weight: .semibold)) }
-        static var headerColor: Color { pick(ink(0.45), ink(0.5)) }
-        static var headerGlyphColor: Color { ink(0.55) }
-        // The agent's icon: 20 pt in Sections; 26 pt with a 12 pt badge in Badges, cut out of
-        // the icon by a ring of the island's black.
-        static var icon: CGFloat { pick(18, 20) }
-        static var badgedIcon: CGFloat { pick(23, 26) }
-        static var iconGap: CGFloat { pick(9, 10) }
-        static var badge: CGFloat { pick(11, 12) }
+        // A part's label (Open any chat's), quiet.
+        static var headerFont: Font { Font.system(size: typeSize(10.5), weight: .semibold) }
+        static var headerColor: Color { ink(0.45) }
+        // The agent's icon: 26 pt with a 12 pt badge, cut out of the icon by a ring of the
+        // island's black.
+        static var badgedIcon: CGFloat { size(23) }
+        static var iconGap: CGFloat { size(9) }
+        static var badge: CGFloat { size(11) }
         static let badgeRing: CGFloat = 2
         static let badgeOffset: CGFloat = 3
-        static var badgeGlyph: Font { pick(Font.system(size: 6.5, weight: .black), .system(size: 6.5, weight: .black)) }
+        static var badgeGlyph: Font { Font.system(size: typeSize(6.5), weight: .black) }
         static let dimSaturation: Double = 0
         static let dimOpacity: Double = 0.4
         // The words: the title over one line in a quieter ink.
-        static var titleFont: Font { pick(Font.system(size: 12.5, weight: .semibold), .system(size: 13.5, weight: .semibold)) }
+        static var titleFont: Font { Font.system(size: typeSize(12.5), weight: .semibold) }
         static var title: Color { ink(0.92) }
         static var dimTitle: Color { ink(0.45) }
-        static var lineFont: Font { pick(Font.system(size: lineSize), .system(size: lineSize)) }
-        static var lineSize: CGFloat { pick(11, 11.5) }
+        static var lineFont: Font { Font.system(size: lineSize) }
+        static var lineSize: CGFloat { size(11) }
         static var line: Color { ink(0.6) }
-        static var commandFont: Font { pick(Font.system(size: 10.5, design: .monospaced), .system(size: 11, design: .monospaced)) }
-        static var wordFont: Font { pick(Font.system(size: 11, weight: .medium), .system(size: 11.5, weight: .medium)) }
+        static var commandFont: Font { Font.system(size: typeSize(10.5), design: .monospaced) }
+        static var wordFont: Font { Font.system(size: typeSize(11), weight: .medium) }
         static var done: Color { ink(0.7) }
         static let projectFont = Font.system(size: 11)
         static var project: Color { ink(0.35) }
         // The trailing column: how long, in figures that don't jump; the ring beside it.
-        static var timeFont: Font { pick(Font.system(size: 11, weight: .medium), .system(size: 11.5, weight: .medium)) }
+        static var timeFont: Font { Font.system(size: typeSize(11), weight: .medium) }
         static var time: Color { ink(0.4) }
-        static var trailingWidth: CGFloat { pick(39, 44) }
-        static var ring: CGFloat { pick(10, 11) }
-        static var chevron: Font { pick(Font.system(size: 10, weight: .semibold), .system(size: 10, weight: .semibold)) }
+        static var trailingWidth: CGFloat { size(39) }
+        static var ring: CGFloat { size(10) }
+        static var chevron: Font { Font.system(size: typeSize(10), weight: .semibold) }
         // The session view, while it works: one quiet line; under it the bar and the box.
-        static var workingLine: CGFloat { pick(25, 28) }
-        static var workingFont: Font { pick(Font.system(size: 12, weight: .medium), .system(size: 12.5, weight: .medium)) }
-        static var workingSize: CGFloat { pick(12, 12.5) }
+        static var workingLine: CGFloat { size(25) }
+        static var workingFont: Font { Font.system(size: typeSize(12), weight: .medium) }
+        static var workingSize: CGFloat { size(12) }
         static var working: Color { ink(0.6) }
-        static var actionRow: CGFloat { pick(26, 30) }
-        static var inputGap: CGFloat { pick(7, 8) }
+        static var actionRow: CGFloat { size(26) }
+        static var inputGap: CGFloat { size(7) }
         // #19: the agent's icon at the voice bar's right.
         static let routeIcon: CGFloat = 16
         static let routeInset: CGFloat = 8
         // Values that were written in the views (docs/island/SPACIOUS.md).
-        static var headerBottom: CGFloat { pick(4.5, 5) }
-        static var trailingGap: CGFloat { pick(5.5, 6) }
-        static var workingGap: CGFloat { pick(7, 8) }
-        static var workingGlyph: CGFloat { pick(11, 12) }
-        static var openInFont: Font { pick(Font.system(size: 12), .system(size: 12.5)) }
-        static var openInArrow: Font { pick(Font.system(size: 9, weight: .bold), .system(size: 9, weight: .bold)) }
-        static var openInGap: CGFloat { pick(4, 4) }
-        static var expandButton: CGFloat { pick(19, 22) }
+        static var headerBottom: CGFloat { size(4.5) }
+        static var trailingGap: CGFloat { size(5.5) }
+        static var workingGap: CGFloat { size(7) }
+        static var workingGlyph: CGFloat { size(11) }
+        static var openInFont: Font { Font.system(size: typeSize(12)) }
+        static var openInArrow: Font { Font.system(size: typeSize(9), weight: .bold) }
+        static var openInGap: CGFloat { size(4) }
+        static var expandButton: CGFloat { size(19) }
     }
 
     /// The agent's steps while it works, one at a time (Feedback/V2Steps.swift): white at the
@@ -1628,248 +1621,32 @@ enum WorkbenchTokens {
         static var removed: Color { ink(0.45) }
     }
 
-    /// The control board's four other designs (Feedback/V2BoardVariants.swift), each from a
-    /// different family of notch apps (docs/island/FEEDBACK_2026-10-06.md, "The control board,
-    /// round four"). Drawn at the Spacious scale; white at an opacity on black, amber for what
-    /// waits on the person, red for a failure.
-    enum BoardV {
-        // Shared.
-        static let titleFont = Font.system(size: 15, weight: .semibold)
-        static let subFont = Font.system(size: 12.5)
-        static let rowTitleFont = Font.system(size: 13.5, weight: .medium)
-        static let timeFont = Font.system(size: 12, weight: .medium)
-        static let questionSize: CGFloat = 17
-        static let answerSize: CGFloat = 15
-        static let bigTime = Font.system(size: 34, weight: .light).monospacedDigit()
-        static let bigTimeHeight: CGFloat = 40
-        static var sub: Color { ink(0.55) }
-        static var answer: Color { ink(0.85) }
-        static var question: Color { ink(0.95) }
-        static var hairline: Color { ink(0.1) }
-        static var selectedFill: Color { ink(0.08) }
-        // The big buttons: halves of the row, capsules, the primary one white.
-        static let actionHeight: CGFloat = 36
-        static let actionGap: CGFloat = 10
-        static let actionFont = Font.system(size: 14, weight: .semibold)
-        static var actionFill: Color { ink(0.12) }
-        static var actionFillHover: Color { ink(0.18) }
-        // Focus: the most pressing session as a card, the rest on a shelf under it
-        // (Pushary's permission card, Atoll's agents, Crew Tower).
-        static let focusWidth: CGFloat = 460
-        static let focusMargin: CGFloat = 22
-        static let focusHeader: CGFloat = 42
-        static let focusIcon: CGFloat = 28
-        static let focusGap: CGFloat = 12
-        static let focusLines = 3
-        static let shelfRule: CGFloat = 28
-        static let shelfRow: CGFloat = 36
-        static let shelfRowsVisible = 5
-        static let shelfIcon: CGFloat = 18
-        static let shelfGlyph: CGFloat = 11
-        static let bottom: CGFloat = 16
-        static let pillFont = Font.system(size: 12, weight: .semibold)
-        static let pillHeight: CGFloat = 24
-        static var pillFill: Color { WorkbenchTokens.Panel.needsYouColor.opacity(0.16) }
-        // Capsules: each session its own small island under the notch (Droppy's bubbles, the
-        // Dynamic Island's detached minimal); the island itself stays the notch.
-        static let capsuleTop: CGFloat = 8
-        static let capsuleGap: CGFloat = 6
-        static let capsuleWide: CGFloat = 440
-        static let capsuleWidth: CGFloat = 420
-        static let capsuleQuiet: CGFloat = 380
-        static let capsuleTall: CGFloat = 74
-        static let capsuleHeight: CGFloat = 46
-        static let capsuleQuietHeight: CGFloat = 40
-        static let capsuleRadius: CGFloat = 23
-        static let capsuleTallRadius: CGFloat = 26
-        static let capsulePadding: CGFloat = 14
-        static let capsuleIcon: CGFloat = 24
-        static var capsuleStroke: Color { ink(0.1) }
-        static let capsuleShadow = Color.black.opacity(0.35)
-        static let capsuleStagger: Double = 0.03
-        static let capsuleIn: Animation = .interpolatingSpring(duration: 0.32, bounce: 0)
-        // Wings: the sessions as tokens in the notch's wings (DynamicLake's and Pushary's wings,
-        // the Dynamic Island's minimal); the one in focus on the stage below.
-        static let wingsWidth: CGFloat = 540
-        static let token: CGFloat = 26
-        static let tokenIcon: CGFloat = 18
-        static let tokenGap: CGFloat = 8
-        static let tokensPerWing = 4
-        static let tokenRing: CGFloat = 2
-        static let wingInset: CGFloat = 12
-        static let stage: CGFloat = 176
-        static let stageMargin: CGFloat = 24
-        // Split: the sessions at the left, the one in focus at the right (Boring Notch's and
-        // Droppy's two panes); Dispatch's width.
-        static let splitList: CGFloat = 236
-        static let splitGap: CGFloat = 16
-        static let splitRow: CGFloat = 40
-        static let splitRowsVisible = 6
-        static let splitIcon: CGFloat = 20
-        static let splitDetailLines = 7
-    }
-
-    /// The pet in each of the board's pet designs (Oct 8, docs/island/CREATURES.md): every session
-    /// with its agent's icon, its title and its pet at once, so nothing waits for a hover.
-    /// The same pet in every design of the board (Oct 8, docs/island/CREATURES.md): where it
-    /// stands in each, and how large.
-    enum Pets {
-        // List: the pet leads each row; the agent's icon sits by the title.
-        static var listPet: CGFloat { pick(18, 20) }
-        static var listAgentIcon: CGFloat { pick(11, 13) }
-        static let agentGap: CGFloat = 6
-        // Capsules: the pet at each capsule's front.
-        static let capsulePet: CGFloat = 22
-        // Desk: the sessions as a team, four to a row: each pet at its desk, its name under it.
-        static var deskWidth: CGFloat { pick(534, 580) }
-        static let deskMargin: CGFloat = 14
-        static let deskColumns = 4
-        static var deskCell: CGFloat { pick(114, 124) }
-        static let deskGap: CGFloat = 8
-        static let deskRowsVisible = 3
-        static let deskRadius: CGFloat = 14
-        static let deskPadding: CGFloat = 9
-        static var deskPet: CGFloat { pick(25, 28) }
-        static var deskAgentIcon: CGFloat { pick(12, 14) }
-        static var deskFill: Color { ink(0.055) }
-        static var deskFillHover: Color { ink(0.09) }
-        static var deskWaiting: Color { Panel.needsYouColor.opacity(0.55) }
-        static var deskWaitingFill: Color { Panel.needsYouColor.opacity(0.07) }
-        static var deskTitle: Font { pick(Font.system(size: 12, weight: .semibold), .system(size: 12.5, weight: .semibold)) }
-        static var deskLineSize: CGFloat { pick(10.5, 11) }
-        static let deskTime = Font.system(size: 11, weight: .medium)
-        // Lanes: a lane each, its pet along a track as far as its plan has got; at the end once done.
-        static var lanesWidth: CGFloat { pick(515, 560) }
-        static let lanesMargin: CGFloat = 16
-        static var lane: CGFloat { pick(49, 56) }
-        /// A session whose state can't be read: one quiet line, its pet asleep at the start.
-        static var quietLane: CGFloat { pick(28, 32) }
-        /// The lanes' room; past it they scroll.
-        static var lanesMax: CGFloat { pick(442, 480) }
-        static var lanePet: CGFloat { pick(15, 17) }
-        static var laneIcon: CGFloat { pick(12, 14) }
-        static var laneTrack: Color { ink(0.12) }
-        static var laneTravelled: Color { ink(0.42) }
-        static var laneFinish: Color { ink(0.45) }
-        static let laneLine: CGFloat = 1.5
-        /// The track's start, and its end before the finish (of the lane's width): room for the
-        /// pet at either end.
-        static let laneStart: CGFloat = 14
-        static let laneEnd: CGFloat = 16
-        static var laneTitle: Font { pick(Font.system(size: 12, weight: .semibold), .system(size: 12.5, weight: .semibold)) }
-        static var laneStepSize: CGFloat { pick(11, 11.5) }
-        static let laneMove: Animation = .interpolatingSpring(duration: 0.7, bounce: 0.15)
-        // At rest: beside the notch, as the Dynamic Island's detached minimal: a black circle with
-        // the pet of the session most in need, in Codex Pets' order (waiting, failed, done, running).
-        static let restInset: CGFloat = 3
-        static let restGap: CGFloat = 6
-        static let restPet: CGFloat = 17
-        static let restIn: Animation = .interpolatingSpring(duration: 0.4, bounce: 0)
-        /// An opened session's header: its pet before its agent's icon.
-        static let headerPet: CGFloat = 18
-    }
-
-    /// The control board's pet (Oct 8, docs/island/CREATURES.md): the Lasso, alive, Fovea's hand-
-    /// drawn circle with two eyes inside, drawn as far as its agent has got through its plan. One pet
-    /// in every design (Pets: List, Capsules, Desk, Lanes, Wings; and at rest beside the notch).
-    /// White on black as everything on the island; amber when it waits on the person, coral when it
-    /// failed. The pen at its tip is its agent: Claude Code's spinner glyph, Codex's bullet.
-    enum Creatures {
-        // Wings: wider than Wings' 540, so each wing holds four at full spacing and a huddle.
-        static let width: CGFloat = 600
-        /// A pet in a wing: its loop's height; its place.
-        static let size: CGFloat = 18
-        static let pitch: CGFloat = 30
-        static let huddle: CGFloat = 13
-        static let groupGap: CGFloat = 10
-        static let wingInset: CGFloat = 16
-        /// Its foot this far above the band's foot.
-        static let footLift: CGFloat = 4
-        /// On the stage: the one in focus, larger, in the card's header.
-        static let stageSize: CGFloat = 24
-        // The pet: its frame (of its height), the loop (a little wider than tall), the line as the
-        // Lasso's, the faint whole loop under the stroke, the pen, the eyes.
-        static let frameWidth: CGFloat = 1.5
-        static let frameHeight: CGFloat = 1.3
-        /// Its footprint's width (of its height), for spacing.
-        static let footprint: CGFloat = 1.2
-        static let loopWide: CGFloat = 0.56
-        static let lineRatio: CGFloat = 0.085
-        static let trackOpacity: Double = 0.18
-        static let penSize: CGFloat = 0.17
-        static let eyeWidth: CGFloat = 0.12
-        static let eyeHeight: CGFloat = 0.2
-        static let eyeGap: CGFloat = 0.21
-        static var body: Color { ink(0.95) }
-        static var bodyAsleep: Color { ink(0.32) }
-        static var bodyStopped: Color { ink(0.55) }
-        static var eyeOnDark: Color { ink(0.95) }
-        static var zColor: Color { ink(0.5) }
-        /// How far the loop is drawn: a little to start (and when no plan was reported), then its
-        /// plan's share; failed with no plan, about half. Whole once done or waiting on the person.
-        static let arcStart: Double = 0.18
-        static let arcWorking: Double = 0.94
-        static let arcUnknown: Double = 0.45
-        /// The stroke drawing on to where the work has got.
-        static let drawOn: Double = 0.7
-        static let fillChange: Animation = .interpolatingSpring(duration: 0.7, bounce: 0)
-        // Under the pointer: it grows, the Dock's way, and its neighbours a little.
-        static let magnify: CGFloat = 0.32
-        static let magnifyReach: CGFloat = 46
-        // Motion (a creature's own, outside the island's springs). Calm by default: at rest, a
-        // breath of well under a point and the fill's surface, both slower than 2.5 s, and its
-        // agent's spinner; each real event, one gesture of half a second (CREATURES.md).
-        /// Small figures need no more (notch apps cap theirs at 20); none at all while hidden.
-        static let frameRate: Double = 24
-        static let breath: Double = 3.0
-        static let breathDepth: Double = 0.03
-        static let blinkLength: Double = 0.12
-        static let gesture: Double = 0.5
-        /// Waiting on the person: one call, rising this much larger, then held there, still.
-        static let callLength: Double = 0.5
-        static let callScale: CGFloat = 1.12
-        static let spinnerFrame: Double = 0.12
-        /// Arriving, leaving, changing wings: the island's spring, with a hop on the way.
-        static let move: Animation = .interpolatingSpring(duration: 0.55, bounce: 0)
-        static let hopHeight: CGFloat = 9
-        static let hopDuration: Double = 0.42
-        /// The board opening: a small hop each, one after another.
-        static let noticeStagger: Double = 0.045
-        static let noticeLength: Double = 0.36
-        static let lift: Animation = .interpolatingSpring(duration: 0.22, bounce: 0)
-        /// A failure: one short shake of the head, then still (it doesn't nag).
-        static let shake: CGFloat = 3
-        static let shakeDuration: Double = 0.28
-    }
-
     /// The Oct 6 feedback's Dispatch Version 2 pieces (Feedback/V2Feedback*.swift): the stack and
     /// the model in Choose chat, progress from what agents report, the answer as written, the
     /// queue, the voice bar's chat and model, answer again and stop. White at an opacity on black.
     enum FeedbackV2 {
         // #1: the referents as one stack, a row under the pointer; the model pill and its sheet.
-        static var pileHeight: CGFloat { pick(35, 40) }
+        static var pileHeight: CGFloat { size(35) }
         static let pileAspect: CGFloat = 1.3
-        static var pileOffset: CGFloat { pick(5.5, 6) }
+        static var pileOffset: CGFloat { size(5.5) }
         static let pileShrink: CGFloat = 0.08
         static let pileBackOpacity: Double = 0.65
-        static var fanGap: CGFloat { pick(5.5, 6) }
-        static var fanPadding: CGFloat { pick(4.5, 5) }
+        static var fanGap: CGFloat { size(5.5) }
+        static var fanPadding: CGFloat { size(4.5) }
         static var fanFill: Color { skin(Color(white: 0.08), Native.card) }
         /// The row fading in over the stack, and out (Oct 21, Ryan, "simpler is better": a fade).
         static var fanMotion: Animation { Spring.fadeIn(0.15) }
-        static var modelPillMax: CGFloat { pick(156, 170) }
-        static var chatPillMax: CGFloat { pick(202, 220) }
-        static var sheetRow: CGFloat { pick(26, 30) }
-        static var sheetGap: CGFloat { pick(5.5, 6) }
-        static var sheetLabelWidth: CGFloat { pick(56, 64) }
-        static var sheetChipHeight: CGFloat { pick(21, 24) }
-        static var sheetChipFont: Font { pick(Font.system(size: 11.5, weight: .medium), .system(size: 12, weight: .medium)) }
+        static var sheetRow: CGFloat { size(26) }
+        static var sheetGap: CGFloat { size(5.5) }
+        static var sheetLabelWidth: CGFloat { size(56) }
+        static var sheetChipHeight: CGFloat { size(21) }
+        static var sheetChipFont: Font { Font.system(size: typeSize(11.5), weight: .medium) }
 
         // #9–10: where the screen was.
         static var cardFill: Color { ink(0.05) }
         static let cardRadius: CGFloat = 12
         static let cardPadding: CGFloat = 12
-        static var codeFont: Font { pick(Font.system(size: 11, design: .monospaced), .system(size: 11.5, design: .monospaced)) }
+        static var codeFont: Font { Font.system(size: typeSize(11), design: .monospaced) }
         static var codeColor: Color { ink(0.8) }
         static var codeDim: Color { ink(0.32) }
         static var codeAddedFill: Color { ink(0.07) }
@@ -1890,23 +1667,23 @@ enum WorkbenchTokens {
         static let progressHeight: CGFloat = 168
 
         // #11–13: the answer as written, its steps folded, what it made to open.
-        static var answerFont: Font { pick(Font.system(size: answerSize), .system(size: answerSize)) }
+        static var answerFont: Font { Font.system(size: answerSize) }
         static var answerColor: Color { ink(0.88) }
         static var answerStrong: Color { ink(0.98) }
-        static var answerSpacing: CGFloat { pick(3, 3) }
-        static var blockGap: CGFloat { pick(8, 9) }
+        static var answerSpacing: CGFloat { size(3) }
+        static var blockGap: CGFloat { size(8) }
         static var quoteFill: Color { ink(0.06) }
         static var tableRule: Color { ink(0.1) }
-        static var tableRow: CGFloat { pick(21, 24) }
-        static var stepsRow: CGFloat { pick(19, 22) }
+        static var tableRow: CGFloat { size(21) }
+        static var stepsRow: CGFloat { size(19) }
         static let stepLine: CGFloat = 20
-        static var stepsFont: Font { pick(Font.system(size: stepsSize), .system(size: stepsSize)) }
+        static var stepsFont: Font { Font.system(size: stepsSize) }
         static var stepsColor: Color { ink(0.5) }
-        static var artifactHeight: CGFloat { pick(23, 26) }
-        static var artifactFont: Font { pick(Font.system(size: 11.5, weight: .medium), .system(size: 12, weight: .medium)) }
+        static var artifactHeight: CGFloat { size(23) }
+        static var artifactFont: Font { Font.system(size: typeSize(11.5), weight: .medium) }
         static var artifactFill: Color { ink(0.09) }
         static var artifactFillHover: Color { ink(0.15) }
-        static var chatBodyMax: CGFloat { pick(276, 300) }
+        static var chatBodyMax: CGFloat { size(276) }
 
 
         // #19: the voice bar's chat, model and effort when the words aren't reviewed.
@@ -1919,79 +1696,94 @@ enum WorkbenchTokens {
         static let routeSheetPadding: CGFloat = 12
 
         // #23: answer again, stop.
-        static var iconButton: CGFloat { pick(21, 24) }
+        static var iconButton: CGFloat { size(21) }
         static let inlineRow: CGFloat = 26
 
         // #24: what waits.
-        static var queueHeader: CGFloat { pick(21, 24) }
-        static var queueRow: CGFloat { pick(30, 34) }
-        static var queueThumb: CGFloat { pick(19, 22) }
+        static var queueHeader: CGFloat { size(21) }
+        static var queueRow: CGFloat { size(30) }
+        static var queueThumb: CGFloat { size(19) }
         static var queueFill: Color { ink(0.05) }
-        // Values that were written in the views (docs/island/SPACIOUS.md). Compact is each one's
-        // value through Oct 6.
+        // Values that were written in the views (docs/island/SPACIOUS.md), each its value through
+        // Oct 6.
         // The pile's fan.
-        static var fanRadius: CGFloat { pick(11, 12) }
+        static var fanRadius: CGFloat { size(11) }
         // The model sheet's chips.
-        static var sheetChipGap: CGFloat { pick(5.5, 6) }
-        static var sheetChipPaddingH: CGFloat { pick(9, 10) }
-        static var sheetChipIcon: CGFloat { pick(11, 13) }
-        static var sheetCheck: Font { pick(Font.system(size: 8.5, weight: .bold), .system(size: 8.5, weight: .bold)) }
+        static var sheetChipGap: CGFloat { size(5.5) }
+        static var sheetChipPaddingH: CGFloat { size(9) }
+        static var sheetChipIcon: CGFloat { size(11) }
+        static var sheetCheck: Font { Font.system(size: typeSize(8.5), weight: .bold) }
+        // Oct 27: the sheet's pop-ups (a name, its value, the arrows) and the effort slider.
+        static var sheetMenuGap: CGFloat { size(5) }
+        static var effortValueWidth: CGFloat { size(96) }
+        static var effortTrack: CGFloat { size(4) }
+        static var effortThumb: CGFloat { size(14) }
+        static var effortStop: CGFloat { size(4) }
+        static let effortMarkWidth: CGFloat = 4
+        static let effortMarkHeight: CGFloat = 2
+        static let effortMarkGap: CGFloat = 1
+        static var effortTrackColor: Color { ink(0.12) }
+        static var effortStopColor: Color { ink(0.3) }
+        static var effortStopOn: Color { Color.white.opacity(0.9) }
+        static var effortThumbColor: Color { Color.white }
+        static var effortThumbRim: Color { Color.black.opacity(0.15) }
+        static var effortThumbShadow: Color { Color.black.opacity(0.25) }
         // The answer, as written: Captures' expanded card reads at 15 on 5.
-        static var answerSize: CGFloat { pick(12.5, 13.5) }
-        static var answerGap: CGFloat { pick(9, 10) }
-        static var headingSize: CGFloat { pick(13, 14) }
-        static var inlineCodeSize: CGFloat { pick(12, 12.5) }
-        static var bulletSpacing: CGFloat { pick(3, 3) }
-        static var bulletMarker: CGFloat { pick(11, 12) }
-        static var bulletGap: CGFloat { pick(5.5, 6) }
-        static var quotePaddingH: CGFloat { pick(12, 14) }
-        static var quotePaddingV: CGFloat { pick(10, 11) }
-        static var quoteRadius: CGFloat { pick(9, 10) }
-        static var codePadding: CGFloat { pick(9, 10) }
-        static var codeRadius: CGFloat { pick(7, 8) }
-        static var codeLine: CGFloat { pick(14, 16) }
-        static var tableHeader: Font { pick(Font.system(size: 11.5, weight: .semibold), .system(size: 12, weight: .semibold)) }
-        static var tableCellSize: CGFloat { pick(12, 13) }
-        static var tableLeadSize: CGFloat { pick(12.5, 13.5) }
-        static var tableSpacing: CGFloat { pick(14, 16) }
+        static var answerSize: CGFloat { size(12.5) }
+        static var answerGap: CGFloat { size(9) }
+        static var headingSize: CGFloat { size(13) }
+        static var inlineCodeSize: CGFloat { size(12) }
+        static var bulletSpacing: CGFloat { size(3) }
+        static var bulletMarker: CGFloat { size(11) }
+        static var bulletGap: CGFloat { size(5.5) }
+        static var quotePaddingH: CGFloat { size(12) }
+        static var quotePaddingV: CGFloat { size(10) }
+        static var quoteRadius: CGFloat { size(9) }
+        static var codePadding: CGFloat { size(9) }
+        static var codeRadius: CGFloat { size(7) }
+        static var codeLine: CGFloat { size(14) }
+        static var tableHeader: Font { Font.system(size: typeSize(11.5), weight: .semibold) }
+        static var tableCellSize: CGFloat { size(12) }
+        static var tableLeadSize: CGFloat { size(12.5) }
+        static var tableSpacing: CGFloat { size(14) }
         // Its work, folded.
-        static var stepsSize: CGFloat { pick(11.5, 12) }
-        static var stepsChevron: Font { pick(Font.system(size: 8.5, weight: .bold), .system(size: 8.5, weight: .bold)) }
-        static var stepsIndent: CGFloat { pick(9, 10) }
-        static var stepsLineGap: CGFloat { pick(4, 4) }
-        static var stepsBottom: CGFloat { pick(5.5, 6) }
+        static var stepsSize: CGFloat { size(11.5) }
+        static var stepsChevron: Font { Font.system(size: typeSize(8.5), weight: .bold) }
+        static var stepsIndent: CGFloat { size(9) }
+        static var stepsLineGap: CGFloat { size(4) }
+        static var stepsBottom: CGFloat { size(5.5) }
         static var stepsHover: Color { ink(0.8) }
         // Its work, opened (Oct 7, docs/island/WHOLE_SESSION.md): a row per step, the glyph, the
         // tool as a verb and what it acted on, what came of it at the right; the agent's words
         // between them, brighter than the verbs and dimmer than the answer.
-        static var workRow: CGFloat { pick(18, 21) }
-        static var workGap: CGFloat { pick(2, 2) }
-        static var workTop: CGFloat { pick(2, 2) }
-        static var workGlyph: Font { pick(Font.system(size: 10.5, weight: .medium), .system(size: 10.5, weight: .medium)) }
-        static var workGlyphWidth: CGFloat { pick(12, 14) }
-        static var workGlyphGap: CGFloat { pick(5.5, 6) }
+        static var workRow: CGFloat { size(18) }
+        static var workGap: CGFloat { size(2) }
+        static var workTop: CGFloat { size(2) }
+        static var workGlyph: Font { Font.system(size: typeSize(10.5), weight: .medium) }
+        static var workGlyphWidth: CGFloat { size(12) }
+        static var workGlyphGap: CGFloat { size(5.5) }
         static let workResultGap: CGFloat = 12
-        static var workObject: Font { pick(Font.system(size: 11.5, weight: .medium), .system(size: 12, weight: .medium)) }
-        static var workCode: Font { pick(Font.system(size: 11, design: .monospaced), .system(size: 11.5, design: .monospaced)) }
-        static var workCount: Font { pick(Font.system(size: 12, weight: .medium).monospacedDigit(), .system(size: 13, weight: .medium).monospacedDigit()) }
+        static var workObject: Font { Font.system(size: typeSize(11.5), weight: .medium) }
+        static var workCode: Font { Font.system(size: typeSize(11), design: .monospaced) }
+        static var workCount: Font { Font.system(size: typeSize(12), weight: .medium).monospacedDigit() }
         static var workRule: Color { ink(0.12) }
         static var workRemark: Color { ink(0.62) }
         // What it made, to open.
-        static var artifactGap: CGFloat { pick(5.5, 6) }
-        static var artifactPaddingH: CGFloat { pick(9, 10) }
-        static var artifactGlyph: Font { pick(Font.system(size: 10.5, weight: .medium), .system(size: 11, weight: .medium)) }
+        static var artifactGap: CGFloat { size(5.5) }
+        static var artifactPaddingH: CGFloat { size(9) }
+        static var artifactGlyph: Font { Font.system(size: typeSize(10.5), weight: .medium) }
         // Stop, Answer again.
-        static var iconChipFont: Font { pick(Font.system(size: 11.5, weight: .medium), .system(size: 12, weight: .medium)) }
-        static var iconChipGlyph: Font { pick(Font.system(size: 10, weight: .semibold), .system(size: 10, weight: .semibold)) }
-        static var iconChipPaddingH: CGFloat { pick(8, 9) }
+        static var iconChipFont: Font { Font.system(size: typeSize(11.5), weight: .medium) }
+        static var iconChipGlyph: Font { Font.system(size: typeSize(10), weight: .semibold) }
+        static var iconChipPaddingH: CGFloat { size(8) }
         // The queue.
-        static var queueSpacing: CGFloat { pick(4, 4) }
-        static var queueRowPaddingH: CGFloat { pick(9, 10) }
-        static var queueRowRadius: CGFloat { pick(8, 9) }
-        static var queueText: Font { pick(Font.system(size: 12), .system(size: 12.5)) }
-        static var queueNote: Font { pick(Font.system(size: 10.5), .system(size: 11)) }
-        static var queueClose: CGFloat { pick(18, 20) }
-        static var queueCloseGlyph: Font { pick(Font.system(size: 9, weight: .bold), .system(size: 9, weight: .bold)) }
+        static var queueSpacing: CGFloat { size(4) }
+        static var queueRowPaddingH: CGFloat { size(9) }
+        static var queueRowRadius: CGFloat { size(8) }
+        static var queueText: Font { Font.system(size: typeSize(12)) }
+        static var queueNote: Font { Font.system(size: typeSize(10.5)) }
+        static var queueClose: CGFloat { size(18) }
+        static var queueCloseGlyph: Font { Font.system(size: typeSize(9), weight: .bold) }
     }
 
     /// The Native design (docs/island/NATIVE.md): the island stays black; what drops below it
@@ -2001,7 +1793,29 @@ enum WorkbenchTokens {
     enum Native {
         /// Between the island's foot and the panel's top, when the panels float. 0 in Original and
         /// with attached panels: their layouts are Original's.
-        static var panelGap: CGFloat { floatsPanels ? 8 : 0 }
+        static var panelGap: CGFloat { floatsPanels ? floatGap : 0 }
+        /// Oct 27, Ryan, of attached panels: "the words is too close to the notch like this. there
+        /// should be more space", "the spaces can be more than you have even after the adjustment".
+        /// What hangs from the notch starts this much lower, past where the halo's black has gone.
+        static let haloRoom: CGFloat = 14
+        /// How much lower a panel's content starts than Original's: the floating panel's gap, or,
+        /// attached, the halo's room.
+        static var contentDrop: CGFloat { panelGap + (blendsPanels ? haloRoom : 0) }
+        /// What floats under the island stands this far below it (the panels when they float; the
+        /// opened captures' strip always, Oct 27).
+        static let floatGap: CGFloat = 8
+        /// Oct 27, attached panels' black round the notch (HaloBlend): how far past the notch's
+        /// edge it's black and its blur (the spread over twice the blur, so the notch's edge stays
+        /// inside the black; gone some 20 pt past the notch); the grain's strength; the stroke that
+        /// hides the rim under the black.
+        static let haloSpread: CGFloat = 12
+        static let haloBlur: CGFloat = 5
+        /// On light glass the black shows as a smudge over the first line under the notch: closer
+        /// in, gone some 8 pt past it.
+        static let haloSpreadLight: CGFloat = 4
+        static let haloBlurLight: CGFloat = 2
+        static let ditherOpacity: Double = 0.05
+        static let blendRimCover: CGFloat = 2
         /// The island's band over the Wings designs' tokens: the notch's height and a little more,
         /// so the token under the pointer keeps its mark (it sits 2 pt below the notch).
         static let bandExtra: CGFloat = 4

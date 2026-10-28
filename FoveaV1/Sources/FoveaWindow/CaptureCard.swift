@@ -19,7 +19,10 @@ extension Palette {
     /// card's face is drawn again inside the expanded card as it grows (a see-through fill would
     /// show the grey under it there, and double where the face sits on the card).
     var cardSurface: Color {
-        WindowLook.isAligned ? Color(hex: isDark ? T.Aligned.cardOpaqueDark : T.Aligned.cardOpaqueLight) : card
+        if notchObject { return .black }
+        // The five looks set their own card (Oct 27, `T.Look`).
+        if WindowLook.isAligned && WindowLook.shown != .aligned { return card }
+        return WindowLook.isAligned ? Color(hex: isDark ? T.Aligned.cardOpaqueDark : T.Aligned.cardOpaqueLight) : card
     }
     /// The expanded card: Aligned, the raised surface (white, or a step above #1E1E1E), as the
     /// notch's floating cards are the window's own color.
@@ -41,13 +44,13 @@ struct CaptureCard: View {
         // Oct 21, Ryan ("simpler is better"): a card lies still under the pointer and the press
         // (its shadow grew on hover and it shrank to 0.97 when pressed); the click opens it.
         Button { model.open(c.id) } label: {
-            CardFace(match: match, side: side)
+            CardFace(match: match, side: side, height: model.cardSize.height)
                 .shading(RoundedRectangle(cornerRadius: T.Layout.cardRadius, style: .continuous), .resting, fill: palette.cardSurface)
         }
         .buttonStyle(.plain)
         .overlay { if model.selectedID == c.id && !lent { SelectionRing() } }
         .opacity(lent ? 0 : 1)
-        .frame(width: side, height: side)
+        .frame(width: side, height: model.cardSize.height)
         .background(GeometryReader { geo in
             Color.clear.preference(key: CardFramesKey.self, value: [c.id: geo.frame(in: .named(Space.root))])
         })
@@ -121,6 +124,8 @@ struct CardFace: View {
     @Environment(\.palette) private var palette
     let match: CaptureMatch
     let side: CGFloat
+    /// Square unless given (Notion White's compact cards, `T.Look.compact`).
+    var height: CGFloat?
     /// The header's width when it's stretched across the growing expanded card.
     var headerWidth: CGFloat?
 
@@ -131,9 +136,35 @@ struct CardFace: View {
             CardBody(match: match)
                 .frame(width: side)
         }
-        .frame(width: headerWidth ?? side, height: side, alignment: .topLeading)
+        .frame(width: headerWidth ?? side, height: height ?? side, alignment: .topLeading)
         .background(palette.cardSurface)
         .clipShape(RoundedRectangle(cornerRadius: T.Layout.cardRadius, style: .continuous))
+        .overlay { CardEdge(notch: palette.notchObject) }
+    }
+}
+
+/// Oct 27: how a card sits on the page in the five looks (`T.Look.card`): The Book's rule across
+/// its top, an entry on the page rather than a box; Notion's edge and its soft shadow.
+struct CardEdge: View {
+    @Environment(\.palette) private var palette
+    let notch: Bool
+
+    var body: some View {
+        if !notch {
+            switch T.Look.card {
+            case .fill:
+                EmptyView()
+            case .rule:
+                Rectangle().fill(palette.text.opacity(0.85)).frame(height: 1)
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .allowsHitTesting(false)
+            case .edge:
+                RoundedRectangle(cornerRadius: T.Layout.cardRadius, style: .continuous)
+                    .strokeBorder(palette.isDark ? Color.white.opacity(0.09) : Color(hex: 0x37352F).opacity(0.12), lineWidth: 1)
+                    .shadow(color: .black.opacity(palette.isDark ? 0.3 : 0.06), radius: 3, y: 2)
+                    .allowsHitTesting(false)
+            }
+        }
     }
 }
 
@@ -352,8 +383,11 @@ struct CardBody: View {
 
     var body: some View {
         let c = match.capture
-        let preview = model.cardAttachments == .inlineAndPreview && !c.attachments.isEmpty
+        // Oct 27, Notion White's compact card: no preview; what you took is a chip in the line.
+        let compact = T.Look.compact
+        let preview = model.cardAttachments == .inlineAndPreview && !c.attachments.isEmpty && !compact
         let spacing = model.cardSpacing.metrics
+        let bodyGap = compact ? T.Look.cardBodyGap : spacing.bodyGap
         let pad = model.cardSpacing.padding(model.cardSize)
         VStack(alignment: .leading, spacing: 0) {
             // Found only by what you took: say where, with the hit.
@@ -372,18 +406,19 @@ struct CardBody: View {
                 FailedNotice(capture: c, compact: true)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .padding(.horizontal, pad)
-                    .padding(.top, spacing.bodyGap)
+                    .padding(.top, bodyGap)
                     .padding(.bottom, pad)
             } else {
             InlineText.make(c, hits: match.ranges[.text] ?? [], size: T.Text.cardBody, palette: palette, hitStyle: model.hitStyle,
-                            thumbnails: model.cardAttachments == .inlineOnly)
-                .font(.system(size: T.Text.cardBody))
+                            thumbnails: model.cardAttachments == .inlineOnly || compact)
+                // Oct 27, The Book: the words you said as the website sets its words.
+                .font(T.Look.wordsInGaramond(c.text) ? Garamond.text(T.Text.cardBody * T.Look.garamondWordsScale) : .system(size: T.Text.cardBody))
                 .lineSpacing(spacing.lineSpacing)
-                .lineLimit(preview ? spacing.previewLines : spacing.textLines)
+                .lineLimit(compact ? T.Look.cardLines : (preview ? spacing.previewLines : spacing.textLines))
                 .fixedSize(horizontal: false, vertical: preview)
                 .frame(maxWidth: .infinity, maxHeight: preview ? nil : .infinity, alignment: .topLeading)
                 .padding(.horizontal, pad)
-                .padding(.top, spacing.bodyGap)
+                .padding(.top, bodyGap)
                 .padding(.bottom, preview ? 0 : pad)
             }
             if preview {

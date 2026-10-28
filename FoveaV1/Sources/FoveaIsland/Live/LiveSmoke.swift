@@ -1,4 +1,5 @@
 import SwiftUI
+import simd
 import AppKit
 import Carbon.HIToolbox
 import FoveaCore
@@ -10,7 +11,7 @@ import FoveaPlatform
 /// at the edges (IslandLive.Smoke): scripted words for the microphone, a recorded paste, a flat
 /// picture for the screen, a file where the highlighter clicks. Key presses go to the island's own
 /// key handlers as macOS would send them; the person's own keys and pointer are never watched, and
-/// nothing reaches another app. The Workbench's smoke (WorkbenchSmoke.swift) checks the mock; this
+/// nothing reaches another app. The Workbench's own smoke (Prototypes/FoveaWorkbench) checks the mock; this
 /// checks the real thing: no samples on the board, the first run's rules aside.
 @MainActor
 package enum LiveSmoke {
@@ -46,6 +47,10 @@ package enum LiveSmoke {
         await cases(controller, model)
         await openAnyChat(controller, model)
         await askedBefore(controller, model)
+        await wingsStates(controller, model)
+        await popUps(controller, model)
+        await approvedBoard(controller, model)
+        await leaving(controller, model)
         print(failures.isEmpty ? "SMOKE PASS" : "SMOKE FAIL: \(failures.count) check(s)")
         for name in failures { print("  failed: \(name)") }
         return failures.isEmpty
@@ -319,15 +324,37 @@ package enum LiveSmoke {
         await settle(0.3)
         check("a click on a file takes nothing", !model.liveReferents.contains { $0.fileURL == file } && model.liveReferents.count == 1)
         live.smoke?.file = nil
-        model.fileDropTargeted = true; await settle(0.2)
-        check("a file dragged over the notch lights it: the drop state", model.fileDropTargeted)
+        model.fileDragNear = true; model.fileDropTargeted = true; await settle(0.2)
+        check("a file dragged over the notch lights it: the drop zone under the notch", model.fileDropTargeted && model.dropZoneOpen)
         await shot("02b-drop-state", model)
         let dropped = model.dropFiles([file], at: CGPoint(x: model.display.frame.width / 2, y: 30))
-        model.fileDropTargeted = false
+        model.fileDropTargeted = false; model.fileDragNear = false
         let took = await until(3) { model.liveReferents.contains { $0.fileURL == file } }
         check("…dropped on it, the file joins the stack with its card", dropped && took, "\(model.liveReferents.map(\.kind))")
         check("…dropped again, it isn't taken twice", !model.dropFiles([file], at: .zero)
               && model.liveReferents.filter { $0.fileURL == file }.count == 1)
+        // Oct 25, Ryan: many files at once: all of them, in the order dragged, dealt from a pile.
+        let pages = (1...4).map { FileManager.default.temporaryDirectory.appendingPathComponent("fovea-smoke-page-\($0).txt") }
+        for page in pages { try? "Page".write(to: page, atomically: true, encoding: .utf8) }
+        let stacked = model.liveReferents.count
+        model.fileDropCount = pages.count + 1; model.fileDragNear = true; model.fileDropTargeted = true; await settle(0.2)
+        await shot("02b-drop-many", model)
+        let many = model.dropFiles(pages + [file], at: CGPoint(x: model.display.frame.width / 2, y: 30))
+        model.fileDropTargeted = false; model.fileDragNear = false; model.fileDropCount = 1
+        let dealt = model.flights.filter { flight in model.liveReferents.contains { $0.id == flight.id && pages.contains($0.fileURL ?? file) } }
+        check("four files dropped at once: all four taken, in order, the one already there not again", many
+              && model.liveReferents.compactMap(\.fileURL).suffix(4) == ArraySlice(pages)
+              && model.liveReferents.count == stacked + 4, "\(model.liveReferents.compactMap(\.fileURL?.lastPathComponent))")
+        check("…their cards leave one after another, from a pile", model.reduceMotion || (dealt.count == 4
+              && zip(dealt, dealt.dropFirst()).allSatisfy { $0.delay < $1.delay && $0.from.x < $1.from.x }),
+              "\(dealt.map(\.delay))")
+        let landed = await until(3) { model.flights.isEmpty }
+        check("…all landed, the stack's \"+N\" counting those behind the three", landed
+              && model.stackLayout.moreCount == model.liveReferents.count - WorkbenchTokens.Referents.maxLayers,
+              "\(model.stackLayout.moreCount)")
+        await shot("02b-dropped-many", model)
+        for referent in model.liveReferents where pages.contains(referent.fileURL ?? file) { model.removeReferent(referent.id) }
+        _ = await until(2) { model.liveReferents.count == stacked }
         // A plain click that selects nothing takes nothing.
         let before = model.liveReferents.count
         let plain = live.global(CGPoint(x: 600, y: 500))
@@ -354,12 +381,29 @@ package enum LiveSmoke {
         let chose = await until(6) { model.notchState == .v2Send }
         check("fn ⌃ again transcribes, then Choose chat", chose, "\(model.notchState)")
         check("…the request is the words said", model.v2Spoken.lowercased().contains("calendar"), model.v2Spoken)
+        // Oct 27, Ryan: the words can be edited on the notch before they go.
+        let edited = model.v2Spoken + " " + "after lunch"
+        model.editV2Request(edited)
+        check("…the words can be edited in place", model.v2Spoken == edited && model.v2SendLayout.text > 0, model.v2Spoken)
         await shot("03-choose-chat", model)
         control(model); await settle(0.4)
         check("left ⌃ opens every chat", model.v2Browsing)
+        // Oct 27, Ryan: the Sentence, "the suggested chats can go into the choose chat button".
+        check("…the suggestions first, then every chat", model.v2SendLayout.browser
+              == V2RouteSheet.browserHeight(rows: model.v2BrowseRows.count, suggestions: true))
         await browsing(model)
         control(model); await settle(0.3)
         check("…and folds them again", !model.v2Browsing)
+        if let first = model.v2Suggestions.first, let second = model.v2Suggestions.dropFirst().first {
+            model.toggleV2Browse(); await settle(0.3)
+            model.chooseV2(second); model.foldV2Browse(); await settle(0.3)
+            check("…a suggestion chosen in the list goes in, the list folded", !model.v2Browsing && model.v2Pick == second)
+            model.chooseV2(first)
+        }
+        // Oct 27, Ryan: "for thinking, dont have the default named \"as needed\", go with just \"default\"".
+        check("…the sentence: on Auto, thinking default", model.v2Effort != nil || model.composerEffortWords == L("default"),
+              model.composerEffortWords)
+        await modelSheet(model)
         _ = model.v2Key(.enter)
         // Oct 15 review, QA06: a moment of Sending, the chat locked, before the board.
         check("Return sends: first Sending to the chat, the chat locked", model.cases.sending?.isSending == true
@@ -368,6 +412,8 @@ package enum LiveSmoke {
         check("Return sends: the board shows the new session", sent, "\(model.notchState)")
         let id = model.v2BoardOrder.first?.id
         check("…one session on it, the person's", model.v2BoardOrder.count == 1, "\(model.v2BoardOrder.count)")
+        check("…asking what was edited", id.flatMap { model.v2Task($0)?.request }?.hasSuffix("after lunch") == true,
+              id.flatMap { model.v2Task($0)?.request } ?? "none")
         await shot("04-board", model)
         check("…and Home keeps the dispatch", live.captures.captures.contains { $0.kind == .dispatch })
         // The pointer is away: the board goes after its hold; a quick answer then opens by itself.
@@ -375,6 +421,25 @@ package enum LiveSmoke {
         let popped = await until(20) { model.notchState == .v2Chat }
         check("a quick answer opens by itself", popped, "\(model.notchState)")
         return id
+    }
+
+    /// Oct 27, Ryan ("a much easier way to pick the reasoning effort … it takes three lines"): the
+    /// model and the approvals on one line, how hard it thinks a slider under them.
+    private static func modelSheet(_ model: WorkbenchModel) async {
+        let F = WorkbenchTokens.FeedbackV2.self
+        let (pickedModel, pickedEffort) = (model.v2Model, model.v2Effort)
+        check("the model sheet is two lines: the model and approvals, then the effort",
+              abs(V2ModelSheet.height(chats: false) - (2 * F.sheetRow + F.sheetGap)) < 0.5, "\(V2ModelSheet.height(chats: false))")
+        model.chooseModel("opus-5.5")
+        check("…the slider's stops are the model's efforts, least to most, its default marked",
+              model.v2EffortOptions == ["low", "medium", "high", "max"] && model.v2DefaultEffort == "high", "\(model.v2EffortOptions)")
+        model.chooseEffort("max")
+        check("…a stop picked shows in the pill", model.v2ModelLabel(agent: "claude-code") == L("Opus 5.5 · \(ModelCatalog.effortName("max"))"),
+              model.v2ModelLabel(agent: "claude-code"))
+        model.chooseModel(nil)
+        let order = model.v2EffortOptions.map(ModelCatalog.effortRank)
+        check("…on Auto, every model's efforts, in order", order == order.sorted() && !order.isEmpty, "\(model.v2EffortOptions)")
+        model.chooseModel(pickedModel); model.chooseEffort(pickedEffort)
     }
 
     /// Oct 15 review, QA04/QA05: every chat's search, nothing found, Load More, and a chat that
@@ -385,24 +450,31 @@ package enum LiveSmoke {
               "\(model.v2BrowseRows.map(\.id))")
         model.setBrowseQuery(L("island.search.found", english: "notch"))
         let found = model.v2BrowseRows.compactMap { row -> String? in if case .chat(let c) = row { return c.title }; return nil }
-        check("…a search finds chats by title or project", found.contains(L("Notch ears match the menu bar")), "\(found)")
+        check("…a search finds chats by title", found.contains(L("Notch ears match the menu bar")), "\(found)")
         model.setBrowseQuery("")
-        if let project = ChatBook.projects(of: model.v2BrowseAgent, in: ChatBook.chats).first(where: { $0.folder == ChatBook.project }) {
-            model.pickV2Browse(.project(project))
-        }
+        // Oct 27, Ryan ("we can only access all the chats, but nothing about the folder"): one list,
+        // a New chat first, then the agent's chats, the latest first.
+        let listed = model.v2BrowseRows.compactMap { row -> AgentChat? in if case .chat(let c) = row { return c }; return nil }
+        check("every chat is one list: a New chat, then the latest first",
+              listed.first?.isNew == true && listed.dropFirst().map(\.minutesAgo) == listed.dropFirst().map(\.minutesAgo).sorted(),
+              "\(listed.map(\.title))")
         let paged = model.v2BrowseRows
         let more = paged.last.map { row -> Bool in if case .more = row { return true }; return false } ?? false
-        check("…a long list shows a page, then Load More", more, "\(paged.count) rows")
-        if more, let last = paged.last { model.pickV2Browse(last) }
-        let all = model.v2BrowseRows
-        check("…Load More shows the rest", all.count > paged.count && !all.contains { if case .more = $0 { return true }; return false },
+        check("…a long list shows a page that fits, then Show more",
+              more && paged.count <= WorkbenchTokens.V2.browseRowsVisible, "\(paged.count) rows")
+        var all = paged
+        for _ in 0..<10 {
+            guard let last = all.last, case .more = last else { break }
+            model.pickV2Browse(last)
+            all = model.v2BrowseRows
+        }
+        check("…Show more shows the rest", all.count > paged.count && !all.contains { if case .more = $0 { return true }; return false },
               "\(paged.count) → \(all.count)")
         let pick = model.v2Pick
         let blocked = all.first { row in if case .chat(let c) = row { return model.v2ChatBlock(c) != nil }; return false }
         if let blocked { model.pickV2Browse(blocked) }
         check("…a chat that can't take the request says why, and isn't chosen", blocked != nil && model.v2Pick == pick && model.v2Browsing,
               blocked.map { if case .chat(let c) = $0 { return model.v2ChatBlock(c) ?? "" }; return "" } ?? "none")
-        model.pickV2Browse(.back(ChatBook.project))
         await settle(0.2)
     }
 
@@ -427,10 +499,16 @@ package enum LiveSmoke {
         // Asking more by voice: the session stays, the bar a band on top of it.
         fn(model); await settle(0.4)
         check("fn on the session asks more there", model.notchState == .v2Voice && model.v2Continuing == id)
-        check("…the session stays on screen, under the bar's band", model.v2AsksOver)
+        check("…the session stays on screen, under the bar", model.v2AsksOver)
         await shot("07-asking-more", model)
-        let band = model.stackLayout.outline.size.height - model.v2ChatLayout.outline.size.height
-        check("…the band is the voice bar's height", abs(band - WorkbenchTokens.Island.spec.voiceBelow) < 0.5, "\(band)")
+        // Oct 27, Ryan ("they should also suit the new notch design"): Wings over the session, which
+        // stays where it was.
+        let barHeight = NotchGeometry.notchRect(metrics: model.metrics, spec: WorkbenchTokens.Island.spec).height
+        let over = model.stackLayout
+        check("…Wings over it, at the notch's height, the session where it was",
+              model.wingsPose != nil && model.notchSurface == .split && abs((over.wingsBar?.size.height ?? 0) - barHeight) < 0.5
+              && over.outline.size == model.v2ChatLayout.outline.size,
+              "\(String(describing: over.wingsBar)) \(over.outline.size) vs \(model.v2ChatLayout.outline.size)")
         _ = model.escape(); await settle(0.4)
         check("Esc while asking more goes back to the session as it was", model.notchState == .v2Chat && model.v2Focus == id,
               "\(model.notchState)")
@@ -791,18 +869,182 @@ package enum LiveSmoke {
 
     // MARK: The notch's look
 
+    /// Oct 27, Ryan: the bar is Wings, every state of it (Wings.swift): the notch's height, black;
+    /// what's at the left and the right for each; Oct 28, the accent's little aurora in the corner
+    /// while it listens, Voiceflow and Dispatch alike, and only then.
+    private static func wingsStates(_ controller: IslandController, _ model: WorkbenchModel) async {
+        let notch = NotchGeometry.notchRect(metrics: model.metrics, spec: WorkbenchTokens.Island.spec)
+        func pose(_ stage: String, _ wait: Double = 0.5) async -> WingsPose? {
+            controller.stage(stage); await settle(wait)
+            return model.wingsPose
+        }
+        func wings(_ name: String, _ ok: Bool, _ detail: String = "") {
+            let layout = model.stackLayout
+            check(name, ok && layout.wings != nil && abs(layout.outline.size.height - notch.height) < 0.5
+                  && model.nativeShapes.black == 1, detail.isEmpty ? "\(String(describing: layout.wings)) \(layout.outline.size)" : detail)
+        }
+        var p = await pose("voiceFlow")
+        wings("Voiceflow in Wings: \"Listening\" at the left, the small waveform at the right",
+              p?.left == .word(L("Listening"), dots: false) && p?.right == .waveform)
+        check("…the accent's aurora in its bottom-right corner, one hue", model.auroraShows
+              && model.auroraColors.count == (model.accent == .multicolor ? WorkbenchTokens.Aurora.lights.count : 1))
+        await shot("60-wings-voiceflow", model)
+        p = await pose("v2Voice")
+        // Oct 27, Ryan: Voiceflow's bars on Dispatch's bar too, no orb, no aura.
+        wings("Dispatch in Wings: what's taken at the left, Voiceflow's waveform at the right", p?.left == .stack && p?.right == .waveform)
+        check("…the aurora in its corner too", model.auroraShows)
+        await shot("61-wings-dispatch", model)
+        p = await pose("referents:5", 0.7)
+        wings("…five taken: the pile and \"+2\" at the left", p?.left == .stack && model.stackLayout.moreCount == 2)
+        p = await pose("transcribing", 0.4)
+        wings("Transcribing: its word and the website's dots, the white ring at the right",
+              p?.right == .ring && { if case .word(_, true)? = p?.left { return true }; return false }())
+        p = await pose("v2Transcribing", 0.3)
+        wings("Dispatch's Transcribing: the ring", p?.right == .ring)
+        check("…the aurora gone once it stops listening", !model.auroraShows)
+        p = await pose("cancelled")
+        wings("Cancelled: Undo at the right", p?.right == .undo)
+        p = await pose("noSpeech")
+        wings("No speech: its words", p?.left == .word(L("No speech"), dots: false))
+        p = await pose("pasteNotFound")
+        wings("Nowhere to paste: the words held, quoted, Copy at the right", { if case .quote? = p?.left { return true }; return false }()
+              && p?.right == .copy)
+        p = await pose("error:offline")
+        wings("A notice: its symbol and title, its one way on", p?.right == .action(L("Retry")))
+        p = await pose("error:screenRecording")
+        wings("A notice inside the listening bar, its one way on", p?.right == .action(L("Settings")))
+        // Staged a breath before the last minute, so the time fades in as it would.
+        p = await pose("countdown:lastMinute", 1.2)
+        wings("The last minute: its time before the waveform", p?.countdown == true)
+        // Oct 27, Ryan: files dragged near: the bar listens on, the drop zone floats under it, clear of
+        // the hardware notch.
+        p = await pose("drop:3")
+        check("Files dragged over: the drop zone under the bar, the bar still listening", model.dropZoneOpen
+              && model.stackLayout.floats && abs((model.stackLayout.wingsBar?.size.height ?? 0) - notch.height) < 0.5
+              && model.stackLayout.outline.size.height > notch.height + WorkbenchTokens.Capture.dropZoneHeight
+              && { if case .word? = p?.left { return true }; return p?.left == .stack }(),
+              "\(String(describing: p)) \(model.stackLayout.outline.size)")
+        p = await pose("route")
+        wings("Review off: the chosen chat's agent before the waveform", p?.route == true && p?.right == .waveform)
+        // Oct 27, Ryan ("they should also suit the new notch design"): what opens under the bar while
+        // it listens hangs under Wings, the bar staying black at the notch's height.
+        func over(_ name: String, _ ok: Bool) {
+            let layout = model.stackLayout
+            check(name, ok && model.notchSurface == .split && abs((layout.wingsBar?.size.height ?? 0) - notch.height) < 0.5
+                  && layout.outline.size.height > notch.height + 20,
+                  "\(String(describing: layout.wingsBar)) \(layout.outline.size)")
+        }
+        p = await pose("route:open")
+        over("…its sheet open: under Wings, at Dispatch's width",
+             p?.route == true && model.stackLayout.outline.size.width == WorkbenchTokens.V2.width)
+        p = await pose("referents:12:open", 0.9)
+        // Oct 27, Ryan: a floating strip, not the island grown down; Esc or the bar's left closes it.
+        over("The opened stack: a strip floating under Wings, which says it's listening",
+             p?.left == .word(L("Listening"), dots: false) && model.stackExpanded && model.stackLayout.floats
+             && model.stackLayout.close == nil && model.stackLayout.stackHit != nil)
+        _ = await pose("silent", 0.3)
+        check("At rest, the notch is drawn black (no glass on the way out)", model.nativeShapes.black == 1)
+    }
+
+    /// Oct 26, Ryan ("vibe island pops up when the agent needs approval/work is done"): a session
+    /// pops out of the resting notch when it needs you, is done or fails (Feedback/V2Alert.swift).
+    private static func popUps(_ controller: IslandController, _ model: WorkbenchModel) async {
+        controller.stage("alert:needsYou"); await settle(0.6)
+        let asking = model.v2Alert?.id ?? ""
+        check("a session that needs you pops up, its row with Allow and Deny", model.notchState == .v2Alert
+              && model.v2Alert?.kind == .needsYou && model.v2Task(asking)?.state == .needsYou, "\(model.notchState)")
+        check("…on the board's glass, as wide as the board (Oct 27)",
+              model.notchSurface == .panel && model.stackLayout.outline.size == model.v2AlertLayout.outline.size
+              && model.v2AlertLayout.outline.size.width == WorkbenchTokens.Board.width)
+        await shot("40-popup-needs-you", model)
+        model.allowTask(asking)
+        let answered = await until(4) { model.notchState == .silent }
+        check("…allowed there, it goes a moment later", answered, "\(model.notchState)")
+        controller.stage("alert:done"); await settle(0.6)
+        check("one that's done pops up as done", model.notchState == .v2Alert && model.v2Alert?.kind == .done)
+        await shot("41-popup-done", model)
+        _ = model.escape(); await settle(0.4)
+        check("…Esc puts it away", model.notchState == .silent)
+        controller.stage("alert:failed"); await settle(0.6)
+        check("one that failed pops up", model.notchState == .v2Alert && model.v2Alert?.kind == .failed)
+        if let id = model.v2Alert?.id { model.openV2(id) }
+        await settle(0.4)
+        check("…a click on its row opens the session", model.notchState == .v2Chat)
+        controller.stage("silent"); await settle(0.4)
+        // Nothing pops up while the notch is in use.
+        controller.stage("voiceFlow"); await settle(0.3)
+        if let id = model.v2BoardOrder.first(where: { $0.state == .needsYou })?.id { model.popV2Alert(id) }
+        check("…never while the notch is in use", model.notchState == .voiceFlow, "\(model.notchState)")
+        controller.stage("silent"); await settle(0.3)
+    }
+
+    /// Oct 27, Ryan: "whenever the user's mouse moves away from the notch, the notch should
+    /// disappear": what's open closes once the pointer leaves it; the listening bar and Choose chat
+    /// stay, which would lose the words.
+    private static func leaving(_ controller: IslandController, _ model: WorkbenchModel) async {
+        func leave(_ stage: String) async {
+            controller.stage(stage); await settle(0.6)
+            model.panelPointer(notchPoint(model)); await settle(0.15)
+            model.panelPointer(away(model)); await settle(0.5)
+        }
+        await leave("v2Board")
+        check("the pointer leaving the board puts it away", model.notchState == .silent, "\(model.notchState)")
+        await leave("v2Chat")
+        check("…and a session", model.notchState == .silent, "\(model.notchState)")
+        await leave("alert:done")
+        check("…and a pop-up", model.notchState == .silent, "\(model.notchState)")
+        await leave("referents:12:open")
+        check("…and the captures' strip, the bar listening on", !model.stackExpanded && model.notchState.collects, "\(model.notchState)")
+        await leave("v2Send")
+        check("…but never Choose chat, which would lose the words", model.notchState == .v2Send, "\(model.notchState)")
+        controller.stage("silent"); await settle(0.3)
+    }
+
+    /// Oct 27, Ryan ("only have the latest version that I approved"): the one board, Today's, a
+    /// glass panel under the notch at the board's width.
+    private static func approvedBoard(_ controller: IslandController, _ model: WorkbenchModel) async {
+        controller.stage("chats:board"); await settle(0.6)
+        check("the board is the one approved: a glass panel under the notch, the board's width",
+              model.notchState == .v2Board && model.notchSurface == .panel
+              && abs(model.v2BoardLayout.outline.size.width - WorkbenchTokens.Board.width) < 0.5,
+              "\(model.notchState) \(model.notchSurface) \(model.v2BoardLayout.outline.size)")
+        controller.stage("silent"); await settle(0.3)
+    }
+
     private static func looks(_ controller: IslandController, _ model: WorkbenchModel) async {
         let before = controller.prefsForSmoke
         var p = before
-        p.density = .compact
-        controller.prefsForSmoke = p; await settle(0.3)
-        check("Compact: the panels a step smaller", WorkbenchTokens.V2.width == 600, "\(WorkbenchTokens.V2.width)")
-        p.density = .spacious
-        controller.prefsForSmoke = p; await settle(0.3)
-        check("Spacious: the old Compact's room", WorkbenchTokens.V2.width == 660, "\(WorkbenchTokens.V2.width)")
+        // Oct 27, Ryan: "dont have the big version as well": one size, Compact.
+        check("one size, Compact: the panels a step smaller", WorkbenchTokens.V2.width == 516,
+              "\(WorkbenchTokens.V2.width)")
         p.panels = .floating
         controller.prefsForSmoke = p; await settle(0.3)
         check("Floating panels: a gap under the island", WorkbenchTokens.Native.panelGap == 8)
+        // Oct 27, Ryan: "the floating stays as it was. it is supposed to replace the attached part":
+        // floating, the notch black and the panel apart under it; attached, one shape from the top
+        // edge with Halo's black round the notch. (The board opened as a click would: staging here
+        // would turn the samples on for the checks after.)
+        model.showAgentPanel(pinned: true); await settle(0.5)
+        var s = model.nativeShapes
+        check("Floating: the notch black, the panel apart under it, no halo",
+              s.island.height < s.height - 1 && s.black > 0.99 && s.presence > 0.99 && !WorkbenchTokens.blendsPanels,
+              "\(s.island) \(s.height) \(s.presence) \(s.black)")
+        p.panels = .attached
+        controller.prefsForSmoke = p; await settle(0.5)
+        s = model.nativeShapes
+        check("Attached: one shape from the top edge, the notch's black blurred into the glass round it",
+              abs(s.island.height - s.height) < 0.5 && s.black < 0.01 && WorkbenchTokens.blendsPanels,
+              "\(s.island) \(s.height) \(s.presence) \(s.black)")
+        // Oct 27, Ryan: "actually add the light version back."
+        p.notchAppearance = .light
+        controller.prefsForSmoke = p; await settle(0.3)
+        check("Light glass: the notch's panels in the light scheme", model.liveScheme == .light)
+        p.notchAppearance = .dark
+        controller.prefsForSmoke = p; await settle(0.3)
+        check("…and dark again", model.liveScheme == .dark)
+        p.panels = .floating
+        controller.prefsForSmoke = p; await settle(0.3)
+        model.closeAgentPanel(); await settle(0.3)
         if shots != nil {
             model.showAgentPanel(pinned: true); await shot("09-board-floating-dark", model)
             p.notchAppearance = .light; controller.prefsForSmoke = p
@@ -816,6 +1058,20 @@ package enum LiveSmoke {
         p.panels = .attached
         controller.prefsForSmoke = p; await settle(0.3)
         check("Attached panels: no gap", WorkbenchTokens.Native.panelGap == 0)
+        // Oct 27, Ryan: "the words is too close to the notch … there should be more space".
+        check("…and the words under the notch past the halo", WorkbenchTokens.Native.contentDrop == WorkbenchTokens.Native.haloRoom
+              && WorkbenchTokens.V2.topGap > WorkbenchTokens.Native.haloRoom)
+        // Oct 28, Ryan: the accent chosen (Settings, as the first run) shows the listening bar, its
+        // aurora in the accent's one hue; Multicolor, the Colorful palette's.
+        p.accent = before.accent == .green ? .orange : .green
+        controller.prefsForSmoke = p; await settle(0.4)
+        check("An accent chosen: the listening bar at the notch, its aurora in the accent's one hue",
+              model.previewing && model.auroraShows && model.auroraColors.count == 1, "\(model.notchState) \(model.auroraColors.count)")
+        p.accent = .multicolor
+        controller.prefsForSmoke = p; await settle(0.4)
+        check("…Multicolor: the Colorful palette's hues", model.auroraShows && model.auroraColors.count == WorkbenchTokens.Aurora.lights.count,
+              "\(model.auroraColors.count)")
+        controller.endPreview(); await settle(0.3)
         controller.prefsForSmoke = before
     }
 
@@ -904,6 +1160,10 @@ package enum LiveSmoke {
         let wide = model.stackLayout
         check("…twelve: still one row, wider than the island, so it scrolls",
               wide.rows == 1 && wide.scrollMax > 0 && wide.scrollThumb != nil && wide.cards.count == 12, "\(wide.scrollMax)")
+        let five = wide.cards.prefix(WorkbenchTokens.Referents.stripVisible).reduce(0) { $0 + $1.width }
+            + CGFloat(WorkbenchTokens.Referents.stripVisible - 1) * WorkbenchTokens.Referents.expandedSpacing
+        check("…five in view, the rest a swipe away", abs((wide.viewport?.width ?? 0) - five) < 0.5,
+              "\(wide.viewport?.width ?? 0) vs \(five)")
         let first = wide.cards[0].cx
         model.scrollStack(by: 120); await settle(0.2)
         check("…a swipe moves the row sideways", abs(model.stackLayout.cards[0].cx - (first - 120)) < 0.5,
@@ -1076,6 +1336,9 @@ package enum LiveSmoke {
         let target = NSPanel(contentRect: MarkGeometry.appKitFrame(CGRect(x: 260, y: 220, width: 480, height: 260), primaryHeight: h),
                              styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         target.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        // Oct 27: the Mac now scales a window in as it appears (and the window list reports it
+        // mid-way); the stand-in appears at its frame at once.
+        target.animationBehavior = .none
         target.alphaValue = 0.02
         target.isReleasedWhenClosed = false
         let scroll = NSScrollView(frame: target.contentView!.bounds)

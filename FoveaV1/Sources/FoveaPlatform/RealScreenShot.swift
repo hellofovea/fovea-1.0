@@ -21,6 +21,21 @@ public enum RealScreenShot {
     /// Without Screen Recording (each new build of Fovea loses it): Fovea's own windows on the
     /// screen, stacked as the window server stacks them, and nothing else. No menu bar, no Dock;
     /// the glass shows only what Fovea itself draws under it.
+    /// Oct 27: the same, as an image (clear where Fovea draws nothing), for laying over a desktop
+    /// drawn off screen, so the pictures need nothing over the person's screen.
+    public static func ownWindowsImage(of screen: NSScreen) -> CGImage? {
+        let pid = ProcessInfo.processInfo.processIdentifier
+        guard let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else { return nil }
+        let ids = info.compactMap { w -> CGWindowID? in
+            guard (w[kCGWindowOwnerPID as String] as? pid_t) == pid else { return nil }
+            return w[kCGWindowNumber as String] as? CGWindowID
+        }
+        var pointers = ids.map { UnsafeRawPointer(bitPattern: UInt($0)) }
+        let bounds = Screens.global(CGRect(origin: .zero, size: screen.frame.size), on: screen)
+        guard !ids.isEmpty, let array = CFArrayCreate(nil, &pointers, pointers.count, nil) else { return nil }
+        return CGImage(windowListFromArrayScreenBounds: bounds, windowArray: array, imageOption: [.bestResolution])
+    }
+
     public static func ownWindowsPNG(of screen: NSScreen) -> Data? {
         let pid = ProcessInfo.processInfo.processIdentifier
         guard let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else { return nil }

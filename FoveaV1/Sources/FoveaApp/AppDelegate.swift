@@ -95,7 +95,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             onboarding.reset()
             let run = OnboardingCoordinator(prefs: prefs, island: island, dictionary: dictionary, state: onboarding) {}
             run.smoke = true
-            run.stageShown = true
+            // Oct 27, Ryan ("while doing the testing, Can you just not take over the entire screen"):
+            // the stage stays invisible unless the run keeps pictures of it (`FOVEA_SMOKE_SHOTS`).
+            run.stageShown = ProcessInfo.processInfo.environment["FOVEA_SMOKE_SHOTS"] != nil
             firstRun = run
             run.start()
             Task { @MainActor in
@@ -291,13 +293,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 await IslandDesignShots.run(self.island, prefs: self.prefs, to: dir, only: only)
                 NSApp.terminate(nil)
             }
+        // Oct 26: the listening bar designs coming out of the notch and going back, frame by frame.
+        case "bar-film":
+            island = IslandController(prefs: prefs, captures: captures, dictionary: dictionary)
+            island.start(smoke: true, visible: true)
+            Task { @MainActor in
+                await IslandDesignShots.film(self.island, prefs: self.prefs, to: dir)
+                NSApp.terminate(nil)
+            }
         case "first-run":
             island = IslandController(prefs: prefs, captures: captures, dictionary: dictionary)
             island.start(smoke: true, visible: true)
             onboarding.reset()
             let run = OnboardingCoordinator(prefs: prefs, island: island, dictionary: dictionary, state: onboarding) {}
             run.smoke = true
-            run.stageShown = true
+            // Oct 27, Ryan ("while doing the testing, Can you just not take over the entire screen"):
+            // the stage stays invisible unless the run keeps pictures of it (`FOVEA_SMOKE_SHOTS`).
+            run.stageShown = ProcessInfo.processInfo.environment["FOVEA_SMOKE_SHOTS"] != nil
             firstRun = run
             run.start()
             Task { @MainActor in

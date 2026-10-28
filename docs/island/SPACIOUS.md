@@ -1,5 +1,11 @@
 # Spacious: the notch's open panels, roomier and more Mac-like
 
+> **Fovea 1.0 has one size, Compact (Oct 27).** Ryan, of Spacious: "dont have the big version as
+> well." Settings › Notch and the first run no longer offer a size, and nothing switches it. The
+> token pairs are gone too: each token keeps its Compact value alone, a length as `size(13)` and a
+> word as `Font.system(size: typeSize(12))`, scaled as before (`Density.swift`). The Spacious
+> numbers and `pick(compact, spacious)` below are history.
+
 **What prompted this.** On Oct 6, Yulun said the notch is "basically alright", but the panels it
 opens feel "too compact and not extremely aesthetically appealing". They should be more
 macOS-native and have more space, closer to the Fovea Captures app (`Prototypes/FoveaCaptures`).

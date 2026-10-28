@@ -31,8 +31,8 @@ struct MainView: View {
         // Inside the palette and motion below, so the sheets are given them.
         .modifier(WindowSheets())
         // The system's own controls (switches, segmented controls, the sidebar's selection) take
-        // the chosen accent too.
-        .tint(model.accent.color)
+        // the chosen accent too; the five looks, their own (Oct 27).
+        .tint(T.Look.keepsAccent ? model.accent.color : palette.accent)
         // The snapshot harness draws the window as the front one, as it would be in use.
         .environment(\.controlActiveState, WindowMaterial.alwaysActive ? .key : controlActive)
         .environment(\.palette, palette)
@@ -71,7 +71,11 @@ struct MainView: View {
                 if sidebar {
                     SettingsSidebar()
                         .frame(width: T.Native.sidebarWidth)
-                    if !inset { Rectangle().fill(palette.hairline).frame(width: 0.5).ignoresSafeArea() }
+                        // Oct 27: the looks with a sidebar of their own color (Notion's warm grey,
+                        // The Book's paper, Lights Down's black), over the window's material.
+                        .background { if let side = palette.sidebarColor { side.ignoresSafeArea() } }
+                    // Notion White: the sidebar and the page share the grey; no rule between them.
+                    if !inset && !T.Look.floats { Rectangle().fill(palette.hairline).frame(width: 0.5).ignoresSafeArea() }
                 }
                 canvas(palette, inset: inset)
                     .modifier(InsetPage(on: inset))
@@ -91,7 +95,7 @@ struct MainView: View {
                 if !inset, let band = palette.band {
                     VStack(spacing: 0) {
                         band.frame(height: geo.safeAreaInsets.top)
-                        Rectangle().fill(palette.bandIsDark ? Color.black : palette.hairline).frame(height: 0.5)
+                        Rectangle().fill(palette.bandIsDark ? Color.black : (T.Look.floats ? .clear : palette.hairline)).frame(height: 0.5)
                     }
                     .frame(width: geo.size.width)
                     .offset(y: -geo.safeAreaInsets.top)
@@ -184,7 +188,7 @@ struct WindowSheets: ViewModifier {
             .environment(model)
             .environment(\.palette, palette)
             .environment(\.motion, motion)
-            .tint(model.accent.color)
+            .tint(T.Look.keepsAccent ? model.accent.color : palette.accent)
             // Oct 18, Ryan: a sheet is a window of its own: it takes the primary language too.
             .foveaLanguage()
     }
@@ -889,7 +893,10 @@ struct CaptureGrid: View {
                     LazyVGrid(columns: Array(repeating: GridItem(.fixed(side), spacing: gap, alignment: .top), count: columns),
                               alignment: .leading, spacing: gap) {
                         ForEach(group.matches, id: \.capture.id) { match in
+                            // Oct 27, Same Object, Two Sizes: the newest day's captures as the
+                            // notch draws its rows.
                             CaptureCard(match: match)
+                                .environment(\.palette, T.Look.newestAsNotch && group.title == groups.first?.title ? palette.notchRow() : palette)
                         }
                     }
                 }
@@ -915,9 +922,7 @@ extension View {
     /// font design for everything under it (`TitleDesign`), which overrides a font's own design,
     /// so the title takes its design here, closer in.
     func alignedDisplay(_ size: CGFloat) -> some View {
-        font(T.Aligned.display(size))
-            .fontDesign(T.Aligned.displayDesign)
-            .tracking(T.Aligned.displayTracking(size))
+        modifier(DisplayFace(size: size, face: T.Look.titleFace))
     }
 }
 
@@ -933,8 +938,10 @@ struct DayTitle: View {
                 // Aligned (Oct 24): the day named as the first run titles its pages, in New York
                 // and in sentence case; its count beside it in the system face's even digits.
                 let A = T.Aligned.self
+                // Oct 27: in the five looks, the day's name in the system face (Garamond in The
+                // Book), so the serif stays a page's one phrase (`T.Look.dayFace`).
                 Text(title)
-                    .alignedDisplay(A.dayTitle)
+                    .modifier(DisplayFace(size: T.Look.dayFace == .system ? T.Look.daySize : A.dayTitle, face: T.Look.dayFace))
                     .foregroundStyle(palette.text)
                 if let count {
                     Text("\(count)").font(.system(size: A.countSize)).monospacedDigit().foregroundStyle(palette.tertiary)
@@ -1010,7 +1017,14 @@ struct KeyCap: View {
 private struct ToastSurface: ViewModifier {
     @Environment(\.palette) private var palette
     func body(content: Content) -> some View {
-        if WindowLook.isAligned {
+        if T.Look.floats {
+            // Oct 27, Notion White: Arc UI's toast, a white card floating over everything.
+            content
+                .foregroundStyle(palette.text)
+                .padding(.horizontal, 16)
+                .frame(height: T.Aligned.toastHeight)
+                .floating(Capsule(), T.Look.floating)
+        } else if WindowLook.isAligned {
             content
                 .foregroundStyle(palette.text)
                 .padding(.horizontal, 16)

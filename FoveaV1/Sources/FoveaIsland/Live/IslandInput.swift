@@ -4,6 +4,7 @@ import FoveaKit
 import FoveaStore
 import FoveaPlatform
 import FoveaLook
+import FoveaCore
 
 // The notch's input side, as the dev team's review of Oct 15 changed it (docs/v1/REVIEW_2026-10-15.md),
 // wired onto the real island once (IslandController calls in here):
@@ -170,7 +171,7 @@ extension IslandController {
         case .leftMouseDown:
             live.dragBoardCount = NSPasteboard(name: .drag).changeCount
         case .leftMouseDragged:
-            if live.fileDragging { placeDropPanel(); return }
+            if live.fileDragging { updateDragNear(); placeDropPanel(); return }
             guard acceptsFileDrop, !model.capturing else { return }
             let board = NSPasteboard(name: .drag)
             guard board.changeCount != live.dragBoardCount else { return }
@@ -223,7 +224,7 @@ extension IslandController {
             live.dragBoardCount = board.changeCount
             return
         }
-        if live.fileDragging { placeDropPanel(); return }
+        if live.fileDragging { updateDragNear(); placeDropPanel(); return }
         guard acceptsFileDrop, !model.capturing, board.changeCount != live.dragBoardCount else { return }
         live.dragBoardCount = board.changeCount
         guard board.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) else { return }
@@ -247,8 +248,11 @@ extension IslandController {
             let panel = NotchPanel(frame: zone)
             let view = FileDropView(frame: NSRect(origin: .zero, size: zone.size))
             view.autoresizingMask = [.width, .height]
-            view.onTargeted = { [weak self] on in
-                guard let self, self.model.fileDropTargeted != on else { return }
+            view.onTargeted = { [weak self] count in
+                guard let self else { return }
+                if count > 0, self.model.fileDropCount != count { self.model.fileDropCount = count }
+                let on = count > 0
+                guard self.model.fileDropTargeted != on else { return }
                 self.model.fileDropTargeted = on && self.acceptsFileDrop
             }
             view.onDrop = { [weak self] urls, point in
@@ -272,6 +276,24 @@ extension IslandController {
     private func hideDropPanel() {
         live.dropPanel?.orderOut(nil)
         if model.fileDropTargeted { model.fileDropTargeted = false }
+        if model.fileDragNear { setDragNear(false) }
+    }
+
+    /// Oct 27, Ryan: a file drag coming towards the notch opens the drop zone under it: the pointer
+    /// within reach of the notch, on the island's display.
+    private func updateDragNear() {
+        let C = WorkbenchTokens.Capture.self
+        let p = NSEvent.mouseLocation
+        let frame = live.screen.frame
+        let notch = NotchGeometry.notchRect(metrics: model.metrics, spec: WorkbenchTokens.Island.spec)
+        let reach = CGRect(x: frame.midX - notch.width / 2 - C.dropApproach, y: frame.maxY - notch.height - C.dropApproach,
+                           width: notch.width + 2 * C.dropApproach, height: notch.height + C.dropApproach)
+        let near = acceptsFileDrop && (reach.contains(p) || model.fileDropTargeted)
+        if near != model.fileDragNear { setDragNear(near) }
+    }
+
+    private func setDragNear(_ near: Bool) {
+        withAnimation(WorkbenchTokens.V2.resize) { model.fileDragNear = near }
     }
 
     // MARK: IS05 Where you're working

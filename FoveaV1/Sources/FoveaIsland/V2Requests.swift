@@ -313,8 +313,6 @@ enum V2BrowseStatus: Equatable {
 
 /// A row of the chat browser.
 enum V2BrowseRow: Identifiable, Equatable {
-    case project(ChatProject)
-    case back(String)
     case chat(AgentChat)
     /// Oct 15 review, QA04: the rest of a long list, this many more.
     case more(Int)
@@ -322,8 +320,6 @@ enum V2BrowseRow: Identifiable, Equatable {
 
     var id: String {
         switch self {
-        case .project(let p): return "p|" + p.id
-        case .back(let folder): return "b|" + folder
         case .chat(let c): return "c|" + c.id
         case .more: return "m|more"
         case .status(let s): return "s|\(s)"

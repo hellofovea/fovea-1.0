@@ -174,10 +174,11 @@ extension WorkbenchModel {
 
     var v2SendLayout: V2SendLayout {
         V2SendLayout.make(request: v2Spoken, attachments: liveReferents.count, browsing: v2Browsing,
-                          browseRows: v2BrowseRows.count, sheet: v2ModelSheet, sheetNotes: v2ModelNotes.count, metrics: metrics)
+                          browseRows: v2BrowseRows.count, sheet: v2ModelSheet, sheetNotes: v2ModelNotes.count,
+                          sending: cases.sending != nil, metrics: metrics)
     }
     var v2BoardLayout: V2BoardLayout {
-        V2BoardLayout.variant(boardStyle, model: self, metrics: metrics)
+        return V2BoardLayout.board(model: self, metrics: metrics)
     }
     var v2ChatLayout: V2ChatLayout {
         V2ChatLayout.make(model: self, task: v2FocusTask, followed: v2Focus.flatMap { v2Followed[$0] }, metrics: metrics)
@@ -206,6 +207,7 @@ extension WorkbenchModel {
         case .v2Send: return v2SendLayout.outline
         case .v2Board: return v2BoardLayout.outline
         case .v2Chat: return v2ChatLayout.outline
+        case .v2Alert: return v2AlertLayout.outline
         default: return nil
         }
     }
@@ -252,21 +254,28 @@ extension WorkbenchModel {
         v2Browsing.toggle()
         if v2Browsing {
             v2BrowseAgent = v2Pick.quick ? ChatBook.predictedAgent : v2Pick.agent
-            v2BrowseProject = nil
             setBrowseQuery("")
         }
     }
 
+    /// Oct 27: a suggestion chosen in every chat's list folds it, as a chat picked there does.
+    func foldV2Browse() {
+        guard v2Browsing else { return }
+        reshapeV2(growing: false)
+        withAnimation(WorkbenchTokens.V2.fold) { v2Browsing = false }
+        setBrowseQuery("")
+    }
+
     func browseV2Agent(_ id: String) {
         v2BrowseAgent = id
-        v2BrowseProject = nil
         cases.browseShown = WorkbenchTokens.Cases.browsePage
     }
 
-    /// The browser's rows: the agent's projects, or one project's chats (a New chat first). Oct 15
-    /// review, QA04: a search lists the agent's chats by title or project (or says nothing
-    /// matches); a long list shows a page, then Load More; a list on its way, or one that couldn't
-    /// load, says so.
+    /// The browser's rows: a New chat, then the agent's chats, the latest first, a page at a time.
+    /// Oct 27, Ryan: what the agents give Fovea is every chat, with nothing about the folder it's
+    /// in ("we can only access all the chats, but nothing about the folder"), so there are no
+    /// folders here, and a search looks in the titles. Oct 15 review, QA04: a search says when
+    /// nothing matches; a list on its way, or one that couldn't load, says so.
     var v2BrowseRows: [V2BrowseRow] {
         switch cases.browseLoad {
         case .loading: return [.status(.loading)]
@@ -275,21 +284,15 @@ extension WorkbenchModel {
         }
         let query = cases.browseQuery.trimmingCharacters(in: .whitespaces)
         if !query.isEmpty { return v2SearchRows(query) }
-        let projects = ChatBook.projects(of: v2BrowseAgent, in: ChatBook.chats)
-        if let folder = v2BrowseProject, let project = projects.first(where: { $0.folder == folder }) {
-            return [.back(folder), .chat(ChatBook.newChat(agent: v2BrowseAgent, folder: folder))]
-                + v2Paged(project.chats.map { .chat($0) })
-        }
-        return projects.map { .project($0) }
+        let chats = ChatBook.chats.filter { $0.agent == v2BrowseAgent }.sorted { $0.minutesAgo < $1.minutesAgo }
+        return [.chat(ChatBook.newChat(agent: v2BrowseAgent, folder: ChatBook.project))] + v2Paged(chats.map { .chat($0) })
     }
 
-    /// A browser row: a project opens to its chats; Back returns; a chat is chosen, and the
-    /// browser folds back to the pill with it (as Dispatch's does). A chat that can't take the
-    /// request isn't chosen (it says why); Load More shows the next page; Try Again loads again.
+    /// A browser row: a chat is chosen, and the browser folds back to the pill with it (as
+    /// Dispatch's does). A chat that can't take the request isn't chosen (it says why); Show More
+    /// shows the next page; Try Again loads again.
     func pickV2Browse(_ row: V2BrowseRow) {
         switch row {
-        case .project(let project): v2BrowseProject = project.folder
-        case .back: v2BrowseProject = nil
         case .more: loadMoreChats()
         case .status(.failed): retryBrowseLoad()
         case .status: break
@@ -300,7 +303,6 @@ extension WorkbenchModel {
                                          reason: chat.isNew ? L("island.chat.new", english: "New") : chat.age)
             // On the voice bar's sheet (#19) the chat is chosen and the sheet stays, for the model.
             if notchState != .v2Voice { v2Browsing = false }
-            v2BrowseProject = nil
             setBrowseQuery("")
         }
     }
@@ -462,7 +464,6 @@ extension WorkbenchModel {
         v2PickStorage = nil
         v2Browsing = false
         v2ModelSheet = false
-        v2BrowseProject = nil
         v2Inspecting = nil
         // Oct 15 review: a fresh Choose chat, nothing on its way, no search.
         cases.tasks["send"]?.cancel()
@@ -676,7 +677,10 @@ extension WorkbenchModel {
                 }
                 v2QueuePaused.insert(id)
                 v2PausedBeat[id] = i
+                // Oct 26, Ryan: it pops up, as Vibe Island's notch does (Feedback/V2Alert.swift).
+                popV2Alert(id)
             }
+            if script[i].state == .failed { popV2Alert(id) }
         }
         v2Runs[id] = nil
         v2Finished(id)
@@ -704,7 +708,9 @@ extension WorkbenchModel {
         // Oct 15 review, QA21: one closed while it worked (opened, then put back) comes back Ready
         // for review: its answer hasn't been seen.
         if !(notchState == .v2Chat && v2Focus == id) { v2Checked.remove(id) }
-        guard showAnswers, v2Quick(id) else { return }
+        guard showAnswers else { return }
+        // Oct 26, Ryan: one that took longer pops up as done (Feedback/V2Alert.swift).
+        guard v2Quick(id) else { popV2Alert(id); return }
         if notchState == .v2Board, panelSentTask == id { return }
         if notchState == .silent { showV2Chat(id, popped: true) }
     }
@@ -1100,18 +1106,8 @@ extension WorkbenchModel {
             }
             return true
         case .v2Board:
-            // Creatures: the arrows walk the wings left to right, as they stand.
-            let ids = boardStyle == .creatures
-                ? CreatureSlots.make(model: self, width: v2BoardLayout.outline.size.width,
-                                     notch: NotchGeometry.notchRect(metrics: metrics, spec: WorkbenchTokens.Island.spec)).visualOrder
-                : v2BoardOrder.map(\.id)
+            let ids = v2BoardOrder.map(\.id)
             let i = v2Focus.flatMap { ids.firstIndex(of: $0) } ?? -1
-            if boardStyle == .petDesk, key == .up || key == .down {
-                let columns = WorkbenchTokens.Pets.deskColumns
-                let j = i < 0 ? 0 : i + (key == .down ? columns : -columns)
-                if ids.indices.contains(j) { v2Focus = ids[j]; v2ScrollTarget = ids[j] }
-                return true
-            }
             switch key {
             case .up, .left:
                 if ids.indices.contains(i - 1) { v2Focus = ids[i - 1]; v2ScrollTarget = ids[i - 1] }

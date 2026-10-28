@@ -5,7 +5,7 @@ import FoveaLook
 import FoveaKit
 
 // Dispatch Version 2 in the island (the flow is in WorkbenchModel+DispatchV2.swift): Choose chat
-// as Dispatch has it (with the suggested chats beside the pill, and every chat a ⌃ away), the
+// (the Sentence since Oct 27, ChooseChatSentence.swift; the suggestions and every chat a ⌃ away), the
 // control board (the focus's screen beside what is ready for review and what is running), the
 // expanded chat (the request, the response beside its screen, the grab bar), and the chats
 // pulled out of the notch. One width for every open shape; content kept 16 pt inside the
@@ -57,24 +57,29 @@ enum V2Geometry {
     }
 }
 
-/// Choose chat: the request; what was taken, the chat in a pill, the send button; the
-/// suggestions as chips; every chat, opened.
+/// Choose chat (Oct 27, the Sentence): the request, large; a hairline; the sentence; every chat
+/// (the suggestions first), opened; the model's sheet.
 struct V2SendLayout: Equatable {
     var outline: StackLayout.Outline
     var text: CGFloat
     var browser: CGFloat
 
     static func make(request: String, attachments: Int, browsing: Bool, browseRows: Int, sheet: Bool = false,
-                     sheetNotes: Int = 0, metrics: ScreenMetrics) -> V2SendLayout {
+                     sheetNotes: Int = 0, sending: Bool = false, metrics: ScreenMetrics) -> V2SendLayout {
         let V = WorkbenchTokens.V2.self
-        let text = V2Geometry.measure(request, size: V.requestSize, weight: V.requestMeasureWeight, width: V2Geometry.contentWidth,
-                                      spacing: V.requestSpacing, lines: 2)
-        // As the browser draws it: its top, its rule, the rail, the rows (Compact measured 1 short).
-        let browser = browsing ? V2RouteSheet.browserHeight(rows: browseRows) : 0
-        // Feedback #1: the model and effort's sheet, under the suggestions (Oct 15 review, QA08/QA09:
+        let K = WorkbenchTokens.Composer.self
+        // Emptied while being edited: the prompt's one line.
+        let text = V2Geometry.measure(request.isEmpty ? " " : request, size: K.sentenceRequestSize, weight: K.sentenceMeasureWeight,
+                                      width: V2Geometry.contentWidth, spacing: K.sentenceSpacing, lines: K.sentenceLines)
+        // As the browser draws it: its top, its rule, the suggestions, the rail, the rows (Compact
+        // measured 1 short).
+        let browser = browsing ? V2RouteSheet.browserHeight(rows: browseRows, suggestions: true) : 0
+        // Feedback #1: the model and effort's sheet, under the sentence (Oct 15 review, QA08/QA09:
         // with the approvals, and a line of notes when a model can't be picked).
         let modelSheet = sheet ? V.gap + V2ModelSheet.height(chats: false, notes: sheetNotes) : 0
-        let content = text + V.gap + V.attachRow + V.attachBottom + V.chipRow + browser + modelSheet
+        // After Send, where it's going (or why it didn't go) takes a row.
+        let status = sending ? K.statusRow : 0
+        let content = text + 2 * K.ruleGap + 1 + K.sentenceRow + status + browser + modelSheet
         return V2SendLayout(outline: V2Geometry.outline(content: content, metrics: metrics), text: text, browser: browser)
     }
 }
@@ -205,9 +210,9 @@ struct V2SessionHeader: View {
 
 // MARK: Choose chat
 
-/// Choose chat, as Dispatch has it: the request; what was taken; the chat in a pill and the send
-/// button, its ring emptying (then it goes); the suggestions as chips under; with ⌃ (or the pill),
-/// every chat below, by agent and project.
+/// Choose chat, the Sentence (Oct 27, ChooseChatSentence.swift): the request; the sentence, what
+/// was taken, To the chat, thinking how hard, Send; with ⌃ (or the chat), the suggestions, then
+/// every chat below, by agent.
 struct V2SendContent: View {
     let model: WorkbenchModel
     let layout: V2SendLayout
@@ -217,46 +222,16 @@ struct V2SendContent: View {
         ZStack(alignment: .topLeading) {
             Color.clear
             VStack(alignment: .leading, spacing: 0) {
-                Text(model.v2Spoken)
-                    .font(.system(size: V.requestSize, weight: V.requestWeight))
-                    .lineSpacing(V.requestSpacing)
-                    .foregroundStyle(V.requestColor)
-                    .lineLimit(2)
-                    .frame(width: V2Geometry.contentWidth, height: layout.text, alignment: .topLeading)
-                    .padding(.bottom, V.gap)
-                // What was taken, as one stack (feedback #1); the chat; the model; send.
-                HStack(spacing: V.attachmentGap) {
-                    if !model.liveReferents.isEmpty {
-                        V2ReferentPile(model: model)
-                    }
-                    Spacer(minLength: V.attachBottom)
-                    V2ChatPill(model: model)
-                    V2ModelPill(model: model)
-                    V2SendButton(model: model)
+                ComposerSentence(model: model, layout: layout)
+                // Oct 15 review, QA06/QA10: after Send, where it's going (the chat locked), or why it
+                // didn't go.
+                if let sending = model.cases.sending {
+                    V2SendStatusRow(model: model, sending: sending)
+                        .frame(height: WorkbenchTokens.Composer.statusRow)
+                        .transition(.opacity)
                 }
-                .frame(height: V.attachRow)
-                .zIndex(5)
-                .padding(.bottom, V.attachBottom)
-                // The suggestions: one click puts one in the pill. Oct 15 review, QA06/QA10: after
-                // Send, where it's going (the chat locked), or why it didn't go, in their place.
-                Group {
-                    if let sending = model.cases.sending {
-                        V2SendStatusRow(model: model, sending: sending)
-                    } else {
-                        HStack(spacing: V.chipGap) {
-                            Text("Suggested").font(V.labelFont).foregroundStyle(V.labelColor)
-                                .padding(.trailing, V.labelTrailing)
-                            ForEach(model.v2Suggestions) { pick in
-                                V2SuggestionChip(model: model, pick: pick, chosen: model.v2Pick == pick)
-                            }
-                            Spacer(minLength: 0)
-                        }
-                    }
-                }
-                .frame(height: V.chipRow)
-                .animation(WorkbenchTokens.Cases.change, value: model.cases.sending)
                 if model.v2Browsing {
-                    V2ChatBrowser(model: model)
+                    V2ChatBrowser(model: model, suggestions: true)
                         .frame(height: layout.browser, alignment: .top)
                         .transition(.opacity)
                 }
@@ -278,91 +253,28 @@ struct V2SendContent: View {
         // Oct 21, Ryan: opening with a little bounce, folding back without.
         .animation(model.v2Browsing ? WorkbenchTokens.V2.resize : WorkbenchTokens.V2.fold, value: model.v2Browsing)
         .animation(model.v2ModelSheet ? WorkbenchTokens.V2.resize : WorkbenchTokens.V2.fold, value: model.v2ModelSheet)
+        .animation(WorkbenchTokens.Cases.change, value: model.cases.sending)
         .panelScheme()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Choose chat")
     }
 }
 
-/// The chat the request goes to, as Dispatch's pill: the agent, the chat, a chevron that opens
-/// every chat.
-struct V2ChatPill: View {
-    let model: WorkbenchModel
-    @State private var hovering = false
-
-    var body: some View {
-        let V = WorkbenchTokens.V2.self
-        let C = WorkbenchTokens.Chat.self
-        let pick = model.v2Pick
-        // Oct 15 review, QA06: while it's sending, the chat is locked.
-        let locked = model.cases.sending?.isSending == true
-        Button { model.toggleV2Browse() } label: {
-            HStack(spacing: 8) {
-                ChatAgentIcon(agent: ChatAgent.named(pick.agent), size: V.pillIcon)
-                Text(pick.title)
-                    .font(V.pillFont)
-                    .foregroundStyle(V.titleColor)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Image(systemName: locked ? "lock.fill" : (model.v2Browsing ? "chevron.up" : "chevron.down"))
-                    .font(V.pillChevron)
-                    .foregroundStyle(V.subColor)
-            }
-            .padding(.horizontal, V.pillPaddingH)
-            .frame(height: V.pillHeight)
-            .frame(maxWidth: WorkbenchTokens.FeedbackV2.chatPillMax)
-            .fixedSize(horizontal: true, vertical: false)
-            .background(Capsule(style: .continuous).fill(hovering ? C.pillFillHover : C.pillFill))
-            .contentShape(Capsule(style: .continuous))
-        }
-        .buttonStyle(IslandPressStyle())
-        .disabled(locked)
-        .onHover { hovering = $0 }
-        .help(locked ? "Sending to \(pick.title)" : "\(ChatAgent.named(pick.agent).name) · \(pick.project ?? L("Quick answer")). Every chat: ⌃")
-        .accessibilityLabel("Sends to \(pick.title)")
-        .accessibilityHint("Shows every chat")
-    }
-}
-
-/// Send: a white disc with an arrow. Nothing sends until it is pressed (or fn⌃, or Return).
-struct V2SendButton: View {
-    let model: WorkbenchModel
-    @State private var hovering = false
-
-    var body: some View {
-        let V = WorkbenchTokens.V2.self
-        // Oct 15 review, QA06: on its way, the disc turns; not sent or declined, it waits.
-        let sending = model.cases.sending
-        Button { model.sendV2Now() } label: {
-            ZStack {
-                Circle().fill(WorkbenchTokens.Panel.buttonPrimary.opacity(sending != nil ? 0.45 : (hovering ? V.sendHoverOpacity : 1)))
-                if sending?.isSending == true {
-                    ProgressView().controlSize(.small).tint(WorkbenchTokens.Panel.buttonPrimaryText)
-                } else {
-                    Image(systemName: "arrow.up").font(V.sendGlyph).foregroundStyle(WorkbenchTokens.Panel.buttonPrimaryText)
-                }
-            }
-            .frame(width: V.sendSize, height: V.sendSize)
-            .contentShape(Circle())
-        }
-        .buttonStyle(IslandPressStyle())
-        .disabled(sending != nil)
-        .onHover { hovering = $0 }
-        .help("Send (fn⌃, Return)")
-        .accessibilityLabel("Send")
-    }
-}
-
-/// A suggested chat as a chip: its agent and name; the one in the pill marked.
+/// A suggested chat as a chip: its agent and name; the one chosen marked.
 struct V2SuggestionChip: View {
     let model: WorkbenchModel
     let pick: V2Suggestion
     let chosen: Bool
+    /// Oct 27: in every chat's list (the new designs), chosen, the list folds as a chat picked does.
+    var folds = false
     @State private var hovering = false
 
     var body: some View {
         let V = WorkbenchTokens.V2.self
-        Button { model.chooseV2(pick) } label: {
+        Button {
+            model.chooseV2(pick)
+            if folds { model.foldV2Browse() }
+        } label: {
             HStack(spacing: 6) {
                 ChatAgentIcon(agent: ChatAgent.named(pick.agent), size: V.chipIcon)
                 Text(pick.title).font(V.chipFont).foregroundStyle(chosen ? V.titleColor : V.chipText).lineLimit(1)
@@ -459,16 +371,22 @@ struct V2AttachmentInspect: View {
 }
 
 /// Every chat, as Dispatch's expanded view has them: the agents' icons in a rail (the active one in
-/// a pill, its name at the right), then its projects, then a project's chats (a New chat first).
-/// A chat goes into the pill.
+/// a pill, its name at the right); under it a New chat and the agent's chats, the latest first, a
+/// page at a time (Oct 27: the agents give no folders). A chat goes into the pill.
 struct V2ChatBrowser: View {
     let model: WorkbenchModel
+    /// Oct 27, Ryan: "the suggested chats can go into the choose chat button": in the new designs,
+    /// the list opens on them.
+    var suggestions = false
 
     var body: some View {
         let V = WorkbenchTokens.V2.self
         let active = ChatAgent.named(model.v2BrowseAgent)
         VStack(alignment: .leading, spacing: V.browseSpacing) {
             Rectangle().fill(V.rule).frame(height: 1)
+            if suggestions {
+                ComposerSuggestedRow(model: model)
+            }
             HStack(spacing: V.railGap) {
                 ForEach(ChatAgent.all) { agent in
                     Button { model.browseV2Agent(agent.id) } label: {
@@ -489,17 +407,27 @@ struct V2ChatBrowser: View {
                     .padding(.trailing, 10)
             }
             .frame(height: V.railHeight)
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(model.v2BrowseRows) { row in
-                        V2BrowseRowView(model: model, row: row)
-                            .frame(height: V.browseRow)
-                    }
+            column {
+                ForEach(model.v2BrowseRows) { row in
+                    V2BrowseRowView(model: model, row: row)
+                        .frame(height: V.browseRow)
                 }
             }
-            .scrollIndicators(.automatic)
         }
         .padding(.top, V.gap - V.browseSpacing)
+    }
+
+    /// The list, scrolling when it must; drawn off the screen, where a scroll view draws nothing,
+    /// its rows clipped.
+    @ViewBuilder
+    private func column<Rows: View>(@ViewBuilder _ rows: () -> Rows) -> some View {
+        let stack = VStack(spacing: 0) { rows() }
+        if model.offscreenRender {
+            stack.frame(minHeight: 0, maxHeight: .infinity, alignment: .top).clipped()
+        } else {
+            ScrollView { stack }
+                .scrollIndicators(.automatic)
+        }
     }
 }
 
@@ -526,31 +454,22 @@ struct V2BrowseRowView: View {
                     EmptyView()
                 case .more(let count):
                     V2BrowseMoreLabel(count: count)
-                case .project(let project):
-                    Text(project.folder).font(V.browseFont).foregroundStyle(V.titleColor)
-                    if project.folder == ChatBook.project {
-                        Text("this project").font(V.reasonFont).foregroundStyle(V.subColor)
-                    }
-                    Spacer(minLength: 6)
-                    if project.needsYou {
-                        Text("Needs you").font(V.reasonFont).foregroundStyle(WorkbenchTokens.Panel.needsYouColor)
-                    }
-                    Text(project.latest?.age ?? "").font(V.reasonFont).foregroundStyle(V.subColor).monospacedDigit()
-                    Image(systemName: "chevron.right").font(V.browseChevron).foregroundStyle(V.subColor)
-                case .back(let folder):
-                    Image(systemName: "chevron.left").font(V.browseBack).foregroundStyle(V.subColor)
-                    Text(folder).font(V.browseFont).foregroundStyle(V.subColor)
-                    Spacer()
                 case .chat(let chat):
                     // Oct 15 review, QA05: one that can't take the request is dimmed and says why.
                     let blocked = model.v2ChatBlock(chat)
-                    Image(systemName: chat.isNew ? "plus" : "bubble.left").font(V.browseGlyph).foregroundStyle(V.subColor).frame(width: 14)
+                    // Oct 27, Ryan: "the icon before the chat should be the icon of the coding agent";
+                    // a New chat's carries a plus.
+                    ChatAgentIcon(agent: ChatAgent.named(chat.agent), size: V.browseIcon)
+                        .overlay(alignment: .bottomTrailing) {
+                            if chat.isNew {
+                                Image(systemName: "plus.circle.fill").font(V.browseNewGlyph)
+                                    .foregroundStyle(V.titleColor).background(Circle().fill(V.browseNewPlate))
+                                    .offset(x: V.browseNewOffset, y: V.browseNewOffset)
+                            }
+                        }
+                        .opacity(blocked == nil ? 1 : WorkbenchTokens.Chat.railIdleOpacity)
                     Text(chat.title).font(V.browseFont)
                         .foregroundStyle(blocked == nil ? V.titleColor : WorkbenchTokens.Cases.blockedTitle).lineLimit(1)
-                    // A search spans projects: each chat says which.
-                    if !model.cases.browseQuery.isEmpty {
-                        Text(chat.folder).font(V.reasonFont).foregroundStyle(V.subColor).lineLimit(1)
-                    }
                     Spacer(minLength: 6)
                     if let blocked {
                         V2BlockedReason(reason: blocked, chat: chat)
@@ -1060,6 +979,71 @@ struct V2TurnRail: View {
     }
 }
 
+/// The words said, editable in place. Oct 27, Ryan: "users will also be able to edit the transcribed
+/// words here on the notch." A click puts the caret in them (the notch takes the keys without
+/// taking the app in front); Return sends, ⌥Return starts a new line, Esc stops editing. Under the
+/// pointer and while editing, a field shows round them, outside their box, so they don't move.
+struct V2RequestEditor: View {
+    let model: WorkbenchModel
+    /// Oct 27: the Choose chat designs set the words larger (Sentence) or on more lines (Ticket).
+    var size: CGFloat? = nil
+    var weight: Font.Weight? = nil
+    var spacing: CGFloat? = nil
+    var lines = 2
+    @FocusState private var focused: Bool
+    @State private var hovering = false
+
+    var body: some View {
+        let V = WorkbenchTokens.V2.self
+        Group {
+            if model.offscreenRender {
+                Text(model.v2Spoken).lineLimit(lines)
+            } else {
+                TextField(L("Your request"), text: Binding(get: { model.v2Spoken }, set: { model.editV2Request($0) }), axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .lineLimit(1...lines)
+                    .focused($focused)
+                    .onSubmit {
+                        focused = false
+                        _ = model.v2Key(.enter)
+                    }
+                    .onKeyPress(.escape) {
+                        focused = false
+                        return .handled
+                    }
+            }
+        }
+        .font(.system(size: size ?? V.requestSize, weight: weight ?? V.requestWeight))
+        .lineSpacing(spacing ?? V.requestSpacing)
+        .foregroundStyle(V.requestColor)
+        .background {
+            RoundedRectangle(cornerRadius: V.requestEditRadius, style: .continuous)
+                .fill(focused ? V.requestEditFill : (hovering ? V.hoverFill : .clear))
+                .overlay(RoundedRectangle(cornerRadius: V.requestEditRadius, style: .continuous)
+                    .strokeBorder(focused ? WorkbenchTokens.Native.accent.opacity(V.requestEditRing) : .clear, lineWidth: 1))
+                .padding(-V.requestEditInset)
+        }
+        .onHover { hovering = $0 }
+        .animation(WorkbenchTokens.Spring.hover, value: focused)
+        .help(L("Click to edit what you said"))
+        .accessibilityLabel(L("Your request"))
+    }
+}
+
+/// A text field drawn off the screen (`offscreenRender`), where one can't be (it comes out a yellow
+/// box): its words, or its prompt as the field shows it.
+struct FieldStandIn: View {
+    let prompt: String
+    let text: String
+
+    var body: some View {
+        Text(text.isEmpty ? prompt : text)
+            .foregroundStyle(text.isEmpty ? WorkbenchTokens.V2.subColor : WorkbenchTokens.V2.titleColor)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 /// A pulled-out chat's box for asking more, whenever: type, Return (or the arrow) sends it to that
 /// session, at work or done, and the window shows it at work on it.
 struct V2FollowUpField: View {
@@ -1072,7 +1056,10 @@ struct V2FollowUpField: View {
         let V = WorkbenchTokens.V2.self
         HStack(spacing: V.inputSpacing) {
             // Oct 24: a chat opened from the search takes its first words here, the box ready.
-            TextField(model.isOpenedChat(id) ? L("Ask in this chat") : L("Ask a follow-up"), text: $text)
+            let prompt = model.isOpenedChat(id) ? L("Ask in this chat") : L("Ask a follow-up")
+            Group {
+                if model.offscreenRender { FieldStandIn(prompt: prompt, text: text) } else { TextField(prompt, text: $text) }
+            }
                 .textFieldStyle(.plain)
                 .font(V.inputFont)
                 .foregroundStyle(V.titleColor)
@@ -1081,7 +1068,7 @@ struct V2FollowUpField: View {
                 .onAppear { if model.isOpenedChat(id), !model.snapshotMode { focused = true } }
                 // Esc with nothing typed steps out, as it does when the box isn't being typed in.
                 .onKeyPress(.escape) { text.isEmpty && model.escape() ? .handled : .ignored }
-                .background { if model.isOpenedChat(id) { KeyWindowMaker() } }
+                .background { if model.isOpenedChat(id), !model.offscreenRender { KeyWindowMaker() } }
             Button(action: send) {
                 Image(systemName: "arrow.up")
                     .font(V.inputSendGlyph)

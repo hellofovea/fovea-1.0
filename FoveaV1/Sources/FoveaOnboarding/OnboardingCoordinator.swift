@@ -198,6 +198,8 @@ package final class OnboardingCoordinator: OnboardingHost {
 
     private func tick() {
         updateClickThrough()
+        // Oct 27, Ryan: the guide for what the step waits for now, drawn at the notch.
+        island.setGuide(model.guideMark)
         guard model.step == .permissions else { lastPane = nil; return }
         if !model.flow.allowed.contains(.accessibility), AXIsProcessTrusted() {
             model.grant(.accessibility)
@@ -232,22 +234,23 @@ package final class OnboardingCoordinator: OnboardingHost {
     // MARK: OnboardingHost
 
 
-    func previewAura(_ on: Bool) {
+    func endPreview() {
         previewReturn?.cancel()
-        if on { island.showPreview(.aura, seconds: 3600) } else { island.endPreview() }
+        island.endPreview()
     }
 
-    /// The board a moment at the notch (Make it yours), then the glow again if a light was being
-    /// picked, else nothing. Oct 23, Ryan: the glow never came back: the board opening told the run
-    /// the notch was the board now, so the light picked was forgotten; the run says it itself now.
-    /// The board goes straight over to the glow, with no closing between.
-    func previewPanel(thenLight: Bool) {
+    /// Make it yours, a moment at the notch, then nothing: the board for a look; for the accent, the
+    /// listening bar with its aurora (Oct 28).
+    func previewPanel() { preview(.panel) }
+    func previewBar() { preview(.aura) }
+
+    private func preview(_ kind: IslandController.Preview) {
         previewReturn?.cancel()
-        island.showPreview(.panel, seconds: 3600)
+        island.showPreview(kind, seconds: 3600)
         previewReturn = Task { @MainActor in
             try? await Task.sleep(for: .seconds(OT.Motion.lookShown))
             guard !Task.isCancelled, self.model.step == .makeItYours else { return }
-            if thenLight { self.island.showPreview(.aura, seconds: 3600) } else { self.island.endPreview() }
+            self.island.endPreview()
         }
     }
     private var previewReturn: Task<Void, Never>?
@@ -264,6 +267,8 @@ package final class OnboardingCoordinator: OnboardingHost {
     func pullOut(_ id: String) { island.pullOut(id) }
     func tuck(_ id: String) { island.tuck(id) }
     func bringBack(_ id: String) { island.bringBack(id) }
+    func openChatSearch() { island.openChatSearch() }
+    func openPastChat() { island.openPastChat() }
     func openBoard() { island.openBoard() }
     func openIslandSession(_ id: String) { island.openSession(id) }
     func stageRequest(words: String, items: [StagedReferent]) { island.stageRequest(words: words, items: items) }
@@ -391,7 +396,6 @@ package final class OnboardingCoordinator: OnboardingHost {
         p.glowSpread = d.glowSpread
         p.glowDrift = d.glowDrift
         p.panels = d.panels
-        p.density = d.density
         p.notchAppearance = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .dark : .light
         if p != store.prefs { store.prefs = p }
     }

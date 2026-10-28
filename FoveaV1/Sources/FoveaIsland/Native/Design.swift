@@ -38,6 +38,12 @@ extension WorkbenchTokens {
     static var isNative: Bool { DesignStore.shared.value == .native }
     /// Native with its panels floating under the notch (the gap, the separate panel).
     static var floatsPanels: Bool { isNative && DesignStore.shared.panels == .floating }
+    /// Attached (Oct 27, Ryan: Halo "is supposed to replace the attached part"): one shape from the
+    /// top edge, the notch's black blurred into the glass round it.
+    static var blendsPanels: Bool { isNative && !floatsPanels }
+    /// What drops below is one shape with the island, hanging from the top edge (attached; floating
+    /// stays as it was, the panel a gap under the notch).
+    static var panelsHangFromTop: Bool { !floatsPanels }
 
     /// A token's value in each design.
     static func skin<T>(_ original: T, _ native: T) -> T {

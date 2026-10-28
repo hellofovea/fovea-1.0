@@ -552,40 +552,12 @@ struct V2ReferentPile: View {
     }
 }
 
-/// The model and thinking effort beside the chat: "Auto", or "Sonnet 5 · High"; a click opens
-/// the sheet under the row.
-struct V2ModelPill: View {
-    let model: WorkbenchModel
-    @State private var hovering = false
-
-    var body: some View {
-        let V = WorkbenchTokens.V2.self
-        let C = WorkbenchTokens.Chat.self
-        Button { model.toggleModelSheet() } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "brain").font(V.pillGlyph).foregroundStyle(V.subColor)
-                Text(model.v2ModelLabel(agent: model.v2Pick.agent))
-                    .font(V.pillFont)
-                    .foregroundStyle(V.titleColor)
-                    .lineLimit(1)
-                Image(systemName: model.v2ModelSheet ? "chevron.up" : "chevron.down")
-                    .font(V.pillChevron).foregroundStyle(V.subColor)
-            }
-            .padding(.horizontal, V.pillPaddingH)
-            .frame(height: V.pillHeight)
-            .frame(maxWidth: WorkbenchTokens.FeedbackV2.modelPillMax)
-            .fixedSize(horizontal: true, vertical: false)
-            .background(Capsule(style: .continuous).fill(hovering ? C.pillFillHover : C.pillFill))
-            .contentShape(Capsule(style: .continuous))
-        }
-        .buttonStyle(IslandPressStyle())
-        .onHover { hovering = $0 }
-        .help("The model and how hard it thinks. Auto lets Fovea pick")
-        .accessibilityLabel("Model, \(model.v2ModelLabel(agent: model.v2Pick.agent))")
-    }
-}
-
-/// The sheet: the chat's agent's models, then how hard it thinks; Auto first in each.
+/// The sheet: the model and the approvals on one line, each a pop-up menu, as the Mac picks one of
+/// several in little room; under them how hard it thinks, a slider over the model's efforts. Oct 27,
+/// Ryan: "there should be a much easier way to pick the reasoning effort. Currently, it takes three
+/// lines … we could apply this slider only to the thinking effort, while keeping the model and
+/// approval settings on a single line." As Claude Code's /model (an effort slider under the model)
+/// and ChatGPT's thinking slider do (docs/island/CHOOSE_CHAT.md).
 struct V2ModelSheet: View {
     let model: WorkbenchModel
     var showsChats = false
@@ -594,72 +566,246 @@ struct V2ModelSheet: View {
         let F = WorkbenchTokens.FeedbackV2.self
         VStack(alignment: .leading, spacing: F.sheetGap) {
             if showsChats {
-                row(L("Chat")) {
+                HStack(spacing: F.sheetChipGap) {
+                    Text(L("Chat")).font(WorkbenchTokens.V2.labelFont).foregroundStyle(WorkbenchTokens.V2.labelColor)
+                        .frame(width: F.sheetLabelWidth, alignment: .leading)
                     ForEach(model.v2Suggestions) { pick in
                         V2SheetChip(title: pick.title, icon: pick.agent, chosen: model.v2Pick == pick) { model.chooseV2(pick) }
                     }
+                    Spacer(minLength: 0)
                 }
+                .frame(height: F.sheetRow)
             }
-            row(L("Model")) {
-                // Oct 15 review, QA08: the models on their way, or couldn't load (Try Again); one
-                // chosen for another agent, or not in the plan, dimmed (the notes say why).
+            HStack(spacing: F.sheetChipGap) {
+                // Oct 15 review, QA08: the models on their way, or couldn't load (Try Again).
                 if model.cases.modelsLoad != .loaded {
                     V2ModelsStatus(model: model)
                 } else {
-                    if let carried = model.v2CarriedModel {
-                        V2SheetChip(title: carried.name, chosen: false, unavailable: carried.reason) {}
-                    }
-                    V2SheetChip(title: L("Auto"), chosen: model.v2Model == nil || model.v2CarriedModel != nil) { model.chooseModel(nil) }
-                    ForEach(model.v2ModelOptions) { option in
-                        V2SheetChip(title: option.name, chosen: model.v2Model == option.id,
-                                    unavailable: model.v2ModelUnavailable(option)) { model.chooseModel(option.id) }
-                    }
+                    V2SheetMenu(model: model, label: L("Model"), value: modelValue, items: modelItems)
                 }
+                // Oct 15 review, QA09: how far the session goes without asking; set by the agent's
+                // own settings, it can't be changed here (the notes say where).
+                V2SheetMenu(model: model, label: L("Approvals"), value: model.cases.approvalMode.title,
+                            locked: model.cases.approvalLocked != nil, items: approvalItems)
+                Spacer(minLength: 0)
             }
-            row(L("island.row.thinking", english: "Thinking")) {
-                V2SheetChip(title: L("Auto"), chosen: model.v2Effort == nil) { model.chooseEffort(nil) }
-                ForEach(model.v2EffortOptions, id: \.self) { effort in
-                    V2SheetChip(title: ModelCatalog.effortName(effort), chosen: model.v2Effort == effort) { model.chooseEffort(effort) }
-                }
-            }
-            // Oct 15 review, QA09: how far the session goes without asking; set by the agent's own
-            // settings, it can't be changed here (the notes say where).
-            row(L("Approvals")) {
-                ForEach(V2ApprovalMode.allCases) { mode in
-                    V2SheetChip(title: mode.title, chosen: model.cases.approvalMode == mode,
-                                unavailable: model.cases.approvalLocked != nil && model.cases.approvalMode != mode
-                                    ? model.cases.approvalLocked : nil) { model.chooseApprovalMode(mode) }
-                        .help(mode.help)
-                }
-                if model.cases.approvalLocked != nil {
-                    Image(systemName: "lock.fill").font(WorkbenchTokens.Cases.blockedGlyph).foregroundStyle(WorkbenchTokens.V2.subColor)
-                }
-            }
+            .frame(height: F.sheetRow)
+            V2EffortSlider(model: model)
+                .frame(height: F.sheetRow)
             let notes = model.v2ModelNotes
             if !notes.isEmpty {
                 V2ModelNotesLine(notes: notes)
-                    .padding(.leading, WorkbenchTokens.FeedbackV2.sheetLabelWidth + WorkbenchTokens.FeedbackV2.sheetChipGap)
             }
         }
     }
 
-    private func row<C: View>(_ label: String, @ViewBuilder chips: () -> C) -> some View {
-        let F = WorkbenchTokens.FeedbackV2.self
-        return HStack(spacing: F.sheetChipGap) {
-            Text(label).font(WorkbenchTokens.V2.labelFont).foregroundStyle(WorkbenchTokens.V2.labelColor)
-                .frame(width: F.sheetLabelWidth, alignment: .leading)
-            chips()
-            Spacer(minLength: 0)
-        }
-        .frame(height: F.sheetRow)
+    private var modelValue: String {
+        guard model.v2CarriedModel == nil, let id = model.v2Model,
+              let option = model.v2ModelOptions.first(where: { $0.id == id }) else { return L("Auto") }
+        return option.name
     }
 
-    /// Its height, for the outline: the rows (the chats, the model, thinking, approvals) and, when
-    /// a model can't be picked or the approvals are set elsewhere, a line of notes (Oct 15 review).
+    /// Auto, then the agent's models; one it doesn't offer here, or not in the plan, can't be
+    /// picked and says why.
+    private var modelItems: [V2SheetMenu.Item] {
+        let auto = model.v2Model == nil || model.v2CarriedModel != nil
+        var items = [V2SheetMenu.Item(title: L("Auto"), help: L("Fovea picks the model for the request"), chosen: auto) { model.chooseModel(nil) }]
+        items += model.v2ModelOptions.map { option in
+            let why = model.v2ModelUnavailable(option)
+            return V2SheetMenu.Item(title: why.map { "\(option.name) — \($0)" } ?? option.name, chosen: model.v2Model == option.id,
+                                    enabled: why == nil, separated: option.id == model.v2ModelOptions.first?.id) {
+                model.chooseModel(option.id)
+            }
+        }
+        return items
+    }
+
+    private var approvalItems: [V2SheetMenu.Item] {
+        V2ApprovalMode.allCases.map { mode in
+            V2SheetMenu.Item(title: mode.title, help: mode.help, chosen: model.cases.approvalMode == mode) { model.chooseApprovalMode(mode) }
+        }
+    }
+
+    /// Its height, for the outline: the rows (the chats, then the model and approvals, then the
+    /// effort) and, when a model chosen elsewhere or the approvals are set elsewhere, a line of notes
+    /// (Oct 15 review).
     static func height(chats: Bool, notes: Int = 0) -> CGFloat {
         let F = WorkbenchTokens.FeedbackV2.self
-        let rows: CGFloat = chats ? 4 : 3
+        let rows: CGFloat = chats ? 3 : 2
         return rows * F.sheetRow + (rows - 1) * F.sheetGap + (notes > 0 ? F.sheetGap + CGFloat(notes) * WorkbenchTokens.Cases.detailRow : 0)
+    }
+}
+
+/// A pop-up in the sheet: its name and its value in a capsule; a click shows the Mac's own menu
+/// over it, the chosen item checked. Locked, it shows a lock and doesn't open.
+struct V2SheetMenu: View {
+    struct Item {
+        let title: String
+        var help: String? = nil
+        let chosen: Bool
+        var enabled = true
+        /// A separator before it.
+        var separated = false
+        let action: () -> Void
+    }
+
+    let model: WorkbenchModel
+    let label: String
+    let value: String
+    var locked = false
+    let items: [Item]
+    @State private var hovering = false
+
+    var body: some View {
+        let F = WorkbenchTokens.FeedbackV2.self
+        let V = WorkbenchTokens.V2.self
+        Button { if !locked { SheetMenuPopUp.show(items) } } label: {
+            HStack(spacing: F.sheetMenuGap) {
+                Text(label).foregroundStyle(V.subColor)
+                Text(value).foregroundStyle(V.titleColor).lineLimit(1)
+                Image(systemName: locked ? "lock.fill" : "chevron.up.chevron.down")
+                    .font(F.sheetCheck).foregroundStyle(V.subColor)
+            }
+            .font(F.sheetChipFont)
+            .padding(.horizontal, F.sheetChipPaddingH)
+            .frame(height: F.sheetChipHeight)
+            .background(Capsule(style: .continuous).fill(hovering && !locked ? V.hoverFill : V.chipFill))
+            .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(IslandPressStyle())
+        .onHover { hovering = $0 }
+        .help(locked ? (model.cases.approvalLocked ?? "") : "")
+        .accessibilityLabel("\(label), \(value)")
+        .accessibilityHint(locked ? "" : "Shows the choices")
+    }
+}
+
+/// The Mac's own menu for a sheet's pop-up, under the pointer with the chosen item over it, as a
+/// pop-up button opens.
+@MainActor
+enum SheetMenuPopUp {
+    /// A menu is up: the notch stays while the pointer is on it.
+    static var isOpen = false
+
+    private final class Action: NSObject {
+        let run: () -> Void
+        init(_ run: @escaping () -> Void) { self.run = run }
+        @objc func fire() { run() }
+    }
+
+    static func show(_ items: [V2SheetMenu.Item]) {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        var chosen: NSMenuItem?
+        for item in items {
+            if item.separated { menu.addItem(.separator()) }
+            let action = Action(item.action)
+            let entry = NSMenuItem(title: item.title, action: #selector(Action.fire), keyEquivalent: "")
+            entry.target = action
+            entry.representedObject = action
+            entry.state = item.chosen ? .on : .off
+            entry.isEnabled = item.enabled
+            entry.toolTip = item.help
+            if item.chosen { chosen = entry }
+            menu.addItem(entry)
+        }
+        guard let event = NSApp.currentEvent, let view = event.window?.contentView else { return }
+        isOpen = true
+        defer { isOpen = false }
+        menu.popUp(positioning: chosen, at: view.convert(event.locationInWindow, from: nil), in: view)
+    }
+}
+
+/// How hard it thinks: the model's efforts as stops on a slider, dragged or clicked; the model's own
+/// default marked, and picking it goes back to Auto. A model that doesn't think longer says so.
+struct V2EffortSlider: View {
+    let model: WorkbenchModel
+
+    var body: some View {
+        let F = WorkbenchTokens.FeedbackV2.self
+        let V = WorkbenchTokens.V2.self
+        let efforts = model.v2EffortOptions
+        let fallback = model.v2DefaultEffort
+        let current = model.v2Effort ?? fallback
+        HStack(spacing: F.sheetChipGap) {
+            Text(L("island.row.thinking", english: "Thinking")).font(V.labelFont).foregroundStyle(V.labelColor)
+                .frame(width: F.sheetLabelWidth, alignment: .leading)
+            if efforts.count < 2 {
+                Text(efforts.isEmpty ? L("This model answers without thinking longer") : ModelCatalog.effortName(efforts[0]))
+                    .font(F.sheetChipFont).foregroundStyle(V.subColor).lineLimit(1)
+                Spacer(minLength: 0)
+            } else {
+                let index = current.flatMap { efforts.firstIndex(of: $0) } ?? 0
+                EffortTrack(count: efforts.count, index: index, mark: fallback.flatMap { efforts.firstIndex(of: $0) }) { i in
+                    // The model's default is Auto again, so it follows the model.
+                    model.chooseEffort(efforts[i] == fallback ? nil : efforts[i])
+                }
+                HStack(spacing: 4) {
+                    Text(current.map(ModelCatalog.effortName) ?? L("Auto")).foregroundStyle(V.titleColor)
+                    if model.v2Effort == nil { Text(L("default")).foregroundStyle(V.subColor) }
+                }
+                .font(F.sheetChipFont).lineLimit(1)
+                .frame(width: F.effortValueWidth, alignment: .leading)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L("island.row.thinking", english: "Thinking"))
+        .accessibilityValue(current.map(ModelCatalog.effortName) ?? L("Auto"))
+        .accessibilityAdjustableAction { direction in
+            guard efforts.count > 1 else { return }
+            let i = current.flatMap { efforts.firstIndex(of: $0) } ?? 0
+            let next = direction == .increment ? min(efforts.count - 1, i + 1) : max(0, i - 1)
+            model.chooseEffort(efforts[next] == fallback ? nil : efforts[next])
+        }
+    }
+}
+
+/// The slider itself: a track filled in the accent to the thumb, a dot at each stop, a tick under
+/// the default; dragging or clicking goes to the nearest stop.
+private struct EffortTrack: View {
+    let count: Int
+    let index: Int
+    let mark: Int?
+    let pick: (Int) -> Void
+
+    var body: some View {
+        let F = WorkbenchTokens.FeedbackV2.self
+        GeometryReader { geo in
+            let inset = F.effortThumb / 2
+            let span = max(1, geo.size.width - 2 * inset)
+            let x = { (i: Int) -> CGFloat in inset + span * CGFloat(i) / CGFloat(max(1, count - 1)) }
+            let mid = geo.size.height / 2
+            ZStack(alignment: .topLeading) {
+                Capsule().fill(F.effortTrackColor)
+                    .frame(width: geo.size.width, height: F.effortTrack)
+                    .offset(y: mid - F.effortTrack / 2)
+                Capsule().fill(WorkbenchTokens.Native.accent)
+                    .frame(width: x(index), height: F.effortTrack)
+                    .offset(y: mid - F.effortTrack / 2)
+                ForEach(0..<count, id: \.self) { i in
+                    Circle().fill(i <= index ? F.effortStopOn : F.effortStopColor)
+                        .frame(width: F.effortStop, height: F.effortStop)
+                        .offset(x: x(i) - F.effortStop / 2, y: mid - F.effortStop / 2)
+                }
+                if let mark {
+                    Capsule().fill(F.effortStopColor)
+                        .frame(width: F.effortMarkWidth, height: F.effortMarkHeight)
+                        .offset(x: x(mark) - F.effortMarkWidth / 2, y: mid + F.effortThumb / 2 + F.effortMarkGap)
+                }
+                Circle().fill(F.effortThumbColor)
+                    .overlay(Circle().strokeBorder(F.effortThumbRim, lineWidth: 0.5))
+                    .shadow(color: F.effortThumbShadow, radius: 1.5, y: 0.5)
+                    .frame(width: F.effortThumb, height: F.effortThumb)
+                    .offset(x: x(index) - F.effortThumb / 2, y: mid - F.effortThumb / 2)
+                    .animation(WorkbenchTokens.Spring.rows, value: index)
+            }
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0).onChanged { drag in
+                let i = Int(((drag.location.x - inset) / span * CGFloat(count - 1)).rounded())
+                let stop = min(count - 1, max(0, i))
+                if stop != index { pick(stop) }
+            })
+        }
     }
 }
 

@@ -89,6 +89,11 @@ extension WorkbenchModel {
     /// The request's words as said (or the script's, in the Workbench).
     var v2Spoken: String { v2Words ?? v2Request.spoken }
 
+    /// Oct 27, Ryan: the words said, edited in Choose chat before they go.
+    func editV2Request(_ text: String) {
+        v2Words = text
+    }
+
     // MARK: Pasting
 
     /// #7: where the words went, lit a moment, as the Workbench's field does (Oct 11).
@@ -310,21 +315,29 @@ extension WorkbenchModel {
     /// Oct 17, Ryan: files dragged onto the notch while it listens (or onto Choose chat, adding to
     /// the request): each a file referent with its card, flying in from where it was let go
     /// (`at`, the island's points). A picture over the limit isn't added, and the bar says so.
+    /// Oct 25, Ryan: many at once are all taken at once, in the order they were dragged; their
+    /// cards leave a small pile where they were let go one after another, as a hand deals them.
     @discardableResult
     func dropFiles(_ urls: [URL], at point: CGPoint) -> Bool {
         guard notchState.collects || notchState == .v2Send else { return false }
-        var took = false
-        for url in urls where url.isFileURL && !liveReferents.contains(where: { $0.fileURL == url }) {
+        let C = WorkbenchTokens.Capture.self
+        var seen = Set(liveReferents.compactMap(\.fileURL))
+        let fresh = urls.filter { $0.isFileURL && seen.insert($0).inserted }
+        // However many, the last leaves within the spread.
+        let step = fresh.count > 1 ? min(C.dropStagger, C.dropSpread / (fresh.count - 1)) : .zero
+        var took = 0
+        for url in fresh {
             // The first run as the old click had it: asked first (a no refuses the drop), then told
             // what was taken and where it was let go (its packing list counts on that event).
             if let director = live?.director, !director.acceptFile(url) { continue }
-            let rect = CGRect(x: point.x - 24, y: point.y - 24, width: 48, height: 48)
-            if takeFile(url: url, from: rect) {
-                took = true
+            let shift = C.dropPileOffset * CGFloat(min(took, C.dropPileDepth))
+            let rect = CGRect(x: point.x - 24 + shift, y: point.y - 24 + shift, width: 48, height: 48)
+            if takeFile(url: url, from: rect, delay: step * took) {
+                took += 1
                 live?.director?.islandDidEmit(.referentTaken(kind: .file, rect: rect))
             }
         }
-        return took
+        return took > 0
     }
 
     /// Words taken: their card (or, where the app gave no words, a picture of the marked lines),
@@ -366,7 +379,7 @@ extension WorkbenchModel {
 
     /// A file dropped on the notch: its card, flying in from where it was let go. False when it
     /// isn't added (a picture over the limit: the bar says so).
-    func takeFile(url: URL, from rect: CGRect) -> Bool {
+    func takeFile(url: URL, from rect: CGRect, delay: Duration = .zero) -> Bool {
         if let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentTypeKey]),
            values.contentType?.conforms(to: .image) == true,
            (values.fileSize ?? 0) > WorkbenchTokens.Feedback.imageLimit {
@@ -379,7 +392,7 @@ extension WorkbenchModel {
         let file = DesktopFile(name: url.lastPathComponent, size: size)
         guard let card = AttachmentCards.file(file) else { return false }
         add(image: card, from: rect, animated: !reduceMotion && notchState.collects, kind: .file(name: file.name, size: file.size),
-            source: url.deletingLastPathComponent().lastPathComponent, fileURL: url)
+            source: url.deletingLastPathComponent().lastPathComponent, fileURL: url, delay: delay)
         return true
     }
 
@@ -419,8 +432,8 @@ extension WorkbenchModel {
 
     enum PreviewKind { case aura, panel }
 
-    /// A choice shown at the notch: Dispatch's bar with its glow (no microphone), or the board
-    /// with a sample session (so Attached and Floating can be seen).
+    /// A choice shown at the notch: the listening bar with its aurora in the accent (no microphone;
+    /// Oct 28), or the board with a sample session (so Attached and Floating can be seen).
     func showPreview(_ kind: PreviewKind) {
         previewing = true
         // A voice that never falls quiet, so the glow shows the whole time it's being chosen.

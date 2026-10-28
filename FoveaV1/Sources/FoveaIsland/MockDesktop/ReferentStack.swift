@@ -127,6 +127,17 @@ struct StackLayout: Equatable {
     var scrollMax: CGFloat = 0
     var scroll: CGFloat = 0
     var scrollThumb: CGRect?
+    /// Oct 27, Ryan: the bar in Wings (Wings.swift): what it shows, where its left and right go, the
+    /// island's surface.
+    var wings: WingsPose?
+    var wingsLeft: CGRect?
+    var wingsRight: CGRect?
+    var fill: BarFill = .native
+    /// Oct 27: the opened captures, a strip floating under the bar whether the panels float or not.
+    var floats = false
+    /// Wings over a panel (the opened stack, a session asked more of, the route's sheet): the bar's
+    /// own outline, `outline` being the panel's.
+    var wingsBar: Outline?
 
     static func make(state: NotchState, aspects: [CGFloat], shape: ReferentShape, expanded: Bool,
                      peek: Bool, inspecting: Int? = nil, scroll: CGFloat = 0, metrics: ScreenMetrics) -> StackLayout {
@@ -166,8 +177,8 @@ struct StackLayout: Equatable {
         let span = WorkbenchTokens.Island.waveformSpan
         let footerMin = T.closeWidth + 2 * T.expandedSpacing + span + 120
         let body = max(w + 2 * pad, footerMin + 2 * pad, notch.width)
-        // In Native the opened stack is a panel under the island: its top moves down by the gap.
-        let top = notch.height + pad + WorkbenchTokens.Native.panelGap
+        // A capture looked at closely floats under the bar, as the strip does (Oct 27).
+        let top = notch.height + pad + WorkbenchTokens.Native.floatGap
         for i in layout.cards.indices where i != index {
             layout.cards[i].opacity = 0
         }
@@ -260,44 +271,39 @@ struct StackLayout: Equatable {
     }
 
     /// Every capture, left to right from the first, in one row (Oct 15 review, VF04/QA02: "only
-    /// one line of referents in the expanded view"; they used to wrap into rows and shrink). A row
-    /// wider than the review width scrolls sideways (`scroll`, from a swipe or the wheel), its cards
-    /// passing under the panel's edge. The island is as wide as the row's visible part (never
-    /// narrower than the notch), with the close control and the waveform in a footer.
+    /// one line of referents in the expanded view"). Oct 27, Ryan: a strip floating under the bar,
+    /// not the island grown down: five in view, the rest a swipe away (`scroll`, from a swipe or the
+    /// wheel), passing under the strip's edge, a thumb under the row saying where it is. A click on
+    /// one looks at it closely (`inspected`). Esc, or the bar's left, closes it.
     static func opened(aspects: [CGFloat], shape: ReferentShape, scroll: CGFloat = 0, metrics: ScreenMetrics) -> StackLayout {
         let T = WorkbenchTokens.Referents.self
         let spec = WorkbenchTokens.Island.spec
         let notch = NotchGeometry.notchRect(metrics: metrics, spec: spec)
-        let pad = T.expandedPadding
-        let maxContent = T.expandedMaxWidth - 2 * spec.expandedTopRadius - 2 * pad
+        let pad = T.stripPadding
         let h = T.expandedThumbHeight
         let widths = aspects.map { shape.width(height: h, aspect: $0, stacked: false) }
         let rowWidth = widths.reduce(0, +) + CGFloat(max(0, widths.count - 1)) * T.expandedSpacing
-        let visible = min(rowWidth, maxContent)
+        let shown = widths.prefix(T.stripVisible)
+        let visible = shown.reduce(0, +) + CGFloat(max(0, shown.count - 1)) * T.expandedSpacing
         let scrollMax = max(0, rowWidth - visible)
         let offset = min(max(0, scroll), scrollMax)
-        let span = WorkbenchTokens.Island.waveformSpan
-        let content = max(visible, T.closeWidth + 2 * T.expandedSpacing + span)
-        let body = max(content + 2 * pad, notch.width)
-        let left = -body / 2 + pad
-        let top0 = notch.height + pad + WorkbenchTokens.Native.panelGap
+        let left = -visible / 2
+        let top0 = notch.height + WorkbenchTokens.Native.floatGap + pad
         var cards: [Card] = []
         var x = left - offset
         for (i, w) in widths.enumerated() {
             cards.append(Card(cx: x + w / 2, top: top0, width: w, height: h,
-                              radius: shape.radius(height: h, concentric: T.expandedRadius),
+                              radius: shape.radius(height: h, concentric: T.stripRadius - pad),
                               rotation: 0, opacity: 1, z: Double(aspects.count - i)))
             x += w + T.expandedSpacing
         }
-        let footerTop = top0 + h + T.footerGap
-        let close = CGRect(x: left, y: footerTop + (T.footerHeight - T.closeHeight) / 2,
-                           width: T.closeWidth, height: T.closeHeight)
-        var layout = StackLayout(outline: Outline(size: CGSize(width: body + 2 * spec.expandedTopRadius,
-                                                               height: footerTop + T.footerHeight + pad),
-                                                  topRadius: spec.expandedTopRadius, bottomRadius: spec.expandedBottomRadius),
-                                 cards: cards,
-                                 waveform: CGPoint(x: body / 2 - pad - span / 2, y: footerTop + T.footerHeight / 2),
-                                 stackHit: nil, close: close, rows: aspects.isEmpty ? 0 : 1)
+        let thumbRoom = scrollMax > 0.5 ? T.scrollThumbGap + T.scrollThumbHeight : 0
+        var layout = StackLayout(outline: Outline(size: CGSize(width: visible + 2 * pad + 2 * spec.expandedTopRadius,
+                                                               height: top0 + h + thumbRoom + pad),
+                                                  topRadius: spec.expandedTopRadius, bottomRadius: T.stripRadius),
+                                 cards: cards, waveform: CGPoint(x: 0, y: notch.height / 2),
+                                 stackHit: nil, close: nil, rows: aspects.isEmpty ? 0 : 1)
+        layout.floats = true
         layout.viewport = CGRect(x: left, y: top0, width: visible, height: h)
         layout.scrollMax = scrollMax
         layout.scroll = offset

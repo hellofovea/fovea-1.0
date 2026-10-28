@@ -172,47 +172,48 @@ package enum OnboardingSmoke {
         model.jump(to: .makeItYours); await settle(0.4)
         check("Make it yours opens with nothing at the notch", island.probeState == "silent", island.probeState)
         check("…and the board doesn't open from the notch yet", !model.allowsBoard())
-        model.setAura(.ocean); await settle(0.4)
-        check("touching a light pulls the notch down, glowing", island.probeState == "v2Voice", island.probeState)
-        await shot("make-it-yours-ocean")
-        // Oct 23, Ryan: a look pulls the board down; after it the light picked came back never, and
-        // every light touched after that showed nothing.
+        // Oct 27, Ryan: the accent and the glass light or dark, nothing else of the notch's; a look
+        // pulls the board down a moment.
+        // Oct 27, Ryan: attached or floating (the glass is dark, always).
         model.setNotchPanels(.floating); await settle(0.4)
-        check("a look chosen pulls the board down, in that look", island.probeState == "v2Board" && run.prefs.panels == .floating,
+        check("panels chosen pull the board down, floating", island.probeState == "v2Board" && run.prefs.panels == .floating,
               island.probeState)
         await shot("make-it-yours-floating")
-        _ = await until(OT.Motion.lookShown + 1) { island.probeState == "v2Voice" }
-        check("…then the light picked comes back", island.probeState == "v2Voice", island.probeState)
-        model.setAura(.sunset); await settle(0.4)
-        check("…and the next light shows at once, in its colors", island.probeState == "v2Voice" && run.prefs.glowPalette == .sunset,
-              island.probeState)
-        await shot("make-it-yours-sunset")
+        _ = await until(OT.Motion.lookShown + 1) { island.probeState == "silent" }
+        check("…then the notch goes back up", island.probeState == "silent", island.probeState)
+        // Oct 27, Ryan: the app's own light or dark, too.
+        model.setAppAppearance(.dark); await settle(0.2)
+        check("the app's own appearance chosen here", run.prefs.windowAppearance == .dark, "\(run.prefs.windowAppearance)")
+        model.setAppAppearance(.light)
+        // Oct 27, Ryan: "actually add the light version back."
         model.setNotchAppearance(.light); await settle(0.4)
-        check("the glass chosen pulls the board down", island.probeState == "v2Board", island.probeState)
+        check("the glass chosen, light: the board pulled down, in light glass", island.probeState == "v2Board"
+              && run.prefs.notchAppearance == .light && !model.boardDark, island.probeState)
         await shot("make-it-yours-light")
-        model.setNotchDensity(.compact); await settle(0.4)
-        await shot("make-it-yours-compact")
+        model.setNotchAppearance(.dark)
+        // Oct 28, Ryan: "when user is choosing accent in onboarding, they should see this notch input
+        // bar to demonstrate the accent color. if they choose multicolor, the hue in the attachment
+        // should be the color."
         model.setAccent(.orange); await settle(0.4)
-        check("the accent too: the board, its buttons in it (Oct 23, Ryan)", island.probeState == "v2Board" && run.prefs.accent == .orange,
-              island.probeState)
-        model.setNotchAppearance(.dark); model.setNotchPanels(.attached); model.setNotchDensity(.spacious); model.setAccent(.multicolor)
-        model.setAuraHue(0.3); await settle(2.0)
-        check("…and it keeps glowing while the light is picked", island.probeState == "v2Voice", island.probeState)
-        // Oct 18, Ryan: the eight palettes are fixed; only Customize has a hue and a drift.
-        model.setAuraHue(120)
-        check("a palette keeps its own colors whatever the hue says", model.personal.drawnHue == 0 && run.prefs.drawnGlowHue == 0)
-        model.setAura(.custom)
-        check("…Customize, the ninth, is drawn at the hue set", Personalization.tiles.count == 9 && model.personal.drawnHue == 120
-              && run.prefs.drawnGlowHue == 120, "\(model.personal.drawnHue)")
-        await shot("make-it-yours-customize")
+        check("the accent: the listening bar at the notch, its aurora in the accent, one hue",
+              island.probeState == "v2Voice" && island.probeAurora == (true, 1) && run.prefs.accent == .orange,
+              "\(island.probeState) \(island.probeAurora)")
+        await shot("make-it-yours-accent")
+        model.setAccent(.multicolor); await settle(0.4)
+        check("…Multicolor: the Colorful palette's hues", island.probeAurora.shows && island.probeAurora.hues > 1,
+              "\(island.probeAurora)")
+        _ = await until(OT.Motion.lookShown + 1) { island.probeState == "silent" }
+        check("…then the notch goes back up", island.probeState == "silent", island.probeState)
+        model.setNotchPanels(.attached)
         model.jump(to: .agents); await settle(0.4)
         check("leaving Make it yours puts the notch back", island.probeState == "silent", island.probeState)
-        // Come back to, a light shows again.
+        // Come back to with Back, a look shows the board again.
         model.jump(to: .permissions); await settle(0.3)
         model.goBack(); await settle(0.4)
-        model.setAura(.ice); await settle(0.4)
-        check("Make it yours come back to with Back: a light shows again", model.step == .makeItYours && island.probeState == "v2Voice",
+        model.setNotchPanels(.floating); await settle(0.4)
+        check("Make it yours come back to with Back: a look shows the board again", model.step == .makeItYours && island.probeState == "v2Board",
               "\(model.step) \(island.probeState)")
+        model.setNotchPanels(.attached)
         model.jump(to: .agents); await settle(0.4)
 
         // The weekly update: Do it for me stages the request on Choose chat; Return sends it.
@@ -267,10 +268,17 @@ package enum OnboardingSmoke {
         check("opened: the bar asks to drag it out of the notch", model.waitingBeat == .pulledOut
               && model.instruction == L("Drag it down, out of the notch.") && model.skipLabel == Copy.doItForMe,
               "\(String(describing: model.waitingBeat)) \(model.instruction ?? "nil")")
+        // Oct 27, Ryan: a ring where to hold, an arrow to where it goes.
+        await settle(0.6)
+        check("…a ring round the grab bar and an arrow down: the pull-out guide", island.probeGuide == .pullOut,
+              "\(String(describing: island.probeGuide))")
         if let weekly { island.pullOut(weekly) }
         await settle(0.5)
         check("…pulled out, a window; the bar asks to drop it at the side", weekly.flatMap(island.detachedState) == "out"
               && model.waitingBeat == .tucked, "\(weekly.flatMap(island.detachedState) ?? "nil") \(String(describing: model.waitingBeat))")
+        await settle(0.6)
+        check("…the tuck guide: a ring round its top, an arrow to the side", island.probeGuide == .tuck,
+              "\(String(describing: island.probeGuide))")
         await shot("hover-pulled-out")
         if let weekly { island.tuck(weekly) }
         await settle(0.6)
@@ -389,6 +397,23 @@ package enum OnboardingSmoke {
             island.probePointer(onNotch: false)
         }
 
+        // Oct 27, Ryan: every chat you've had, from the board's search: the search opened, then a
+        // past chat opened from it.
+        model.jump(to: .pastChats); await settle(0.8)
+        check("past chats: a ring round the notch, the bar asks for the search", island.probeGuide == .search
+              && model.instruction == L("Move your pointer to the notch, then click the search."),
+              "\(String(describing: island.probeGuide)) \(model.instruction ?? "nil")")
+        island.probePointer(onNotch: false); await settle(0.2)
+        let searchBoard = await until(4) { island.probePointer(onNotch: true); return island.probeState == "v2Board" }
+        check("…the board opens with its search", searchBoard && island.probeSearchShown, island.probeState)
+        island.openChatSearch(); await settle(0.4)
+        check("…the search opened: the bar asks to open a chat", model.waitingBeat == .pastChatOpened
+              && model.instruction == L("Type a few letters of a chat, then click it to open it."), model.instruction ?? "nil")
+        island.openPastChat(); await settle(0.6)
+        check("…a past chat opened from it: the step is done", model.flow.isComplete && island.probeState == "v2Chat",
+              "\(model.flow.done.map(\.rawValue)) \(island.probeState)")
+        island.probePointer(onNotch: false); await settle(0.3)
+
         // Oct 17, Ryan: dictation takes things while you talk. The intro lists the keys; in the
         // feedback, something taken (⌘ and a drag, stood in for as the island would say it) lands
         // after the words; words first is missed, said, and tried again.
@@ -436,10 +461,12 @@ package enum OnboardingSmoke {
         model.pointerOver = .messages
         // The notch at rest first, as when the person turns to Messages (the board was left open).
         island.probePointer(onNotch: false)
-        island.rest(); await settle(0.4)
-        island.probe(.fn); await settle(0.3)
+        // Waited for, not timed: on a busy Mac the notch can still be closing at 0.4 s, and fn then
+        // goes to it instead.
+        island.rest(); _ = await until(3) { island.probeState == "silent" }
+        island.probe(.fn); _ = await until(2) { model.waitingBeat == .replyCancelled }
         check("fn at Messages: the keyboard asks for esc", model.waitingBeat == .replyCancelled && model.keyboardTargets == ["esc"],
-              "\(String(describing: model.waitingBeat)) \(model.keyboardTargets)")
+              "\(island.probeState) \(String(describing: model.waitingBeat)) \(model.keyboardTargets)")
         island.probe(.escape); await settle(0.3)
         check("…esc throws it away; now ⌘Z, lit", island.probeState == "cancelled" && model.waitingBeat == .replyRestored
               && model.keyboardTargets == ["⌘", "Z"]

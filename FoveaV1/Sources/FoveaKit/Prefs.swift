@@ -25,7 +25,8 @@ public enum GlowPalette: String, CaseIterable, Identifiable, Codable, Sendable {
 }
 
 /// The notch's glass: light glass with ink words, or dark glass with white words. The person's
-/// choice (Oct 9), not the Mac's appearance; only the hardware notch stays black.
+/// choice (Oct 9), not the Mac's appearance; only the hardware notch stays black. (Oct 27, Ryan,
+/// after taking it out: "actually add the light version back. in onboarding and settings.")
 public enum NotchAppearance: String, CaseIterable, Identifiable, Codable, Sendable {
     case light, dark
     public var id: String { rawValue }
@@ -38,14 +39,6 @@ public enum NativePanels: String, CaseIterable, Identifiable, Codable, Sendable 
     case attached, floating
     public var id: String { rawValue }
     public var title: String { L(key: self == .attached ? "Attached" : "Floating") }
-}
-
-/// How much room what opens below the notch takes: Compact, as the notch was drawn through Oct 8,
-/// or Spacious, after the Mac's own sizes and Fovea Captures (docs/island/SPACIOUS.md).
-public enum NotchDensity: String, CaseIterable, Identifiable, Codable, Sendable {
-    case compact, spacious
-    public var id: String { rawValue }
-    public var title: String { L(key: rawValue.capitalized) }
 }
 
 /// How the person signed up in the first run (Oct 15: Apple too, the dev team's review AC-01.1).
@@ -139,7 +132,6 @@ public struct FoveaPrefs: Codable, Equatable, Sendable {
     // The notch.
     public var notchAppearance: NotchAppearance = .dark
     public var panels: NativePanels = .attached
-    public var density: NotchDensity = .spacious
     public var hoverOpens = true
     public var hoverWait: HoverWait = .normal
     /// An answer that comes back while you're elsewhere opens by itself.
@@ -203,7 +195,7 @@ public struct FoveaPrefs: Codable, Equatable, Sendable {
     public var notchIsDefault: Bool {
         let d = FoveaPrefs()
         return glowPalette == d.glowPalette && glowHue == d.glowHue && glowSpread == d.glowSpread
-            && glowDrift == d.glowDrift && panels == d.panels && density == d.density && hoverOpens == d.hoverOpens
+            && glowDrift == d.glowDrift && panels == d.panels && hoverOpens == d.hoverOpens
             && hoverWait == d.hoverWait && showAnswers == d.showAnswers && reviewFirst == d.reviewFirst
     }
 
@@ -212,7 +204,7 @@ public struct FoveaPrefs: Codable, Equatable, Sendable {
     public mutating func restoreNotch() {
         let d = FoveaPrefs()
         glowPalette = d.glowPalette; glowHue = d.glowHue; glowSpread = d.glowSpread; glowDrift = d.glowDrift
-        panels = d.panels; density = d.density; hoverOpens = d.hoverOpens; hoverWait = d.hoverWait
+        panels = d.panels; hoverOpens = d.hoverOpens; hoverWait = d.hoverWait
         showAnswers = d.showAnswers; reviewFirst = d.reviewFirst
     }
 
@@ -227,7 +219,6 @@ public struct FoveaPrefs: Codable, Equatable, Sendable {
         glowDrift = (try? c.decode(Double.self, forKey: .glowDrift)) ?? d.glowDrift
         notchAppearance = (try? c.decode(NotchAppearance.self, forKey: .notchAppearance)) ?? d.notchAppearance
         panels = (try? c.decode(NativePanels.self, forKey: .panels)) ?? d.panels
-        density = (try? c.decode(NotchDensity.self, forKey: .density)) ?? d.density
         hoverOpens = (try? c.decode(Bool.self, forKey: .hoverOpens)) ?? d.hoverOpens
         hoverWait = (try? c.decode(HoverWait.self, forKey: .hoverWait)) ?? d.hoverWait
         showAnswers = (try? c.decode(Bool.self, forKey: .showAnswers)) ?? d.showAnswers

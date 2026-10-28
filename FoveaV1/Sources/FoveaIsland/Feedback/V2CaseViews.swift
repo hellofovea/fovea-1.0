@@ -79,7 +79,13 @@ struct V2BrowseSearchField: View {
         let C = WorkbenchTokens.Cases.self
         HStack(spacing: 5) {
             Image(systemName: "magnifyingglass").font(C.searchGlyph).foregroundStyle(WorkbenchTokens.V2.subColor)
-            TextField("Search chats", text: Binding(get: { model.cases.browseQuery }, set: { model.setBrowseQuery($0) }))
+            Group {
+                if model.offscreenRender {
+                    FieldStandIn(prompt: L("Search chats"), text: model.cases.browseQuery)
+                } else {
+                    TextField("Search chats", text: Binding(get: { model.cases.browseQuery }, set: { model.setBrowseQuery($0) }))
+                }
+            }
                 .textFieldStyle(.plain)
                 .font(C.searchFont)
                 .foregroundStyle(WorkbenchTokens.V2.titleColor)
@@ -138,7 +144,7 @@ struct V2BrowseMoreLabel: View {
         let V = WorkbenchTokens.V2.self
         HStack(spacing: 10) {
             Image(systemName: "ellipsis").font(V.browseGlyph).foregroundStyle(V.subColor).frame(width: 14)
-            Text("Load More").font(V.browseFont).foregroundStyle(V.titleColor)
+            Text("Show more").font(V.browseFont).foregroundStyle(V.titleColor)
             Text("\(count) more").font(V.reasonFont).foregroundStyle(V.subColor).monospacedDigit()
             Spacer()
         }
@@ -245,8 +251,9 @@ extension WorkbenchModel {
     var v2ModelNotes: [String] {
         var notes: [String] = []
         if cases.modelsLoad == .loaded {
+            // Oct 27: a model that can't be picked says why in its menu item; the note is for the
+            // one chosen elsewhere, which the pill no longer shows.
             if let carried = v2CarriedModel { notes.append(L("\(carried.name): \(carried.reason)")) }
-            for option in v2ModelOptions { if let why = v2ModelUnavailable(option) { notes.append(L("\(option.name): \(why)")) } }
         }
         if let locked = cases.approvalLocked { notes.append(locked) }
         return notes

@@ -12,7 +12,7 @@ final class OnboardingCoreTests: XCTestCase {
         XCTAssertEqual(Step.run.first, .name, "Fovea 1.0 (Oct 9): the run opens on the name, then the email, then hello")
         XCTAssertEqual(Array(Step.run.prefix(3)), [.name, .signIn, .hello])
         XCTAssertEqual(Step.run.last, .home)
-        XCTAssertEqual(Step.run.count, 16, "Oct 23, Ryan: the run keeps its steps; More to try is outside it")
+        XCTAssertEqual(Step.run.count, 17, "Oct 27, Ryan: past chats from the board's search joins the run; More to try is outside it")
         XCTAssertTrue(Step.allCases.filter(\.isMoreToTry).allSatisfy { $0.next == nil && $0.previous == nil && !Step.run.contains($0) })
     }
 
@@ -46,7 +46,6 @@ final class OnboardingCoreTests: XCTestCase {
         XCTAssertEqual(AuraPalette.templates.count, 8)
         XCTAssertFalse(AuraPalette.templates.contains(.custom))
         XCTAssertEqual(Personalization.tiles, AuraPalette.templates + [.custom])
-        XCTAssertEqual(Copy.customizeAura, "Customize")
     }
 
     /// Oct 18, Ryan: "changing the hue should not change the color scheme provided". A palette is
@@ -535,7 +534,13 @@ final class OnboardingCoreTests: XCTestCase {
         later.record(.followKey)
         later.record(.followAnswer)
         later.record(.expanded)
+        // Oct 27, Ryan: then every chat you've had, from the board's search.
+        XCTAssertEqual(later.advance(), .pastChats)
+        XCTAssertEqual(Step.pastChats.beats, [[.searchOpened], [.pastChatOpened]])
+        later.record(.searchOpened)
+        later.record(.pastChatOpened)
         XCTAssertEqual(later.advance(), .dictationIntro)
+        later.jump(to: .followUp)
         XCTAssertEqual(later.back(), .packList, "asking more needs its session: the packing list starts over")
         XCTAssertEqual(later.done, [])
     }

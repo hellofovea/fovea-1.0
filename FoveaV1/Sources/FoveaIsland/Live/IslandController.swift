@@ -9,7 +9,7 @@ import FoveaLook
 
 // The island's window and its life: one full-screen transparent panel on the screen with the
 // notch, the Workbench's island in it in the Native design (Liquid Glass, only the notch black)
-// with the Badges board, at Spacious density. The person's choices (prefs.json) set its glass,
+// with the Badges board, at its one size, Compact. The person's choices (prefs.json) set its glass,
 // light or dark, its panels, attached or floating, its accent and its glow, and it changes the
 // moment they do. Clicks go through it everywhere but where it draws.
 
@@ -47,11 +47,9 @@ package final class IslandController {
         lastPrefs = prefs.prefs
         model.live = live
         model.voiceGlow.liveLevel = { [weak live] in live?.level ?? 0 }
-        // The decided design: Native, Spacious, the Badges board, the desktop as it is.
+        // The decided design: Native, Compact, the one board (Oct 27), the desktop as it is.
         model.screenContent = .desktop
         model.design = .native
-        model.boardStyle = .badges
-        model.petAtRest = false
         model.display = Screens.metrics(for: screen)
         // Oct 24, Ryan: the search and the pinned chats on the board, the pins kept in the prefs
         // (not a staged state's).
@@ -258,7 +256,7 @@ package final class IslandController {
         var rects: [CGRect] = []
         let w = model.display.frame.width
         if model.notchState != .silent {
-            let size = (model.notchState == .v2Board ? model.v2BoardLayout.hoverSize : nil) ?? model.stackLayout.outline.size
+            let size = model.stackLayout.outline.size
             rects.append(CGRect(x: (w - size.width) / 2 - 8, y: 0, width: size.width + 16, height: size.height + 8))
         }
         return rects
@@ -449,7 +447,6 @@ package final class IslandController {
         model.liveScheme = p.notchAppearance.colorScheme
         panel?.appearance = p.notchAppearance.nsAppearance
         model.nativePanels = p.panels
-        model.density = PanelDensity(rawValue: p.density.rawValue) ?? .spacious
         model.accent = p.accent
         model.glowPalette = p.glowPalette
         // Oct 18, Ryan: "changing the hue should not change the color scheme provided": a palette
@@ -466,12 +463,10 @@ package final class IslandController {
         // Oct 15 review, ST-03.1: a shortcut recorded (or cleared) works at once.
         updateShortcuts(p)
         guard preview, autoPreview, model.notchState == .silent || model.previewing else { return }
-        // A change that draws no differently (the hue under a palette) shows nothing.
-        let glowChanged = before.glowPalette != p.glowPalette || before.drawnGlowHue != p.drawnGlowHue
-            || before.drawnGlowSpread != p.drawnGlowSpread || before.drawnGlowDrift != p.drawnGlowDrift
+        // Oct 27: a look shows the board. Oct 28, Ryan: the accent shows the listening bar, its
+        // aurora in the accent ("when user is choosing accent … they should see this notch input bar").
         let lookChanged = before.notchAppearance != p.notchAppearance || before.panels != p.panels
-            || before.density != p.density || before.accent != p.accent
-        if glowChanged { showPreview(.aura) } else if lookChanged { showPreview(.panel) }
+        if before.accent != p.accent { showPreview(.aura) } else if lookChanged { showPreview(.panel) }
     }
 
     /// The smoke run changes the prefs as Settings would.
@@ -482,8 +477,8 @@ package final class IslandController {
 
     package enum Preview { case aura, panel }
 
-    /// The notch shows the choice a moment: the Dispatch bar with its glow, or a sample of the
-    /// board (so Attached and Floating can be seen), then rests. No microphone.
+    /// The notch shows the choice a moment: the listening bar with its aurora (the accent), or a
+    /// sample of the board (so Attached and Floating can be seen), then rests. No microphone.
     package func showPreview(_ kind: Preview, seconds: Double = 4) {
         previewTask?.cancel()
         model.showPreview(kind == .aura ? .aura : .panel)
@@ -510,6 +505,9 @@ package final class IslandController {
         model.highlights = []
         model.v2Size = .usual
         model.chatPickerOpen = false
+        model.fileDropTargeted = false
+        model.fileDragNear = false
+        model.fileDropCount = 1
         apply(prefs.prefs, preview: false)
         model.demoSamples = true
         let parts = name.split(separator: ":").map(String.init)
@@ -570,21 +568,6 @@ package final class IslandController {
                 // was taken, and its card.
                 model.markText(scene.text, rects: scene.lines)
             }
-        // The Dispatch bar's glow alone, in a palette (Settings › Notch).
-        case "glow":
-            if let palette = option.flatMap(GlowPalette.init(rawValue:)) {
-                // Oct 18, Ryan: a palette as it is, whatever hue the person's Custom has.
-                var staged = prefs.prefs
-                staged.glowPalette = palette
-                model.glowPalette = palette
-                model.glowHue = staged.drawnGlowHue
-                model.glowSpread = staged.drawnGlowSpread
-                model.glowDriftAmount = staged.drawnGlowDrift
-                model.glowDrift = staged.drawnGlowDrift > 0.001
-            }
-            if palette(option) == .custom { model.glowHue = 150; model.glowSpread = 60 }
-            // A steady voice, as Settings' preview draws it: no microphone runs in a staged state.
-            showPreview(.aura, seconds: 3600)
         // #4: the last minute of a ten-minute bar, and its last seconds.
         case "countdown":
             model.stageCountdown(option == "lastSeconds" ? .lastSeconds : .lastMinute)
@@ -597,13 +580,20 @@ package final class IslandController {
             case "browse":
                 model.stageV2(.send)
                 model.toggleV2Browse()
-                if let row = model.v2BrowseRows.first { model.pickV2Browse(row) }
             default: model.stageV2(.send)
             }
         // #19: the review off, the chat, model and effort a click away.
         case "route":
             model.feedbackRouteOpen = option == "open"
             model.stageSkipReview()
+        // Oct 26, Ryan: a session popping up by itself, `alert:needsYou|done|failed`.
+        case "alert": model.stageV2Alert(option)
+        // Oct 27: files dragged over the listening bar, `drop:<how many>`.
+        case "drop":
+            model.notchMode = .voiceFlow
+            model.fileDropCount = Int(option ?? "1") ?? 1
+            model.fileDragNear = true
+            model.fileDropTargeted = true
         case "v2Board":
             model.stageV2(.board)
             if option == "end" { model.v2ScrollTarget = "t-docs" }
@@ -685,8 +675,6 @@ package final class IslandController {
         updateClickThrough()
     }
 
-    private func palette(_ option: String?) -> GlowPalette? { option.flatMap(GlowPalette.init(rawValue:)) }
-
     /// Every state `stage` knows, in the order a design review reads them.
     package static var stageNames: [String] {
         var names = ["voiceFlow", "capture", "stack:1", "stack:3", "stack:5:open", "stack:3:peek", "stack:5:hover",
@@ -694,13 +682,13 @@ package final class IslandController {
                      "countdown:lastMinute", "countdown:lastSeconds", "transcribing", "cancelled", "noSpeech",
                      "pasteNotFound", "pasteNotFound:expanded"]
         names += VoiceError.allCases.map { "error:\($0.rawValue)" }
-        names += GlowPalette.allCases.map { "glow:\($0.rawValue)" }
+        names += ["alert:needsYou", "alert:done", "alert:failed"]
         names += ["v2Voice", "v2Transcribing", "v2Send", "v2Send:mixed", "v2Send:model", "v2Send:browse", "route",
                   "route:open", "titles", "v2Board", "v2Board:end", "v2Board:open", "hello", "steps:board"]
         names += ["v2Chat"] + V2Request.allCases.map { "v2Chat:\($0.rawValue)" }
         names += ["v2Chat:working", "v2Chat:steps", "v2Chat:expanded", "steps:session", "reanswer:working",
                   "reanswer:done", "queue:queued", "queue:paused", "asksOver", "whole", "whole:work", "whole:long",
-                  "whole:outline", "whole:exit", "pulled", "pulled:tucked", "pulled:resized", "preview:aura", "preview:panel",
+                  "whole:outline", "whole:exit", "pulled", "pulled:tucked", "pulled:resized", "preview:panel",
                   "fullScreen:voiceFlow", "fullScreen:v2Board", "fullScreen:v2Chat"]
         // Oct 15 review, VF04/VF05/QA02.
         names += ["referents:5", "referents:12:open", "referents:4:other", "referents:5:send"]
@@ -719,6 +707,13 @@ package final class IslandController {
     /// `--design-shots`: what's on the screen under the island to take (a document's lines, a file,
     /// parts to capture), in the screen's top-down points. Without one, places on the bare desktop.
     package var shotScene: ShotScene?
+
+    /// Oct 27, Ryan: the first run's guide for what to do now (a ring where to hold, an arrow to
+    /// where it goes), or none.
+    package func setGuide(_ mark: IslandGuideMark?) {
+        guard model.guideMark != mark else { return }
+        withAnimation(WorkbenchTokens.Guide.appear) { model.guideMark = mark }
+    }
 
     package func endPreview() {
         previewTask?.cancel()
@@ -745,6 +740,8 @@ struct IslandLayerView: View {
                 V2DetachedLayer(model: model, chats: false)
                 MockIsland(model: model)
                 CaptureOverlay(model: model)
+                // Oct 27: the first run's guides, over everything and never in the way.
+                GuideLayer(model: model)
             }
             .opacity(model.hidingOwnSurfaces ? 0 : 1)
             .animation(nil, value: model.hidingOwnSurfaces)

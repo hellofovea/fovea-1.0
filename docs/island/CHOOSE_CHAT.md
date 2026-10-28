@@ -3,6 +3,58 @@
 Before a request goes, the island shows it: the words, the referents, and the chat Fovea's routing
 picked, with Send. The person may change the chat and never has to.
 
+## Oct 27, in 1.0: one list of chats, the words editable, and the model in two lines
+
+Ryan: "we can't see which folder a chat belongs to … if there are more than five, they must scroll
+up and down", and "there should be a much easier way to pick the reasoning effort. Currently, it
+takes three lines … we could apply this slider only to the thinking effort, while keeping the model
+and approval settings on a single line. Generally, simplify the interface."
+
+**Every chat is one list.**
+- A two-column version (folders beside chats) was built first. Then Ryan: "we cant access the folder
+  information and what chats are contained in the folder … we can only access all the chats, but
+  nothing about the folder."
+- So the browser (Choose chat's, and the route sheet's) shows a New chat, then the agent's chats,
+  the latest first, four at a time, then "Show more". That fits six rows without scrolling.
+- A search looks in the titles.
+- There's no level to go back from, so Esc closes it.
+- This replaces "An agent's icon shows its projects" and "A project shows its chats" below.
+
+**The words are editable on the notch** (Ryan, Oct 27):
+- A click puts the caret in Choose chat's words. The notch takes the keys without taking the app
+  in front.
+- Under the pointer a field shows round them, and while editing a field with the accent's ring.
+  Both sit outside the words' box, so the words don't move.
+- Return sends what's there, ⌥Return starts a new line, and Esc stops editing.
+- The words are what the session asks (`editV2Request`, `V2RequestEditor`).
+
+**The model sheet is two lines**, not three:
+- **The model and the approvals on one line**, each a pop-up button that opens the Mac's own menu:
+  Auto, then the models, with one that can't be picked dimmed and saying why ("GPT-5 Pro — Not in
+  your plan").
+- **How hard it thinks: a slider** over the model's efforts, least to most. The model's default
+  is ticked under its stop, and the value reads "High default". Picking the default goes back to
+  Auto, so it follows the model. A model with no efforts (Haiku) says so instead.
+- **Why not one slider for the model and the effort, as ChatGPT's:**
+  - Claude Code and Codex take them separately (`--model` and `--effort`, or
+    `model_reasoning_effort`), and Claude Code's own `/model` puts an effort slider under the model
+    list.
+  - Anthropic's guidance treats them as two different fixes: a larger model for a hard problem,
+    more effort when it skipped steps.
+  - The models' efforts differ (Haiku has none, GPT-5 Codex has Extra High), so one scale would
+    have to hide which model runs.
+- **Code:** `V2ChatBrowser` and `V2RequestEditor` (`MockDesktop/DispatchV2.swift`);
+  `V2ModelSheet`, `V2SheetMenu` and `V2EffortSlider` (`Feedback/V2FeedbackViews.swift`).
+
+**Claude Code's chats from the Claude app** (fovea-mac, Oct 27):
+- In the dev team's app, only the chat Fovea itself started (with `claude -p --session-id`) can be
+  picked.
+- Every Claude Code session read from `~/.claude/projects` is marked owner unknown, and the
+  default Available list keeps only sessions that can be picked. That hides the Claude app's chats
+  and the terminal's alike.
+- 1.0's chats are samples, so there is nothing to fix here. The cause and the fix are in
+  `docs/v1/V1.md`.
+
 Opening it shows a **rail**: the agents' icons, with the active agent's **projects** under them.
 A project opens to **all its chats**, scrolling, with a New chat first. The decisions so far:
 - The rail was chosen over Sections, Columns and Stacks (2026-09-30).
@@ -284,6 +336,31 @@ ask, and say it isn't sure. The New chat stays among the guesses.
 - Claude Code's `claude-cli://open` deep link only prefills a new session; it can't resume one.
 - Remote Control reaches a running session.
 - Fovea should re-check a chat's state just before sending, as fovea-mac's picker does.
+
+## The Sentence (Oct 27)
+
+Ryan: "the design is just mediocre. not bad, but really boring and not innovative at all … go online and do some research on some creative, artsy, but useful ways of structuring the prompt, attachment, chat choosing button, effort choosing button, and send button. i think the suggested chats can go into the choose chat button."
+
+**What was built.** Three designs went beside today's to compare: Sentence; Dial (how hard it thinks as a ring of stops round Send); and Ticket (a boarding pass, the chat and the effort on a stub at the right).
+
+**Ryan's choice:** "i want sentence. delete others." Choose chat is now the Sentence (`MockDesktop/ChooseChatSentence.swift`).
+
+- **Request:** set larger, at 17 pt regular, on up to three lines, still editable in place.
+- **Sentence:** a hairline, then one line that reads as a sentence: *[what was taken] To [chat] · thinking [hard]*, then **Send ↵** in the accent. Its words are the controls, bold with a dotted rule in the accent.
+  - **The chat** opens the suggestions as chips, then every chat by agent. The Suggested row under the panel is gone.
+  - **The effort** opens the model, the approvals and the effort slider.
+- **Effort words:** these say what you get rather than a level, because "Low" next to a model reads as low quality: briefly, it through, hard, harder, hardest. On Auto it reads **default** (Ryan: "dont have the default named \"as needed\", go with just \"default\"").
+- **Keys:** ↑↓ still step through the suggestions, ⌃ opens every chat, and Return sends. After Send, where it's going (or why it didn't go) takes a row under the sentence.
+- **Why it's useful:** you said a sentence, and it answers with one that can be read at a glance. The pills and the chip row are gone.
+- **References:** Apple Shortcuts' parameter summaries; mad-libs forms.
+
+**Considered, not built:**
+
+- **Chat tabs** on the panel's top edge: attached, that edge is the notch.
+- **An envelope and postmark.**
+- **A console strip** of labelled controls.
+- **A receipt** listing the payload.
+- **Dragging Send onto a chat.**
 
 ## Keys and motion
 

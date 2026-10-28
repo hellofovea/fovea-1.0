@@ -261,26 +261,29 @@ struct HighlightMarks: View {
 }
 
 /// Oct 17, Ryan: a file dragged over the notch: the bar (or Choose chat) lights as a well in the
-/// accent, and says what letting go does. Drawn only; the drop target is its own window.
+/// accent, and says what letting go does. Drawn only; the drop target is its own window. Oct 25:
+/// several files at once say how many.
 struct FileDropWell: View {
     let model: WorkbenchModel
 
     var body: some View {
         let F = WorkbenchTokens.Feedback.self
         let ink = model.accent.color
+        let count = model.fileDropCount
+        let words = count > 1 ? L("Drop to take all \(count)") : L("Drop to take it")
         let shape = RoundedRectangle(cornerRadius: F.dropWellRadius, style: .continuous)
         shape.fill(ink.opacity(F.dropWellFill))
             .overlay(shape.strokeBorder(ink, lineWidth: F.dropWellStroke))
             .overlay {
                 HStack(spacing: F.barNoticeSpacing) {
-                    Image(systemName: "doc.badge.plus").font(F.barNoticeGlyph)
-                    Text("Drop to take it").font(F.barNoticeTitle).lineLimit(1)
+                    Image(systemName: count > 1 ? "doc.on.doc" : "doc.badge.plus").font(F.barNoticeGlyph)
+                    Text(words).font(F.barNoticeTitle).lineLimit(1)
                 }
                 .foregroundStyle(F.noticeTitleColor)
             }
             .panelScheme()
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Drop to take it")
+            .accessibilityLabel(words)
     }
 }
 

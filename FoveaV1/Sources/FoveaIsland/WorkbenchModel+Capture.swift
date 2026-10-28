@@ -28,6 +28,8 @@ struct ReferentFlight: Identifiable {
     /// Top-leading placements in display points.
     let from: CardVector
     let to: CardVector
+    /// Oct 25, Ryan: several files dropped at once leave one after another; this one waits so long.
+    var delay: Duration = .zero
     var landed = false
 }
 
@@ -50,6 +52,13 @@ extension WorkbenchModel {
                                       expanded: stackExpanded, peek: stackHovered && !stackExpanded,
                                       inspecting: inspectedId.flatMap { id in live.firstIndex { $0.id == id } },
                                       scroll: stackScroll, metrics: metrics)
+        // Oct 27, Ryan: the bar is Wings, every state of it; none of the shapes below is one of them
+        // (Wings.swift).
+        if let pose = wingsPose {
+            let bar = StackLayout.wings(pose, state: notchState, aspects: live.map(\.aspect), shape: referentShape,
+                                        pasteCopied: pasteCopied, metrics: metrics)
+            return wingsOverPanel ? wingsOver(bar, opened: layout) : bar
+        }
         // Paste not found and Thinking are the island's own shapes.
         if notchState == .pasteNotFound { layout.outline = pasteLayout.outline }
         if notchState == .quickThinking { layout.outline = agentLayout.outline }
@@ -79,7 +88,7 @@ extension WorkbenchModel {
             layout.stackHit = layout.stackHit?.offsetBy(dx: delta, dy: 0)
             layout.outline.size.width = WorkbenchTokens.V2.width
             layout.outline.size.height += WorkbenchTokens.V2.gap + V2RouteSheet.height(model: self) + WorkbenchTokens.V2.margin
-                + WorkbenchTokens.Native.panelGap
+                + WorkbenchTokens.Native.contentDrop
             layout.outline.topRadius = spec.expandedTopRadius
             layout.outline.bottomRadius = WorkbenchTokens.V2.bottomRadius
         }
@@ -103,7 +112,11 @@ extension WorkbenchModel {
 
     /// The layout with the fading captures still in it: where they were, for their exit.
     var departingLayout: StackLayout {
-        StackLayout.make(state: notchState, aspects: referents.map(\.aspect), shape: referentShape,
+        if let pose = wingsPose {
+            return StackLayout.wings(pose, state: notchState, aspects: referents.map(\.aspect), shape: referentShape,
+                                     pasteCopied: pasteCopied, metrics: metrics)
+        }
+        return StackLayout.make(state: notchState, aspects: referents.map(\.aspect), shape: referentShape,
                          expanded: stackExpanded, peek: false, scroll: stackScroll, metrics: metrics)
     }
 
@@ -120,7 +133,7 @@ extension WorkbenchModel {
             case .voiceError: return .silent
             // The other flows' states are no row of Voiceflow's.
             case .dispatchVoice, .chooseChat, .chatsExpanded, .chatsAll, .agentPanel, .quickVoice, .quickThinking,
-                 .v2Voice, .v2Transcribing, .v2Send, .v2Board, .v2Chat: return .silent
+                 .v2Voice, .v2Transcribing, .v2Send, .v2Board, .v2Chat, .v2Alert: return .silent
             }
         }
         set {
@@ -267,6 +280,9 @@ extension WorkbenchModel {
         // Dispatch Version 2: Esc while listening drops the request; on Choose chat it folds
         // the browser (a project's chats, then the projects), then drops the request; on the
         // board or a result it closes it; beside the notch it rests the island.
+        case .v2Alert:
+            dismissV2Alert()
+            return true
         case .v2Voice, .v2Transcribing:
             if v2RouteOpen { reshapeV2(growing: false); withAnimation(WorkbenchTokens.V2.fold) { v2RouteOpen = false }; return true }
             // Asking more over a session: back to it as it was.
@@ -280,7 +296,6 @@ extension WorkbenchModel {
         case .v2Send:
             if v2Inspecting != nil { withAnimation(WorkbenchTokens.V2.inspectFade) { v2Inspecting = nil } }
             else if v2ModelSheet { reshapeV2(growing: false); withAnimation(WorkbenchTokens.V2.fold) { v2ModelSheet = false } }
-            else if v2Browsing, v2BrowseProject != nil { v2BrowseProject = nil }
             else if v2Browsing { v2Browsing = false }
             else { notchState = .silent }
             return true
@@ -334,7 +349,7 @@ extension WorkbenchModel {
     }
 
     func add(image: NSImage, from rect: CGRect, animated: Bool, kind: ReferentKind = .screenshot, source given: String? = nil,
-             otherDisplay: Bool = false, fileURL: URL? = nil) {
+             otherDisplay: Bool = false, fileURL: URL? = nil, delay: Duration = .zero) {
         let source = given ?? (screenContent == .fullScreenApp ? tabs[selectedTab].title : L("Desktop"))
         // Oct 15 review, VF05: taken on another display than the island's. Oct 17: a file's URL.
         let referent = CapturedReferent(id: UUID(), image: image, aspect: image.size.width / max(1, image.size.height),
@@ -350,10 +365,10 @@ extension WorkbenchModel {
         let from = CardVector(x: Double(rect.minX), y: Double(rect.minY), w: Double(rect.width), h: Double(rect.height),
                               r: Double(WorkbenchTokens.Capture.flightStartRadius), rot: 0, o: 1)
         landing.insert(referent.id)
-        flights.append(ReferentFlight(id: referent.id, image: image, from: from, to: to))
+        flights.append(ReferentFlight(id: referent.id, image: image, from: from, to: to, delay: delay))
         let id = referent.id
         Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(20))
+            try? await Task.sleep(for: .milliseconds(20) + delay)
             guard let self, let i = self.flights.firstIndex(where: { $0.id == id }) else { return }
             self.flights[i].landed = true
             try? await Task.sleep(for: WorkbenchTokens.Capture.flightDuration)

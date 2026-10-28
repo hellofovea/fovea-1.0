@@ -414,10 +414,9 @@ struct WhileDictating: View {
 }
 
 /// Make it yours: Fovea's accent, then, well apart from it (Oct 9: two choices, a real gap between),
-/// the light the notch shows while it listens for an agent: its palette, its hue, and how much it
-/// drifts, a dial from still to lively (Oct 8); then the notch itself (Oct 9): its glass light or
-/// dark, what opens below attached or floating, and the room it takes. Each shows at the real notch
-/// as it's chosen, and Settings › Notch starts with it.
+/// the notch: what opens below it attached or floating (Oct 27, Ryan: "the user will be able to pick
+/// attached/floating notch from the onboarding"; one size; its glass dark, always). Each
+/// shows at the real notch as it's chosen, and Settings › Notch starts with it.
 struct Personalize: View {
     let model: OnboardingModel
     @Environment(\.boardInk) private var ink
@@ -440,39 +439,16 @@ struct Personalize: View {
                         .padding(.leading, 4)
                 }
             }
-            // Two choices, well apart (Oct 9: a gap, not a line).
+            // Oct 27, Ryan: the light the notch made while it listened is gone ("abandon the orbs and
+            // aurora completely, i think these are too flashy"), and its choice with it.
             Spacer().frame(height: OT.Board.sectionGap)
+            // Oct 27, Ryan: "i dont know if the user will be able to choose the light/ dark mode of
+            // the app itself from onboarding. if not, implement it." Fovea's window, as Settings ›
+            // Appearance has it.
             VStack(alignment: .leading, spacing: 10) {
-                label(Copy.auraLabel)
-                // Oct 18, Ryan: "changing the hue should not change the color scheme provided, those
-                // all should be fixed. There should be a choice called Customize". The eight are
-                // drawn at their own colors whatever the sliders say; Customize is the ninth, and the
-                // hue and the drift show only while it's chosen.
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: OT.Board.auraColumns), spacing: 8) {
-                    ForEach(Personalization.tiles, id: \.self) { aura in
-                        Button(action: { model.setAura(aura) }) {
-                            AuraChip(aura: aura, hue: model.personal.auraHue, chosen: model.personal.aura == aura)
-                        }
-                        .buttonStyle(.press)
-                        .playTarget(.aura(aura), model)
-                    }
-                }
-                if model.personal.aura == .custom {
-                    VStack(spacing: 10) {
-                        HStack(spacing: 12) {
-                            Text("Hue").font(OT.Type_.guideBody).foregroundStyle(ink.secondary).frame(width: 40, alignment: .leading)
-                            HueSlider(value: Binding(get: { model.personal.auraHue }, set: { model.setAuraHue($0) }))
-                        }
-                        HStack(spacing: 12) {
-                            Text("Drift").font(OT.Type_.guideBody).foregroundStyle(ink.secondary).frame(width: 40, alignment: .leading)
-                            DriftSlider(value: Binding(get: { model.personal.auraDrift }, set: { model.setAuraDrift($0) }),
-                                        accent: model.accentColor)
-                                .playTarget(.drift, model)
-                        }
-                    }
-                    .padding(.top, 4)
-                    .transition(model.partTransition)
-                }
+                label(L("The app"))
+                NotchChoiceRow(title: L("Appearance"), options: [WindowAppearance.light, .dark, .system],
+                               chosen: model.appAppearance, name: \.choiceTitle) { model.setAppAppearance($0) }
             }
             Spacer().frame(height: OT.Board.sectionGap)
             VStack(alignment: .leading, spacing: 10) {
@@ -481,16 +457,23 @@ struct Personalize: View {
                                name: \.title) { model.setNotchAppearance($0) }
                 NotchChoiceRow(title: L("Panels"), options: NativePanels.allCases, chosen: model.notchPanels,
                                name: \.title) { model.setNotchPanels($0) }
-                NotchChoiceRow(title: L("Size"), options: NotchDensity.allCases, chosen: model.notchDensity,
-                               name: \.title) { model.setNotchDensity($0) }
             }
         }
-        // Oct 21, Ryan: the page making room as Customize opens or closes.
-        .animation(model.motion(OT.Motion.morph), value: model.personal.aura == .custom)
     }
 
     private func label(_ text: String) -> some View {
         Text(text).font(OT.Type_.guideEyebrow).foregroundStyle(ink.tertiary)
+    }
+}
+
+extension WindowAppearance {
+    /// The app's look, as the Mac names it.
+    var choiceTitle: String {
+        switch self {
+        case .light: return L("Light")
+        case .dark: return L("Dark")
+        case .system: return L("Auto")
+        }
     }
 }
 
@@ -561,106 +544,8 @@ struct Swatch: View {
     }
 }
 
-/// A palette to pick: its seven colors as dots, on black as the notch shows them.
-struct AuraChip: View {
-    let aura: AuraPalette
-    let hue: Double
-    let chosen: Bool
-    @Environment(\.boardInk) private var ink
 
-    var body: some View {
-        // Oct 18, Ryan: a palette at its own colors; Customize at the hue being set.
-        let look = (GlowChoice(rawValue: aura.rawValue) ?? .colorful).look(hue: aura == .custom ? hue : 0, spread: 120, drift: false)
-        let colors = VoiceGlowRenderer.swatches(look: look)
-        VStack(spacing: 6) {
-            HStack(spacing: 3) {
-                ForEach(Array([5, 3, 1, 0, 2, 4, 6].filter { $0 < colors.count }.enumerated()), id: \.offset) { _, i in
-                    Circle().fill(colors[i]).frame(width: 8, height: 8)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 26)
-            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(OT.Colors.auraChipBack))
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(ink.hairline))
-            Text(aura == .custom ? Copy.customizeAura : L(key: aura.title)).font(.system(size: 11, weight: chosen ? .semibold : .regular))
-                .foregroundStyle(chosen ? ink.primary : ink.tertiary)
-        }
-        .padding(4)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(chosen ? ink.secondary : .clear, lineWidth: 1.5))
-    }
-}
 
-/// The hue, on the color wheel laid flat (Settings › Notch's `SpectrumSlider`).
-struct HueSlider: View {
-    @Binding var value: Double
-
-    var body: some View {
-        GeometryReader { geo in
-            let thumb: CGFloat = 16
-            let travel = max(1, geo.size.width - thumb)
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(LinearGradient(colors: stride(from: 0.0, through: 360, by: 30).map { Color(hue: $0 / 360, saturation: 0.8, brightness: 1) },
-                                         startPoint: .leading, endPoint: .trailing))
-                    .frame(height: 10)
-                    .padding(.horizontal, thumb / 2 - 5)
-                Circle()
-                    .fill(Color(hue: value / 360, saturation: 0.8, brightness: 1))
-                    .overlay(Circle().strokeBorder(OT.Colors.knobEdge, lineWidth: 2))
-                    .shadow(color: OT.Colors.knobShadow, radius: 1, y: 0.5)
-                    .frame(width: thumb, height: thumb)
-                    .offset(x: travel * CGFloat(value / 360))
-            }
-            .frame(maxHeight: .infinity)
-            .contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance: 0).onChanged { drag in
-                value = Double(max(0, min(1, (drag.location.x - thumb / 2) / travel))) * 360
-            })
-        }
-        .frame(height: 20)
-    }
-}
-
-/// How much the colors wander: a dial from still to lively, not a switch (Oct 8). The track fills
-/// in the accent as far as it's turned.
-struct DriftSlider: View {
-    @Binding var value: Double
-    let accent: Color
-    @Environment(\.boardInk) private var ink
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Text("Still").font(.system(size: 11)).foregroundStyle(ink.tertiary)
-            GeometryReader { geo in
-                let thumb: CGFloat = 16
-                let travel = max(1, geo.size.width - thumb)
-                ZStack(alignment: .leading) {
-                    Capsule().fill(ink.fill).frame(height: 6)
-                    Capsule().fill(accent).frame(width: thumb / 2 + travel * value, height: 6)
-                    Circle()
-                        .fill(OT.Colors.knobEdge)
-                        .overlay(Circle().strokeBorder(ink.hairline))
-                        .shadow(color: OT.Colors.knobShadow, radius: 1, y: 0.5)
-                        .frame(width: thumb, height: thumb)
-                        .offset(x: travel * value)
-                }
-                .frame(maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .gesture(DragGesture(minimumDistance: 0).onChanged { drag in
-                    value = Double(max(0, min(1, (drag.location.x - thumb / 2) / travel)))
-                })
-            }
-            .frame(height: 20)
-            Text("Lively").font(.system(size: 11)).foregroundStyle(ink.tertiary)
-        }
-        .accessibilityElement()
-        .accessibilityLabel("Drift")
-        .accessibilityValue("\(Int(value * 100)) percent")
-        .accessibilityAdjustableAction { direction in
-            value = max(0, min(1, value + (direction == .increment ? 0.1 : -0.1)))
-        }
-    }
-}
 
 /// The two lists (Oct 9: granted together, named and nothing more), each with its own button:
 /// Fovea asks macOS (which adds it to the list), and System Settings opens at that list, where

@@ -89,8 +89,7 @@ package enum OnboardingShots {
         page(.makeItYours)
         await shoot("07-make-it-yours")
         model.setAccent(.purple)
-        model.setAura(.ocean)
-        await shoot("08-make-it-yours-light", after: 1.6)
+        await shoot("08-make-it-yours-accent", after: 1.6)
 
         // Turn on: the permissions, the microphone; the agents.
         page(.permissions)

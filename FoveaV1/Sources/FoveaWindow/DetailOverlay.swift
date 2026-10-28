@@ -147,7 +147,7 @@ private struct ExpandingCard: View, Animatable {
                 palette.detailSurface
 
                 if let source, cardFace > 0.001 {
-                    CardFace(match: sourceMatch, side: source.width, headerWidth: f.width)
+                    CardFace(match: sourceMatch, side: source.width, height: source.height, headerWidth: f.width)
                         .opacity(Double(cardFace))
                         .allowsHitTesting(false)
                 }
@@ -300,7 +300,7 @@ struct DetailBody: View {
                 // Held to about 75 characters a line, however wide the card.
                 InlineText.make(c, hits: match.ranges[.text] ?? [], size: T.Text.detailBody, palette: palette, hitStyle: model.hitStyle,
                                 thumbnails: true)
-                    .font(.system(size: T.Text.detailBody))
+                    .font(T.Look.wordsInGaramond(c.text) ? Garamond.text(T.Text.detailBody * T.Look.garamondWordsScale) : .system(size: T.Text.detailBody))
                     .lineSpacing(5)
                     .textSelection(.enabled)
                     .frame(maxWidth: min(inner, T.Layout.detailMeasure), alignment: .leading)

@@ -234,50 +234,6 @@ enum LassoRenderer {
     }
 }
 
-/// What is drawn from the island's outline as it is on each frame, inside its clip: the voice
-/// glow for Dispatch's and Quick actions' voice bars.
-struct AgentEdgeLayer: View {
-    let model: WorkbenchModel
-    let edge: IslandEdge
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View {
-        let state = model.notchState
-        let voice = state == .dispatchVoice || state == .quickVoice || state == .v2Voice
-        // Dispatch Version 2 transcribing: the same aura is its progress bar, filling the edge
-        // leading to trailing.
-        let transcribing = state == .v2Transcribing
-        let shown = voice || transcribing
-        let still = model.snapshotMode || reduceMotion
-        TimelineView(.animation(minimumInterval: 1 / WorkbenchTokens.VoiceGlow.frameRate, paused: !shown || still)) { context in
-            Canvas { ctx, size in
-                if shown {
-                    let V = WorkbenchTokens.VoiceGlow.self
-                    let frame = still ? model.voiceGlow.still(at: V.stillTime, geometry: V.wide, reduceMotion: reduceMotion)
-                        : model.voiceGlow.frame(at: context.date, geometry: V.wide, reduceMotion: reduceMotion)
-                    if transcribing {
-                        let p = model.v2TranscribeProgress(at: context.date)
-                        ctx.clip(to: Path(CGRect(x: 0, y: 0, width: size.width * CGFloat(p), height: size.height)))
-                    }
-                    // On Native's light glass the colors are laid over white, not lit on black:
-                    // stronger, so the aura still reads as itself.
-                    var look = model.glowLook
-                    if WorkbenchTokens.isNative, scheme == .light { look.opacity *= V.lightGlassBoost }
-                    VoiceGlowRenderer.draw(in: &ctx, edge: edge, frame: frame, look: look)
-                }
-            }
-        }
-        .frame(width: edge.size.width, height: edge.size.height)
-        .opacity(shown ? 1 : 0)
-        .animation(shown ? WorkbenchTokens.Thinking.contentIn : WorkbenchTokens.Motion.contentOut, value: shown)
-        .allowsHitTesting(false)
-        .accessibilityElement()
-        .accessibilityLabel(voice ? "Listening" : (transcribing ? "Transcribing" : ""))
-        .accessibilityHidden(!shown)
-    }
-}
-
 /// A click's ring where the agent's pointer pressed: it opens and fades.
 struct AgentRippleView: View {
     let ripple: AgentRipple

@@ -56,7 +56,7 @@ extension WorkbenchTokens.Paste {
 
 extension WorkbenchTokens.Feedback {
     /// NH-04: a notice whose action is a long label ("Choose Microphone…") is this much wider.
-    static var noticeWideExtra: CGFloat { WorkbenchTokens.pick(64, 72) }
+    static var noticeWideExtra: CGFloat { WorkbenchTokens.size(64) }
 }
 
 extension WorkbenchTokens.FeedbackV2 {
@@ -91,7 +91,30 @@ extension WorkbenchTokens.Capture {
     // (the notch is small to aim at); it stays a moment after the mouse is let go so the drop lands.
     static let dropSlack: CGFloat = 28
     static let dropLinger: Duration = .milliseconds(450)
+    // Oct 27, Ryan: "the real notch blocks a part (middle) of the notch, so users cant really see
+    // … when notch detects user is dragging a file towards the notch, it opens further down for the
+    // user to see. but make sure do not have any design covered up by the real notch." A drag this
+    // close to the notch opens the drop zone, floating under it: its size, the room round its
+    // well, the well's corner and dashes.
+    static let dropApproach: CGFloat = 160
+    static let dropZoneWidth: CGFloat = 300
+    static let dropZoneHeight: CGFloat = 58
+    static let dropZonePadding: CGFloat = 8
+    static let dropZoneRadius: CGFloat = 16
+    static let dropWellRadius: CGFloat = 9
+    static let dropWellStroke: CGFloat = 1.25
+    static let dropWellDash: [CGFloat] = [4, 3]
+    static let dropGlyph: CGFloat = 15
+    static var dropWellIdle: Color { WorkbenchTokens.ink(0.28) }
+    static let dropWellFill: Double = 0.14
     static let dragPollInterval: TimeInterval = 0.08
+    // Oct 25, Ryan: many files dropped at once. Each card leaves this long after the one before,
+    // the last within the spread however many there are; they wait in a pile, each a little
+    // down and right of the one before, up to the depth.
+    static let dropStagger: Duration = .milliseconds(70)
+    static let dropSpread: Duration = .milliseconds(560)
+    static let dropPileOffset: CGFloat = 5
+    static let dropPileDepth = 3
 }
 
 extension WorkbenchTokens.Feedback {

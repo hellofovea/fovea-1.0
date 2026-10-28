@@ -9,8 +9,6 @@ import CapturesCore
 /// run no longer draws one), heard through its events, and the lines it asks for under the notch.
 enum IslandPhase: Equatable {
     case rest
-    /// Make it yours: the Dispatch bar listening, in the chosen aura.
-    case auraPreview
     case voice(VoiceKind)
     case transcribing(VoiceKind)
     /// The request on the review card (Choose chat).
@@ -106,7 +104,7 @@ enum PracticeScreen: Equatable {
 
     static func `for`(_ step: Step) -> PracticeScreen {
         switch step {
-        case .weeklyUpdate, .hover, .packList, .followUp, .takeFew, .whileWorking: .page
+        case .weeklyUpdate, .hover, .packList, .followUp, .pastChats, .takeFew, .whileWorking: .page
         case .dictation, .nowhereToType: .dictation
         default: .empty
         }
@@ -181,7 +179,8 @@ final class OnboardingModel {
     /// The notch's look, as Make it yours sets it (Oct 9): the glass, the panels, the size.
     var notchAppearance: NotchAppearance = .dark
     var notchPanels: NativePanels = .attached
-    var notchDensity: NotchDensity = .spacious
+    /// Oct 27, Ryan: the app's own window, light, dark or as the Mac is.
+    var appAppearance: WindowAppearance = .light
     /// "Clear my screen" was pressed: the other apps are hidden until the end.
     var screenCleared = false
     /// The permissions Fovea has asked macOS for (its button pressed once).
@@ -575,7 +574,7 @@ final class OnboardingModel {
         if let prefs = host?.prefs {
             notchAppearance = prefs.notchAppearance
             notchPanels = prefs.panels
-            notchDensity = prefs.density
+            appAppearance = prefs.windowAppearance
             keys = KeyMap(prefs: prefs)
         }
         // A practice run again starts at its task: the agent's sign-in is checked here, not on the
@@ -813,6 +812,10 @@ final class OnboardingModel {
         case .hover:
             hoverForYou()
             return
+        // Oct 27, Ryan: the search opened for you, then a chat from it.
+        case .pastChats:
+            if flow.waitingFor?.contains(.searchOpened) == true { host?.openChatSearch() } else { host?.openPastChat() }
+            return
         case .packList where flow.done.contains(.send):
             // Oct 23, Ryan: sent, the way past is the edit allowed for you, then the practice
             // answer if the agent is slow; never the request put together again.
@@ -877,13 +880,8 @@ final class OnboardingModel {
         // page (they can change while the tour is put away).
         if let prefs = host?.prefs { keys = KeyMap(prefs: prefs) }
         readMotion()
-        // The notch pulled down for Make it yours goes back up when it's done; come back to, it
-        // waits for a light or a look to be touched again.
-        lightShown = false
-        if step != .makeItYours {
-            host?.previewAura(false)
-            if island == .auraPreview { island = .rest }
-        }
+        // The board pulled down for Make it yours goes back up when it's done.
+        if step != .makeItYours { host?.endPreview() }
         stopMicTest()
         stepStarted = Date()
         skipShown = step.skip == .now
@@ -946,6 +944,11 @@ final class OnboardingModel {
             } else {
                 say(L("Send the packing list first: press \(keys.spoken(.request))."), hold: false)
             }
+        case .pastChats:
+            // Oct 27, Ryan: every chat you've had, from the board's search. The follow-up's session
+            // put away first, so the pointer at the notch brings the board up.
+            host?.islandRest()
+            say(copy.caption, hold: false)
         case .dictationIntro, .dictation, .dictionary, .memory, .home:
             if step == .home { clearPracticeFiles() }
             say(copy.caption, hold: false)
@@ -1132,20 +1135,17 @@ final class OnboardingModel {
     func showIsland(_ phase: IslandPhase, _ animation: Animation) {
         animate(animation) { island = phase }
         guard let host else { return }
-        // Nothing at the notch before the teaching starts (Oct 9), nor on a page to read after it,
-        // but Make it yours, where the notch pulls down to show the light and the look as they're
-        // chosen. (The microphone test's level is on the bar.)
-        guard (notchTaught && !step.isReading) || (step == .makeItYours && phase == .auraPreview) else {
-            host.previewAura(false)
+        // Nothing at the notch before the teaching starts (Oct 9), nor on a page to read after it.
+        // (Make it yours shows a look's board itself: `previewPanel`. The microphone test's level is
+        // on the bar.)
+        guard notchTaught && !step.isReading else {
             if notchTaught, step.isReading, phase == .rest { host.islandRest() }
             return
         }
         switch phase {
         case .rest:
-            host.previewAura(false)
+            host.endPreview()
             host.islandRest()
-        case .auraPreview:
-            host.previewAura(true)
         case .voice(.dictation) where step == .microphone:
             host.listening(true)
         case .board:
@@ -1162,6 +1162,7 @@ final class OnboardingModel {
 
     /// The pages' glass and words: light or dark as the Mac is at the start, then as the person
     /// picks the notch's glass in Make it yours (Oct 9).
+    /// The board's ink: as the notch's glass, light or dark (Oct 9; Oct 27, back).
     var boardDark: Bool { notchAppearance == .dark }
 
     /// A word for the person, on the bar (Oct 9, evening: never under the notch). A step's own
@@ -1204,59 +1205,34 @@ final class OnboardingModel {
     func setAccent(_ accent: AccentName) {
         animate(OT.Motion.select) { flow.personal.accent = accent }
         host?.prefs.accent = accent
-        // The accent shows on the progress line at the foot of the page (Oct 10), and, Oct 23,
-        // Ryan, at the notch too: the board, its buttons and marks in it, as Settings shows it.
-        host?.previewPanel(thenLight: lightShown)
+        // The accent shows on the progress line at the foot of the page (Oct 10), and at the notch
+        // too. Oct 28, Ryan: "when user is choosing accent in onboarding, they should see this notch
+        // input bar to demonstrate the accent color": the listening bar, its aurora in the accent
+        // (Multicolor: the Colorful palette).
+        host?.previewBar()
         sound.cue(.tick)
     }
-    func setAura(_ aura: AuraPalette) {
-        animate(OT.Motion.select) { flow.personal.aura = aura }
-        host?.prefs.glowPalette = aura
-        showAura()
+
+    /// The notch's look: its panels attached or floating (Oct 27: one size, the glass dark). The
+    /// board shows at the notch, so the choice is seen.
+
+    func setAppAppearance(_ a: WindowAppearance) {
+        animate(OT.Motion.select) { appAppearance = a }
+        host?.prefs.windowAppearance = a
         sound.cue(.tick)
     }
-    func setAuraHue(_ hue: Double) {
-        flow.personal.auraHue = hue
-        host?.prefs.glowHue = hue
-        showAura()
-    }
-    func setAuraDrift(_ drift: Double) {
-        flow.personal.auraDrift = drift
-        host?.prefs.glowDrift = drift
-        showAura()
-    }
-
-    /// The light being picked: the notch pulls down and glows, and keeps glowing while it's on
-    /// this page, so the choice can be seen (Oct 9). Not before a light is touched. Oct 23, Ryan:
-    /// every time, whatever the notch showed last (the board for a look, or nothing): it was asked
-    /// only while the run thought the notch was resting, and after a look's board it never was.
-    private func showAura() {
-        guard step == .makeItYours else { return }
-        lightShown = true
-        showIsland(.auraPreview, OT.Motion.barOpen)
-    }
-    /// A light was touched on this visit to Make it yours: the notch glows in it again once a
-    /// look's board has been seen.
-    var lightShown = false
-
-    /// The notch's look (Oct 9): the glass light or dark, its panels attached or floating, the
-    /// room it takes. The board shows at the notch, so the choice is seen.
+    /// The notch's glass, light or dark (Oct 27, Ryan: "actually add the light version back").
     func setNotchAppearance(_ a: NotchAppearance) {
         animate(OT.Motion.select) { notchAppearance = a }
         host?.prefs.notchAppearance = a
-        host?.previewPanel(thenLight: lightShown)
+        host?.previewPanel()
         sound.cue(.tick)
     }
+
     func setNotchPanels(_ p: NativePanels) {
         animate(OT.Motion.select) { notchPanels = p }
         host?.prefs.panels = p
-        host?.previewPanel(thenLight: lightShown)
-        sound.cue(.tick)
-    }
-    func setNotchDensity(_ d: NotchDensity) {
-        animate(OT.Motion.select) { notchDensity = d }
-        host?.prefs.density = d
-        host?.previewPanel(thenLight: lightShown)
+        host?.previewPanel()
         sound.cue(.tick)
     }
 

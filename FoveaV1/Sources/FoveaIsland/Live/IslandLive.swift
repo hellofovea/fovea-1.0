@@ -402,6 +402,8 @@ package enum IslandEvent: Equatable {
     case queued, stopped(String), answeredAgain(String)
     /// Words held at the notch with nowhere to paste them, and copied from there.
     case heldWords, heldCopied
+    /// Oct 27, Ryan: the board's search opened, and a past chat opened from it.
+    case chatSearchOpened, pastChatOpened
 
     package enum TakenKind: Equatable { case region, wholeScreen, passage, file }
 }
@@ -436,8 +438,12 @@ package protocol IslandDirector: AnyObject {
     /// Oct 23, Ryan: Answer again on one of its sessions: its agent answers the last request again
     /// (returns false to leave it to the script).
     func rerunSession(_ id: String) -> Bool
+    /// The board shows its search (and the pinned chats) now.
+    func allowsSearch() -> Bool
 }
 
 package extension IslandDirector {
     func rerunSession(_ id: String) -> Bool { false }
+    /// Oct 27, Ryan: the board's search and its chats, from the step that teaches them on.
+    func allowsSearch() -> Bool { false }
 }

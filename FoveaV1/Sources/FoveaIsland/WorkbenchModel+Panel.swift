@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import FoveaCore
 import FoveaKit
+import FoveaPlatform
 
 // Dispatch's Agent panel: the Agent tasks Fovea delivered, as the hover list shows them, each
 // readable at a glance (what it is doing, on what, how far, what changed) and controllable in
@@ -94,13 +95,6 @@ extension WorkbenchModel {
     /// before it can open again (AMENDMENTS).
     func panelPointer(_ point: CGPoint?) {
         let now = Date()
-        // Creatures look at the pointer and grow under it: where it is over the board.
-        if notchState == .v2Board, boardStyle == .creatures, let point {
-            let width = v2BoardLayout.outline.size.width
-            v2BoardPointer = CGPoint(x: point.x - (display.frame.width - width) / 2, y: point.y)
-        } else if v2BoardPointer != nil {
-            v2BoardPointer = nil
-        }
         if let point {
             panelMoves.append((now, point))
             panelMoves.removeAll { now.timeIntervalSince($0.time) > WorkbenchTokens.Panel.moveMemory }
@@ -153,18 +147,18 @@ extension WorkbenchModel {
             if was == .inside, panelDwell != nil { panelLeftNotch = now }
             if zone == .outside, notchState == .silent { panelArmed = true }
             if zone == .near {
-                if panelOpen || notchState == .v2Chat {
+                if leaveClosable {
                     panelExit?.cancel()
                     panelExit = nil
                 }
                 return
             }
-            guard hoverHolds else { return }
+            guard leaveCloses else { return }
             panelExit?.cancel()
             panelExit = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(P.exitGrace))
-                guard let self, !Task.isCancelled, self.panelZone == .outside, self.hoverHolds else { return }
-                if self.notchState == .v2Chat { self.notchState = .silent } else { self.closeAgentPanel() }
+                guard let self, !Task.isCancelled, self.panelZone == .outside, self.leaveCloses else { return }
+                self.closeOnLeave()
                 self.panelArmed = true
                 self.panelHoverClosed = Date()
             }
@@ -174,10 +168,42 @@ extension WorkbenchModel {
     /// What the hover holds open, and so closes when the pointer leaves: the board (unless the
     /// panel's radio pinned it, or Send is showing its new session), and a session opened from it
     /// (unless it is being pulled out of the notch).
-    var hoverHolds: Bool {
-        // Oct 24: the search open, it stays while the pointer is away.
-        if panelOpen { return !panelPinned && panelSentTask == nil && !chatPickerOpen }
-        return notchState == .v2Chat && v2ChatFromBoard && !v2BoardPinned && v2DragOut == nil
+    /// Oct 27, Ryan: "whenever the user's mouse moves away from the notch, the notch should
+    /// disappear". What's open closes once the pointer leaves it: the board (its search too), a
+    /// session, a pop-up, the captures' strip, the route's sheet. Never the listening bar or Choose
+    /// chat, which would lose the words.
+    var leaveClosable: Bool {
+        if panelOpen { return true }
+        switch notchState {
+        case .v2Chat, .v2Alert: return true
+        case .voiceFlow, .v2Voice: return stackExpanded || (notchState == .v2Voice && v2RouteOpen)
+        default: return false
+        }
+    }
+
+    /// …and not while a chat is being pulled out, one of the notch's menus is open, or words are
+    /// being typed into the notch (a follow-up, a search).
+    var leaveCloses: Bool {
+        guard leaveClosable, v2DragOut == nil, !SheetMenuPopUp.isOpen, !Self.typingInNotch else { return false }
+        return true
+    }
+
+    /// Words typed into a field of the notch's, not yet sent.
+    static var typingInNotch: Bool {
+        guard let window = NSApp.keyWindow, window is NotchPanel,
+              let field = window.firstResponder as? NSTextView else { return false }
+        return !field.string.isEmpty
+    }
+
+    /// What the pointer leaving puts away: the strip or the sheet (the bar listens on), or the rest.
+    func closeOnLeave() {
+        if stackExpanded { setExpanded(false); return }
+        if notchState == .v2Voice, v2RouteOpen { toggleModelSheet(); return }
+        switch notchState {
+        case .v2Chat: notchState = .silent
+        case .v2Alert: dismissV2Alert()
+        default: closeAgentPanel()
+        }
     }
 
     /// The real pointer moved (`PointerMonitor`): over the mock display, where it is in its points.
@@ -231,10 +257,8 @@ extension WorkbenchModel {
         let notchRect = CGRect(x: mid - notch.width / 2 - P.hoverReach, y: 0,
                                width: notch.width + 2 * P.hoverReach, height: notch.height + P.hoverReach)
         if notchRect.contains(point) { return .inside }
-        if petAtRestShown, petAtRestRect.insetBy(dx: -P.hoverReach / 2, dy: -P.hoverReach / 2).contains(point) { return .inside }
-        if panelOpen || notchState == .v2Chat {
-            // Capsules: the island stays the notch; the capsules under it are the board's room.
-            let size = (notchState == .v2Board ? v2BoardLayout.hoverSize : nil) ?? stackLayout.outline.size
+        if leaveClosable {
+            let size = stackLayout.outline.size
             let panel = CGRect(x: mid - size.width / 2, y: 0, width: size.width, height: size.height)
                 .insetBy(dx: -P.exitSlack, dy: 0)
             if panel.contains(point) || panel.offsetBy(dx: 0, dy: P.exitSlack).contains(point) { return .near }
