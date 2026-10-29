@@ -397,6 +397,8 @@ package final class OnboardingCoordinator: OnboardingHost {
         p.glowDrift = d.glowDrift
         p.panels = d.panels
         p.notchAppearance = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? .dark : .light
+        // Oct 28: the app's window goes with the notch's glass.
+        p.windowAppearance = p.notchAppearance == .dark ? .dark : .light
         if p != store.prefs { store.prefs = p }
     }
 

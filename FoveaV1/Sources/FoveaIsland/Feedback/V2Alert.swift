@@ -47,9 +47,12 @@ struct V2AlertLayout: Equatable {
 extension WorkbenchModel {
     var v2AlertLayout: V2AlertLayout { V2AlertLayout.make(metrics: metrics) }
 
-    /// A session needs you, or is done: it pops up, if the notch rests. `force`: staged.
+    /// A session needs you, or is done: its chat pops up, if the notch rests. `force`: staged.
+    /// Oct 28, Ryan: "when agents are done/need request from you, that chat should pop up on the
+    /// notch. design that for both onboarding and actual use": the session's own chat comes out (its
+    /// answer, or what it asks with Allow and Deny in place), in the first run too, not a row.
     func popV2Alert(_ id: String, force: Bool = false) {
-        guard force || (showAnswers && notchState == .silent && !previewing && !snapshotMode && live?.director == nil),
+        guard force || (showAnswers && notchState == .silent && !previewing && !snapshotMode),
               let task = v2Task(id) else { return }
         let kind: V2Alert.Kind
         switch task.state {
@@ -58,34 +61,40 @@ extension WorkbenchModel {
         case .failed: kind = .failed
         case .working: return
         }
-        if notchState == .v2Alert, v2Alert == V2Alert(id: id, kind: kind) { return }
-        v2Alert = V2Alert(id: id, kind: kind)
-        v2AlertHovered = false
-        v2Focus = id
-        notchState = .v2Alert
-        holdV2Alert()
+        if notchState == .v2Chat, v2Focus == id, v2Alert == V2Alert(id: id, kind: kind) { return }
+        showV2Chat(id, popped: true, poppedFor: V2Alert(id: id, kind: kind))
     }
 
-    /// Its time up, or answered a moment ago, it goes; the pointer on it holds it.
-    private func holdV2Alert() {
-        v2AlertClose?.cancel()
-        guard let alert = v2Alert, !snapshotMode else { return }
+    /// How long a chat that popped up stays (the pointer on it holds it): one done or failed long
+    /// enough to read; one that needs you longer, and, once answered there, a moment more.
+    func holdPoppedV2Chat(_ alert: V2Alert) {
+        v2ChatHold?.cancel()
+        guard !snapshotMode, !v2Pinned else { return }
         let A = WorkbenchTokens.Alert.self
-        v2AlertClose = Task { [weak self] in
-            let end = Date().addingTimeInterval(alert.kind == .done ? A.doneHold : A.needsYouHold)
+        v2ChatHold = Task { [weak self] in
+            let end = Date().addingTimeInterval(alert.kind == .needsYou ? A.needsYouHold : WorkbenchTokens.V2.chatHold)
             var answered: Date?
-            while let self, !Task.isCancelled, self.notchState == .v2Alert, self.v2Alert == alert {
+            while let self, !Task.isCancelled, self.notchState == .v2Chat, self.v2Focus == alert.id, self.v2Alert == alert {
                 let now = Date()
                 if alert.kind == .needsYou, answered == nil, self.v2Task(alert.id)?.state != .needsYou {
                     answered = now.addingTimeInterval(A.answeredHold)
                 }
-                if let answered, now >= answered { break }
-                if answered == nil, now >= end, !self.v2AlertHovered { break }
+                if !self.v2ChatHovered, now >= (answered ?? end) { break }
                 try? await Task.sleep(for: .seconds(0.25))
             }
-            guard let self, !Task.isCancelled, self.notchState == .v2Alert, self.v2Alert == alert else { return }
-            self.dismissV2Alert()
+            guard let self, !Task.isCancelled, self.notchState == .v2Chat, self.v2Alert == alert else { return }
+            self.dismissPoppedV2Chat()
         }
+    }
+
+    /// A chat that popped up goes (its time, or Esc): the island rests, and the session stays on the
+    /// board, Ready for review unless it was read.
+    func dismissPoppedV2Chat() {
+        v2ChatHold?.cancel()
+        if v2ChatInteracted, let id = v2Focus { v2Checked.insert(id) }
+        v2Alert = nil
+        v2Expanded = false
+        notchState = .silent
     }
 
     /// Esc, its time, or answered: the island rests; the session stays on the board.

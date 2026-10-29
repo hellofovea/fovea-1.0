@@ -540,6 +540,8 @@ enum OT {
         static let readingGap: CGFloat = 16
         /// Make it yours: the gap and hairline between the accent and the light (Oct 9).
         static let sectionGap: CGFloat = 26
+        /// The notch's two choices side by side (Oct 28).
+        static let notchChoiceGap: CGFloat = 36
         static let personalizeWidth: CGFloat = 440
         /// The lights' tiles a row: nine, the eight and Customize, in three rows (Oct 18, Ryan).
         static let auraColumns = 3

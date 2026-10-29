@@ -175,6 +175,7 @@
 "While you talk" = "说话时";
 "Screenshot" = "截图";
 "Press %@, then drag over it." = "按 %@，然后拖动框选。";
+"Press %@ and drag over it, or press it twice for the whole screen." = "按 %@ 拖动框选；连按两下，截取整个屏幕。";
 "Whole screen" = "全屏";
 "Press %@ twice." = "连按两下 %@。";
 "Selected text and files" = "选中的文字和文件";

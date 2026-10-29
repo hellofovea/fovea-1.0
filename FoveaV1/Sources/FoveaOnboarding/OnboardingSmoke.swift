@@ -181,14 +181,14 @@ package enum OnboardingSmoke {
         await shot("make-it-yours-floating")
         _ = await until(OT.Motion.lookShown + 1) { island.probeState == "silent" }
         check("…then the notch goes back up", island.probeState == "silent", island.probeState)
-        // Oct 27, Ryan: the app's own light or dark, too.
-        model.setAppAppearance(.dark); await settle(0.2)
-        check("the app's own appearance chosen here", run.prefs.windowAppearance == .dark, "\(run.prefs.windowAppearance)")
-        model.setAppAppearance(.light)
-        // Oct 27, Ryan: "actually add the light version back."
+        // Oct 27, Ryan: "actually add the light version back." Oct 28: the page keeps its look, and
+        // the app's window goes with the notch's glass.
+        let pageDark = model.boardDark
         model.setNotchAppearance(.light); await settle(0.4)
         check("the glass chosen, light: the board pulled down, in light glass", island.probeState == "v2Board"
-              && run.prefs.notchAppearance == .light && !model.boardDark, island.probeState)
+              && run.prefs.notchAppearance == .light, island.probeState)
+        check("…the page keeps its look, the app goes with the notch", model.boardDark == pageDark
+              && run.prefs.windowAppearance == .light, "\(model.boardDark) \(run.prefs.windowAppearance)")
         await shot("make-it-yours-light")
         model.setNotchAppearance(.dark)
         // Oct 28, Ryan: "when user is choosing accent in onboarding, they should see this notch input
@@ -418,8 +418,8 @@ package enum OnboardingSmoke {
         // feedback, something taken (⌘ and a drag, stood in for as the island would say it) lands
         // after the words; words first is missed, said, and tried again.
         model.jump(to: .dictationIntro); await settle(0.4)
-        check("dictation's intro lists ⌘, ⌘ twice, and words or a file dragged onto the notch with no key",
-              Copy.whileDictating(keys: model.keys).map(\.caps) == [["⌘"], ["⌘"], []] && model.step.keys.contains(.screenshot))
+        check("dictation's intro lists ⌘ (twice for the whole screen, said in its line), and words or a file with no key",
+              Copy.whileDictating(keys: model.keys).map(\.caps) == [["⌘"], []] && model.step.keys.contains(.screenshot))
         model.jump(to: .dictation); await settle(0.6)
         model.pointerOver = .feedback
         model.islandDidEmit(.voiceOpened(dispatch: false))

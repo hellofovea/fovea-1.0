@@ -5,6 +5,14 @@ well." Vibe Island's notch expands with Allow and Deny when Claude Code asks for
 (Deny ⌘N, Allow ⌘Y, a diff of what it would change), and a session's row says "Done — click to
 jump" when it finishes.
 
+**Oct 28, Ryan:** "when agents are done/need request from you, that chat should pop up on the notch.
+design that for both onboarding and actual use." What pops up is now the session's own chat (its
+answer, or what it asks with Allow and Deny in place), not a row with a line over it, and it pops up
+in the first run too (the practice agent asking to edit the list, and each answer). It stays as
+below: needing you 18 s (until answered, then 1.2 s), done or failed 12 s, the pointer on it holding
+it; Esc or its time puts it away and the island rests; opened by the person, it stays. The sections
+below describe the Oct 26 row, kept for the record.
+
 ## What it does
 
 - **When.** A session pops out of the notch by itself in three cases:

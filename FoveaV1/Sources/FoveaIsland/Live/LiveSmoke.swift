@@ -949,27 +949,26 @@ package enum LiveSmoke {
     /// Oct 26, Ryan ("vibe island pops up when the agent needs approval/work is done"): a session
     /// pops out of the resting notch when it needs you, is done or fails (Feedback/V2Alert.swift).
     private static func popUps(_ controller: IslandController, _ model: WorkbenchModel) async {
+        // Oct 28, Ryan: the session's own chat pops up, not a row.
         controller.stage("alert:needsYou"); await settle(0.6)
         let asking = model.v2Alert?.id ?? ""
-        check("a session that needs you pops up, its row with Allow and Deny", model.notchState == .v2Alert
-              && model.v2Alert?.kind == .needsYou && model.v2Task(asking)?.state == .needsYou, "\(model.notchState)")
-        check("…on the board's glass, as wide as the board (Oct 27)",
-              model.notchSurface == .panel && model.stackLayout.outline.size == model.v2AlertLayout.outline.size
-              && model.v2AlertLayout.outline.size.width == WorkbenchTokens.Board.width)
+        check("a session that needs you pops up: its chat, with Allow and Deny", model.notchState == .v2Chat
+              && model.v2Focus == asking && model.v2Alert?.kind == .needsYou && model.v2Task(asking)?.state == .needsYou,
+              "\(model.notchState)")
         await shot("40-popup-needs-you", model)
         model.allowTask(asking)
         let answered = await until(4) { model.notchState == .silent }
         check("…allowed there, it goes a moment later", answered, "\(model.notchState)")
         controller.stage("alert:done"); await settle(0.6)
-        check("one that's done pops up as done", model.notchState == .v2Alert && model.v2Alert?.kind == .done)
+        check("one that's done pops up: its chat, its answer", model.notchState == .v2Chat && model.v2Alert?.kind == .done)
         await shot("41-popup-done", model)
         _ = model.escape(); await settle(0.4)
-        check("…Esc puts it away", model.notchState == .silent)
+        check("…Esc puts it away, the island rests", model.notchState == .silent)
         controller.stage("alert:failed"); await settle(0.6)
-        check("one that failed pops up", model.notchState == .v2Alert && model.v2Alert?.kind == .failed)
+        check("one that failed pops up", model.notchState == .v2Chat && model.v2Alert?.kind == .failed)
         if let id = model.v2Alert?.id { model.openV2(id) }
         await settle(0.4)
-        check("…a click on its row opens the session", model.notchState == .v2Chat)
+        check("…opened, it stays, no longer a pop-up", model.notchState == .v2Chat && model.v2Alert == nil)
         controller.stage("silent"); await settle(0.4)
         // Nothing pops up while the notch is in use.
         controller.stage("voiceFlow"); await settle(0.3)

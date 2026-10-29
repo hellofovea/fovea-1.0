@@ -709,17 +709,19 @@ extension WorkbenchModel {
         // for review: its answer hasn't been seen.
         if !(notchState == .v2Chat && v2Focus == id) { v2Checked.remove(id) }
         guard showAnswers else { return }
-        // Oct 26, Ryan: one that took longer pops up as done (Feedback/V2Alert.swift).
-        guard v2Quick(id) else { popV2Alert(id); return }
-        if notchState == .v2Board, panelSentTask == id { return }
-        if notchState == .silent { showV2Chat(id, popped: true) }
+        // A quick one just sent opens from the board after it (`showBoardAfterSend`); otherwise its
+        // chat pops up (Oct 26; Oct 28, Ryan: the chat itself, Feedback/V2Alert.swift).
+        if v2Quick(id), notchState == .v2Board, panelSentTask == id { return }
+        popV2Alert(id)
     }
 
     /// A session's expanded chat: the request; the agent's response, formatted, with its screen;
     /// its state; what to do with it; the grab bar to pull it out. Popped up by itself it goes
     /// after a while unless the pointer is on it; opened by the person, it stays.
-    func showV2Chat(_ id: String, popped: Bool, fromBoard: Bool = false, expanded: Bool = false) {
+    func showV2Chat(_ id: String, popped: Bool, fromBoard: Bool = false, expanded: Bool = false, poppedFor alert: V2Alert? = nil) {
         guard v2Task(id) != nil else { return }
+        // Why it popped up (done, needs you, failed), while it's open that way; opened, none.
+        v2Alert = popped ? (alert ?? V2Alert(id: id, kind: .done)) : nil
         // Oct 15 review, QA07: another session (or this one again) opens as it is, not edited.
         cases.editing = nil
         v2Size = expanded ? .expanded : .usual
@@ -733,15 +735,8 @@ extension WorkbenchModel {
         if !popped { v2Checked.insert(id) }
         notchState = .v2Chat
         v2ChatHold?.cancel()
-        guard popped, !snapshotMode, !v2Pinned else { return }
-        v2ChatHold = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(WorkbenchTokens.V2.chatHold))
-            while let self, !Task.isCancelled, self.notchState == .v2Chat, self.v2ChatHovered {
-                try? await Task.sleep(for: .seconds(0.3))
-            }
-            guard let self, !Task.isCancelled, self.notchState == .v2Chat, self.v2Focus == id else { return }
-            self.closeV2Chat()
-        }
+        guard popped, let alert = v2Alert else { return }
+        holdPoppedV2Chat(alert)
     }
 
     /// Expanded, the header's way out to the control board, however the session was opened. Read,
@@ -763,6 +758,8 @@ extension WorkbenchModel {
         guard notchState == .v2Chat else { return }
         // Oct 15 review, QA07: an edit is stepped out of first.
         if cases.editing != nil { cancelEditV2(); return }
+        // One that popped up by itself goes as it came: the island rests (Oct 28).
+        if v2Alert != nil, !v2ChatFromBoard { dismissPoppedV2Chat(); return }
         v2ChatHold?.cancel()
         if v2ChatInteracted, let id = v2Focus { v2Checked.insert(id) }
         v2Expanded = false

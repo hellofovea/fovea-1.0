@@ -179,8 +179,10 @@ final class OnboardingModel {
     /// The notch's look, as Make it yours sets it (Oct 9): the glass, the panels, the size.
     var notchAppearance: NotchAppearance = .dark
     var notchPanels: NativePanels = .attached
-    /// Oct 27, Ryan: the app's own window, light, dark or as the Mac is.
-    var appAppearance: WindowAppearance = .light
+    /// The pages' look, light or dark as the Mac is at the start; it stays when the notch's glass is
+    /// chosen (Oct 28, Ryan: "dont change the background when user changes light or dark, only
+    /// change the notch").
+    var boardLook: NotchAppearance = .dark
     /// "Clear my screen" was pressed: the other apps are hidden until the end.
     var screenCleared = false
     /// The permissions Fovea has asked macOS for (its button pressed once).
@@ -573,8 +575,8 @@ final class OnboardingModel {
         if !options.harness { startKeys() }
         if let prefs = host?.prefs {
             notchAppearance = prefs.notchAppearance
+            boardLook = prefs.notchAppearance
             notchPanels = prefs.panels
-            appAppearance = prefs.windowAppearance
             keys = KeyMap(prefs: prefs)
         }
         // A practice run again starts at its task: the agent's sign-in is checked here, not on the
@@ -1160,10 +1162,9 @@ final class OnboardingModel {
     /// The notch has a part in the run from Point and send on; before it, it stays as it is.
     var notchTaught: Bool { step.stage.rawValue >= Stage.pointAndSay.rawValue }
 
-    /// The pages' glass and words: light or dark as the Mac is at the start, then as the person
-    /// picks the notch's glass in Make it yours (Oct 9).
-    /// The board's ink: as the notch's glass, light or dark (Oct 9; Oct 27, back).
-    var boardDark: Bool { notchAppearance == .dark }
+    /// The pages' glass and words: light or dark as the Mac is at the start (Oct 9), and so for the
+    /// whole run: the notch's glass chosen in Make it yours changes the notch alone (Oct 28).
+    var boardDark: Bool { boardLook == .dark }
 
     /// A word for the person, on the bar (Oct 9, evening: never under the notch). A step's own
     /// line is its title, already on the bar; anything else shows a while in place of the
@@ -1216,15 +1217,13 @@ final class OnboardingModel {
     /// The notch's look: its panels attached or floating (Oct 27: one size, the glass dark). The
     /// board shows at the notch, so the choice is seen.
 
-    func setAppAppearance(_ a: WindowAppearance) {
-        animate(OT.Motion.select) { appAppearance = a }
-        host?.prefs.windowAppearance = a
-        sound.cue(.tick)
-    }
-    /// The notch's glass, light or dark (Oct 27, Ryan: "actually add the light version back").
+    /// The notch's glass, light or dark (Oct 27, Ryan: "actually add the light version back"). The
+    /// app's own window goes with it (Oct 28, Ryan: "dont have the user pick the light or dark mode
+    /// of the app. just have it go with the light or dark mode of the notch").
     func setNotchAppearance(_ a: NotchAppearance) {
         animate(OT.Motion.select) { notchAppearance = a }
         host?.prefs.notchAppearance = a
+        host?.prefs.windowAppearance = a == .dark ? .dark : .light
         host?.previewPanel()
         sound.cue(.tick)
     }

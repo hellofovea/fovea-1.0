@@ -373,10 +373,9 @@ public enum Copy {
         // Oct 19, Ryan: ⌘ once for a part, ⌘ twice for the whole screen; a file is dragged onto the notch.
         // Oct 18, Ryan: named for what they take, how in a quiet second line.
         // Oct 18, Ryan: ⌘ twice for the whole screen joins them.
+        // Oct 28, Ryan: the whole screen's own row (⌘ ×2) was obtrusive; it's said in the screenshot's.
         [TakeLine(caps: keys.caps(.screenshot), presses: 1, title: L("Screenshot"),
-                  detail: L("Press \(keys.spoken(.screenshot)), then drag over it.")),
-         TakeLine(caps: keys.caps(.wholeScreen), presses: keys.presses(.wholeScreen), title: L("Whole screen"),
-                  detail: L("Press \(keys.spoken(.wholeScreen)) twice.")),
+                  detail: L("Press \(keys.spoken(.screenshot)) and drag over it, or press it twice for the whole screen.")),
          TakeLine(caps: [], presses: 1, title: L("Selected text and files"), detail: L("Select words, or drag a file onto the notch."))]
     }
 

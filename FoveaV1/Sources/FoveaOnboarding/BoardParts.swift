@@ -414,16 +414,18 @@ struct WhileDictating: View {
 }
 
 /// Make it yours: Fovea's accent, then, well apart from it (Oct 9: two choices, a real gap between),
-/// the notch: what opens below it attached or floating (Oct 27, Ryan: "the user will be able to pick
-/// attached/floating notch from the onboarding"; one size; its glass dark, always). Each
-/// shows at the real notch as it's chosen, and Settings › Notch starts with it.
+/// the notch: its glass light or dark, and what opens below it attached or floating (Oct 27, Ryan:
+/// "the user will be able to pick attached/floating notch from the onboarding"; one size). Each
+/// shows at the real notch as it's chosen, and Settings › Notch starts with it. Oct 28, Ryan: no
+/// choice of the app's own light or dark (it goes with the notch's glass), and everything on the
+/// page centred: each choice's name over it, the notch's two side by side.
 struct Personalize: View {
     let model: OnboardingModel
     @Environment(\.boardInk) private var ink
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 10) {
+        VStack(spacing: 0) {
+            VStack(spacing: 10) {
                 label(Copy.accentLabel)
                 HStack(spacing: 10) {
                     ForEach(AccentName.allCases, id: \.self) { accent in
@@ -434,31 +436,24 @@ struct Personalize: View {
                         .playTarget(.accent(accent), model)
                         .help(L(key: accent.title))
                     }
-                    Text(L(key: model.personal.accent.title))
-                        .font(OT.Type_.guideBody).foregroundStyle(ink.secondary)
-                        .padding(.leading, 4)
                 }
+                Text(L(key: model.personal.accent.title))
+                    .font(OT.Type_.guideBody).foregroundStyle(ink.secondary)
             }
             // Oct 27, Ryan: the light the notch made while it listened is gone ("abandon the orbs and
             // aurora completely, i think these are too flashy"), and its choice with it.
             Spacer().frame(height: OT.Board.sectionGap)
-            // Oct 27, Ryan: "i dont know if the user will be able to choose the light/ dark mode of
-            // the app itself from onboarding. if not, implement it." Fovea's window, as Settings ›
-            // Appearance has it.
-            VStack(alignment: .leading, spacing: 10) {
-                label(L("The app"))
-                NotchChoiceRow(title: L("Appearance"), options: [WindowAppearance.light, .dark, .system],
-                               chosen: model.appAppearance, name: \.choiceTitle) { model.setAppAppearance($0) }
-            }
-            Spacer().frame(height: OT.Board.sectionGap)
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(spacing: 10) {
                 label(L("The notch"))
-                NotchChoiceRow(title: L("Glass"), options: NotchAppearance.allCases, chosen: model.notchAppearance,
-                               name: \.title) { model.setNotchAppearance($0) }
-                NotchChoiceRow(title: L("Panels"), options: NativePanels.allCases, chosen: model.notchPanels,
-                               name: \.title) { model.setNotchPanels($0) }
+                HStack(alignment: .top, spacing: OT.Board.notchChoiceGap) {
+                    NotchChoiceRow(title: L("Glass"), options: NotchAppearance.allCases, chosen: model.notchAppearance,
+                                   name: \.title) { model.setNotchAppearance($0) }
+                    NotchChoiceRow(title: L("Panels"), options: NativePanels.allCases, chosen: model.notchPanels,
+                                   name: \.title) { model.setNotchPanels($0) }
+                }
             }
         }
+        .frame(maxWidth: .infinity)
     }
 
     private func label(_ text: String) -> some View {
@@ -466,18 +461,7 @@ struct Personalize: View {
     }
 }
 
-extension WindowAppearance {
-    /// The app's look, as the Mac names it.
-    var choiceTitle: String {
-        switch self {
-        case .light: return L("Light")
-        case .dark: return L("Dark")
-        case .system: return L("Auto")
-        }
-    }
-}
-
-/// One of the notch's choices: its name, and the two ways it can be, as the hello board's
+/// One of the notch's choices: its name over the two ways it can be, centred, as the hello board's
 /// language segments are drawn.
 struct NotchChoiceRow<Value: Hashable>: View {
     let title: String
@@ -490,8 +474,8 @@ struct NotchChoiceRow<Value: Hashable>: View {
     @Environment(\.firstRunReduced) private var reduced
 
     var body: some View {
-        HStack(spacing: 12) {
-            Text(title).font(OT.Type_.guideBody).foregroundStyle(ink.secondary).frame(width: 44, alignment: .leading)
+        VStack(spacing: 8) {
+            Text(title).font(OT.Type_.guideBody).foregroundStyle(ink.secondary)
             HStack(spacing: 2) {
                 ForEach(options, id: \.self) { option in
                     let on = option == chosen

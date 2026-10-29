@@ -1169,7 +1169,8 @@ enum WorkbenchTokens {
         /// The outline at the right (after Notion's page outline): a short line per request, the
         /// one in view bright. Shown from two requests.
         static let outlineTick: CGFloat = 2
-        static let outlineTickRequest: CGFloat = 18
+        /// Oct 28, Ryan: "a little bit shorter" (was 18).
+        static let outlineTickRequest: CGFloat = 12
         static let outlineGapMax: CGFloat = 8
         static let outlineGapMin: CGFloat = 3
         /// The lines' column, and where it sits: inside the right margin, clear of the words.

@@ -110,8 +110,9 @@ extension WorkbenchModel {
         live?.director?.islandDidEmit(.sessionAnswered)
         // Oct 23, Ryan: a message that waited its turn goes now, as after the script's answers.
         if !failed, takeNextQueued(id) { return }
-        // A quick answer opens by itself, as the Workbench's do (and as Settings › Notch asks).
-        if notchState == .silent, showAnswers, v2Quick(id) { showV2Chat(id, popped: true) }
+        // Oct 28, Ryan: in the first run too, its chat pops up when it's done (or failed), as Settings ›
+        // Notch's "Show answers" asks.
+        popV2Alert(id)
     }
 }
 
@@ -169,6 +170,8 @@ extension IslandController {
         withAnimation(WorkbenchTokens.Panel.change) {
             model.apply(AgentBeat(activity: question, work: .thinking, object: file, state: .needsYou, ask: .approval("Edit \(file)")), to: i)
         }
+        // Oct 28, Ryan: it needs you, so its chat pops up, Allow and Deny in it.
+        model.popV2Alert(id)
     }
 
     /// Allowed for the person ("Do it for me").
